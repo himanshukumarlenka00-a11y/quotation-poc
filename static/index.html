@@ -746,7 +746,7 @@ let currentQuotation = null;
 let selectedRating = null;
 let usdToInr = 84; // default fallback rate
 
-const API = 'http://localhost:8000';
+const API = window.location.origin;
 
 // Fetch live USD→INR rate on load
 async function fetchUsdRate() {
