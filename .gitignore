@@ -6,11 +6,11 @@ __pycache__/
 venv/
 env/
 
-# Data - don't push DB or uploaded files
-data/quotations.db
+# Data - don't push uploads or exports
 uploads/
 exports/
 data/images/
+# DB is included for Railway deployment (contains catalog data)
 
 # Test files
 test_*.py
