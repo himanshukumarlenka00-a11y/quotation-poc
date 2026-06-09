@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+venv/
+env/
+
+# Data - don't push DB or uploaded files
+data/quotations.db
+uploads/
+exports/
+data/images/
+
+# Test files
+test_*.py
+check_db.py
+fix_gst.py
+test_quote.xlsx
+*.xlsx
+*.xls
+
+# Claude
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
