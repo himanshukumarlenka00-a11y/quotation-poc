@@ -1502,12 +1502,20 @@ function repoCard(q, status) {
       <div class="meta">${d.client_name || q.client_name} &nbsp;·&nbsp; ${items.length} items &nbsp;·&nbsp; ₹${grand.toLocaleString('en-IN',{maximumFractionDigits:0})}${usdTotal > 0 ? ' &nbsp;+&nbsp; $'+usdTotal.toLocaleString('en-IN',{maximumFractionDigits:2})+' USD' : ''}</div>
       <div class="meta">${q.created_at ? new Date(q.created_at).toLocaleDateString('en-IN') : ''}</div>
     </div>
-    <div style="display:flex;gap:8px;">
+    <div style="display:flex;gap:8px;align-items:center;">
       <button class="btn btn-sm btn-outline" onclick="viewQuote(${q.id})">👁 View</button>
       <button class="btn btn-sm btn-accent" onclick="window.open(API+'/api/download/${q.id}')">⬇ XLS</button>
       ${status==='draft' ? `<button class="btn btn-sm btn-success" onclick="approveQuote(${q.id})">✓ Approve</button>` : ''}
+      <button class="btn btn-sm btn-danger" onclick="deleteQuote(${q.id})" title="Delete" style="padding:6px 10px;">✕</button>
     </div>
   </div>`;
+}
+
+async function deleteQuote(id) {
+  if (!confirm('Delete this quotation?')) return;
+  const res = await fetch(`${API}/api/quotations/${id}`, { method: 'DELETE' });
+  if (res.ok) loadRepository();
+  else alert('Delete failed.');
 }
 
 async function clearAllQuotations() {
