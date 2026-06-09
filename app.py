@@ -1205,42 +1205,114 @@ def _smart_generate(req: GenerateRequest):
     except Exception as e:
         raise HTTPException(500, f"Extraction error: {e}")
 
-    # Step 2: For each extracted item, find all DB variants + score + pick best
+    # Step 2: Get all product names from DB for semantic mapping
     conn = get_db()
+    try:
+        if req.catalogs:
+            ph = ",".join("?" * len(req.catalogs))
+            all_products = [r[0] for r in conn.execute(
+                f"SELECT DISTINCT product FROM boq_items WHERE file_name IN ({ph}) AND product IS NOT NULL ORDER BY product",
+                req.catalogs
+            ).fetchall()]
+        else:
+            all_products = [r[0] for r in conn.execute(
+                "SELECT DISTINCT product FROM boq_items WHERE product IS NOT NULL ORDER BY product"
+            ).fetchall()]
+    except Exception:
+        all_products = []
+
+    # Step 2b: LLM semantic mapping — understand meaning, not just keywords
+    semantic_map = {}  # requested_term → matched catalog product name (or None)
+    if extracted and all_products:
+        try:
+            items_str    = ", ".join([f"{i['product']} (qty:{i.get('qty',1)})" for i in extracted])
+            products_str = "\n".join(all_products[:350])  # cap at 350 products
+            sem_resp = groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content":
+                     "You are a hotel supply product matching assistant. "
+                     "Map each requested item to the BEST matching product name from the catalog list. "
+                     "Return ONLY valid JSON: {\"mappings\":[{\"requested\":\"chairs\",\"matched\":\"wheel chair\"},{\"requested\":\"laptop\",\"matched\":null}]} "
+                     "Rules: "
+                     "- Use semantic understanding (e.g. 'towels' → 'Bath Towel', 'kettles' → 'Electric Kettle') "
+                     "- If the item clearly exists in catalog under a different name, match it "
+                     "- If no reasonable match exists, set matched to null "
+                     "- Consider hotel/hospitality context "
+                     "- Prefer exact or close name matches over distant ones"},
+                    {"role": "user", "content":
+                     f"Items requested: {items_str}\n\nCatalog products:\n{products_str}"}
+                ],
+                max_tokens=500, temperature=0.1
+            )
+            sem_raw = sem_resp.choices[0].message.content.strip()
+            sem_raw = re.sub(r"```[a-z]*\n?", "", sem_raw).strip().rstrip("```")
+            sem_data = json.loads(sem_raw)
+            for m in sem_data.get("mappings", []):
+                req_key = (m.get("requested") or "").lower().strip()
+                matched = m.get("matched")
+                semantic_map[req_key] = matched
+        except Exception as e:
+            print(f"Semantic mapping error (non-fatal): {e}")
+            # Fall back to keyword matching if semantic mapping fails
+
     result_items = []
     not_found    = []
 
     for item in extracted:
-        kw  = item.get("product", "").upper().strip()
+        original_kw = item.get("product", "").strip()
+        kw  = original_kw.upper()
         qty = int(item.get("qty") or 1)
         if not kw:
             continue
 
+        # Use semantic mapping if available
+        sem_match = semantic_map.get(original_kw.lower())
+
         try:
-            if req.catalogs:
-                ph   = ",".join("?" * len(req.catalogs))
-                rows = conn.execute(
-                    f"SELECT * FROM boq_items WHERE UPPER(product) LIKE ? AND file_name IN ({ph})",
-                    [f"%{kw}%"] + req.catalogs
-                ).fetchall()
+            if sem_match:
+                # Semantic match: search by the LLM-suggested product name
+                if req.catalogs:
+                    ph   = ",".join("?" * len(req.catalogs))
+                    rows = conn.execute(
+                        f"SELECT * FROM boq_items WHERE UPPER(product) LIKE ? AND file_name IN ({ph})",
+                        [f"%{sem_match.upper()}%"] + req.catalogs
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        "SELECT * FROM boq_items WHERE UPPER(product) LIKE ?",
+                        (f"%{sem_match.upper()}%",)
+                    ).fetchall()
             else:
-                rows = conn.execute(
-                    "SELECT * FROM boq_items WHERE UPPER(product) LIKE ?",
-                    (f"%{kw}%",)
-                ).fetchall()
+                # Fallback: keyword search
+                if req.catalogs:
+                    ph   = ",".join("?" * len(req.catalogs))
+                    rows = conn.execute(
+                        f"SELECT * FROM boq_items WHERE UPPER(product) LIKE ? AND file_name IN ({ph})",
+                        [f"%{kw}%"] + req.catalogs
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        "SELECT * FROM boq_items WHERE UPPER(product) LIKE ?",
+                        (f"%{kw}%",)
+                    ).fetchall()
             variants = [dict(r) for r in rows]
         except Exception:
             variants = []
 
-        # Filter: keyword must match as a whole word, not just any substring
-        # e.g. "table" should NOT match "mountable"
-        def word_match(v):
-            prod = (v.get("product") or "").upper()
-            words = re.split(r'[\s\-/|,\.&]+', prod)
-            return any(w == kw or w.startswith(kw) for w in words)
+        # If semantic match said null → not found
+        if sem_match is None and original_kw.lower() in semantic_map:
+            not_found.append(original_kw)
+            continue
 
-        word_matched = [v for v in variants if word_match(v)]
-        variants = word_matched if word_matched else variants  # fallback to all if none
+        # Word-boundary filter (only for keyword fallback, not semantic match)
+        if not sem_match:
+            def word_match(v):
+                prod  = (v.get("product") or "").upper()
+                words = re.split(r'[\s\-/|,\.&]+', prod)
+                return any(w == kw or w.startswith(kw) for w in words)
+            word_matched = [v for v in variants if word_match(v)]
+            variants = word_matched if word_matched else variants
 
         # Prefer variants with price > 0; only keep zero-price if nothing else available
         priced = [v for v in variants if (v.get("price") or 0) > 0]
