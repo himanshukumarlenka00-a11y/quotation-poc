@@ -525,7 +525,10 @@
     <div id="repo-list"><p style="color:var(--muted);">No approved quotations yet.</p></div>
   </div>
   <div class="card">
-    <h2 data-icon="📝">All Drafts</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+      <h2 data-icon="📝" style="margin-bottom:0;">All Drafts</h2>
+      <button class="btn btn-danger btn-sm" onclick="clearAllQuotations()">🗑 Clear All Quotations</button>
+    </div>
     <div id="drafts-list"><p style="color:var(--muted);">No drafts.</p></div>
   </div>
 </section>
