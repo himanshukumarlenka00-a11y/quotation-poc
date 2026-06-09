@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import pandas as pd
 from groq import Groq
@@ -25,6 +26,15 @@ for d in [DATA_DIR, UPLOADS_DIR, EXPORTS_DIR, IMAGES_DIR]:
 
 DB_PATH = DATA_DIR / "quotations.db"
 app = FastAPI(title="QuoteGen AI")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 
 
