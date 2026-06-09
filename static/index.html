@@ -540,24 +540,24 @@
 
   <div class="card">
     <h2 data-icon="❓">How QuoteGen AI Works — Step by Step</h2>
-    <p style="color:var(--muted);font-size:.9rem;">A complete overview of the system for anyone who wants to understand the workflow.</p>
+    <p style="color:var(--muted);font-size:.9rem;">A complete overview of the system — from uploading your catalog to downloading a professional quotation.</p>
   </div>
 
   <!-- OVERVIEW FLOW -->
   <div class="card">
     <h2 data-icon="🔄">System Overview</h2>
     <div style="display:flex;align-items:center;flex-wrap:wrap;gap:0;margin-top:8px;">
-      <div class="flow-box" style="background:#1a3a6b;color:#fff;">📤<br>Upload<br>BOQ Files</div>
+      <div class="flow-box" style="background:#1a3a6b;color:#fff;">📤<br>Upload<br>Catalog</div>
       <div class="flow-arrow">→</div>
-      <div class="flow-box" style="background:#2471a3;color:#fff;">🗄<br>Product<br>Catalog (DB)</div>
+      <div class="flow-box" style="background:#2471a3;color:#fff;">✨<br>Type<br>Requirements</div>
       <div class="flow-arrow">→</div>
-      <div class="flow-box" style="background:#e8a020;color:#fff;">✨<br>Type<br>Requirements</div>
+      <div class="flow-box" style="background:#8e44ad;color:#fff;">🤖<br>AI Extracts<br>Items</div>
       <div class="flow-arrow">→</div>
-      <div class="flow-box" style="background:#8e44ad;color:#fff;">🤖<br>AI Matches<br>Products</div>
+      <div class="flow-box" style="background:#e8a020;color:#fff;">⚡<br>Auto-Pick<br>Best Match</div>
       <div class="flow-arrow">→</div>
-      <div class="flow-box" style="background:#27ae60;color:#fff;">📋<br>Editable<br>Result</div>
+      <div class="flow-box" style="background:#27ae60;color:#fff;">🔄<br>Switch<br>Variants</div>
       <div class="flow-arrow">→</div>
-      <div class="flow-box" style="background:#c0392b;color:#fff;">⬇<br>Download<br>XLS</div>
+      <div class="flow-box" style="background:#c0392b;color:#fff;">⬇<br>Download<br>/ Print</div>
     </div>
   </div>
 
@@ -565,38 +565,39 @@
   <div class="card">
     <div class="step-header" style="background:#1a3a6b;">
       <span class="step-num">1</span>
-      <span>Upload BOQ / Quotation Files</span>
+      <span>Upload Your Product Catalog</span>
       <span style="margin-left:auto;font-size:.82rem;opacity:.8;">Tab: 📤 Upload BOQ</span>
     </div>
     <div class="step-body">
       <div class="step-col">
         <b>What you do:</b>
         <ul class="step-list">
-          <li>Drag &amp; drop your Excel files (.xls / .xlsx)</li>
-          <li>Click <b>🔍 Scan First</b> to preview contents before saving</li>
+          <li>Drag &amp; drop Excel files (.xls / .xlsx)</li>
+          <li>Click <b>🔍 Scan First</b> to preview before saving</li>
           <li>Click <b>📤 Upload to Catalog</b> to save permanently</li>
-          <li>Delete any file using the 🗑 button if needed</li>
+          <li>Upload multiple files from different suppliers</li>
+          <li>Delete files with the 🗑 button if needed</li>
         </ul>
       </div>
       <div class="step-col">
-        <b>What happens behind the scenes:</b>
+        <b>What happens automatically:</b>
         <ul class="step-list">
-          <li>System reads <b>every sheet</b> in the Excel file</li>
-          <li>Auto-detects header row and column names (Product, Price, Brand, GST…)</li>
-          <li>Detects whether price is in <b>INR or USD</b> from column name</li>
-          <li>Saves all products into the <b>SQLite database</b></li>
-          <li>Duplicate files are rejected automatically</li>
+          <li>Reads <b>every sheet</b> in the Excel file</li>
+          <li>Auto-detects columns — Product, Price, Brand, GST, HSN…</li>
+          <li>Detects whether price is <b>INR or USD</b> from column name</li>
+          <li>Saves all products into the database</li>
+          <li>Duplicate files rejected automatically</li>
         </ul>
       </div>
     </div>
-    <div class="step-note">📌 Supported columns auto-detected: Product Name, Description, Model No, Brand, Specification, HSN Code, Price/PC INR, Price/PC USD, GST%</div>
+    <div class="step-note">📌 You can upload multiple catalog files. Each file stays separate — you can filter by file when generating quotes.</div>
   </div>
 
   <!-- STEP 2 -->
   <div class="card">
-    <div class="step-header" style="background:#e8a020;">
+    <div class="step-header" style="background:#2471a3;">
       <span class="step-num">2</span>
-      <span>Type Your Requirements</span>
+      <span>Type Your Requirements in Plain English</span>
       <span style="margin-left:auto;font-size:.82rem;opacity:.8;">Tab: ✨ Generate Quote</span>
     </div>
     <div class="step-body">
@@ -604,127 +605,128 @@
         <b>What you do:</b>
         <ul class="step-list">
           <li>Enter customer / hotel name</li>
-          <li>Select which catalog(s) to search from (or leave blank for all)</li>
-          <li>Type requirements in plain English:<br>
-            <code style="background:#f0f3f8;padding:2px 6px;border-radius:4px;font-size:.82rem;">"We need 100 irons, 50 iron boards and 200 hand towels"</code>
+          <li>Select which catalog(s) to search (or leave all unchecked = search everything)</li>
+          <li>Type requirements naturally:<br>
+            <code style="background:#f0f3f8;padding:2px 6px;border-radius:4px;font-size:.8rem;">"We need 100 irons, 50 bath towels and 20 hair dryers"</code>
           </li>
           <li>Click <b>✨ Generate Quotation</b></li>
         </ul>
       </div>
       <div class="step-col">
-        <b>What happens behind the scenes:</b>
+        <b>Catalog filter rules:</b>
         <ul class="step-list">
-          <li>Keywords extracted from your prompt (numbers and stop-words ignored)</li>
-          <li>Database searched for matching products using keyword relevance scoring</li>
-          <li>Top 30 most relevant products sent to <b>Groq AI (LLaMA 3.3 70B)</b></li>
-          <li>AI decides which products to include and what quantities</li>
-          <li>AI response validated — only products existing in catalog are kept</li>
-          <li>Prices, brand, model overridden with exact catalog values</li>
+          <li><b>No catalog selected</b> → searches all uploaded files</li>
+          <li><b>1 catalog selected</b> → searches only that file</li>
+          <li><b>Multiple selected</b> → searches all selected files</li>
+          <li>Variants shown only from the selected catalog(s)</li>
         </ul>
       </div>
     </div>
-    <div class="step-note">📌 AI Model: LLaMA 3.3 70B via Groq (free tier). Token limit: 12,000 per minute. If hit, wait 60 seconds and retry.</div>
+    <div class="step-note">📌 Groq AI (LLaMA 3.3 70B) is used only to extract product names and quantities from your text — lightweight, fast, uses ~50-100 tokens per request.</div>
   </div>
 
   <!-- STEP 3 -->
   <div class="card">
     <div class="step-header" style="background:#8e44ad;">
       <span class="step-num">3</span>
-      <span>Review &amp; Edit the Result</span>
-      <span style="margin-left:auto;font-size:.82rem;opacity:.8;">Tab: 📋 Result</span>
+      <span>AI Extracts Items + Smart Auto-Pick</span>
+      <span style="margin-left:auto;font-size:.82rem;opacity:.8;">Happens automatically</span>
     </div>
     <div class="step-body">
       <div class="step-col">
-        <b>What you do:</b>
+        <b>AI extraction:</b>
         <ul class="step-list">
-          <li>Review line items — product, qty, price, GST</li>
-          <li>Edit any value directly in the table (qty, price, GST%)</li>
-          <li>Remove unwanted rows with ✕</li>
-          <li>Click <b>💾 Save Edits</b> to save changes</li>
-          <li>Click <b>⬇ Download XLS</b> to export</li>
+          <li>LLaMA 3.3 reads your prompt</li>
+          <li>Extracts product names + quantities</li>
+          <li>e.g. → <code style="background:#f0f3f8;padding:1px 5px;border-radius:3px;font-size:.8rem;">[{iron, 100}, {bath towel, 50}]</code></li>
+          <li>No catalog sent to AI — just your text</li>
         </ul>
       </div>
       <div class="step-col">
-        <b>Currency handling:</b>
+        <b>Smart auto-pick scoring:</b>
         <ul class="step-list">
-          <li><b>INR items</b> — shown with ₹, included in grand total</li>
-          <li><b>USD items</b> — auto-converted to INR at <b>live exchange rate</b></li>
-          <li>USD column shows original $ price alongside INR equivalent</li>
-          <li>Totals shown separately for INR and USD sections</li>
-          <li>Combined grand total shown at bottom</li>
+          <li>For each product → finds ALL matching variants in DB</li>
+          <li>Scores each: <b>exact name match +100</b>, compact match +40-80, has price +60, INR preferred +5</b></li>
+          <li>Highest score = auto-selected for the quotation</li>
+          <li>Items not in catalog → shown in ❌ Not Found banner</li>
+          <li>Zero-price items automatically skipped</li>
         </ul>
       </div>
     </div>
-    <div class="step-note">📌 All edits are saved to the database. The XLS is generated from your uploaded template (preserving original formatting) or a default format if no template.</div>
+    <div class="step-note">📌 Word-boundary matching prevents wrong results — "table" will NOT match "wall mountable". Only proper word matches count.</div>
   </div>
 
   <!-- STEP 4 -->
   <div class="card">
-    <div class="step-header" style="background:#27ae60;">
+    <div class="step-header" style="background:#e8a020;">
       <span class="step-num">4</span>
-      <span>Give Feedback — Train the AI</span>
-      <span style="margin-left:auto;font-size:.82rem;opacity:.8;">Tab: 📋 Result → Feedback section</span>
-    </div>
-    <div class="step-body">
-      <div class="step-col">
-        <b>What you do:</b>
-        <ul class="step-list">
-          <li>Click <b>👍 Good</b> — quote is correct, approve it</li>
-          <li>Click <b>👎 Not Good</b> — describe what was wrong or missing</li>
-        </ul>
-      </div>
-      <div class="step-col">
-        <b>What happens behind the scenes:</b>
-        <ul class="step-list">
-          <li><b>Good</b> → Quote status set to "approved", moved to Repository</li>
-          <li><b>Not Good</b> → Feedback text saved to database</li>
-          <li>Next generation includes recent feedback in the AI prompt</li>
-          <li>AI learns to avoid repeating past mistakes</li>
-        </ul>
-      </div>
-    </div>
-    <div class="step-note">📌 The last 30 feedback entries are always sent to the AI so it continuously improves its suggestions.</div>
-  </div>
-
-  <!-- STEP 5 -->
-  <div class="card">
-    <div class="step-header" style="background:#c0392b;">
-      <span class="step-num">5</span>
-      <span>Repository — Approved Quotes</span>
-      <span style="margin-left:auto;font-size:.82rem;opacity:.8;">Tab: 🗄 Repository</span>
+      <span>Review Quotation + Switch Variants</span>
+      <span style="margin-left:auto;font-size:.82rem;opacity:.8;">Tab: 📋 Result</span>
     </div>
     <div class="step-body">
       <div class="step-col">
         <b>What you can do:</b>
         <ul class="step-list">
-          <li>View all approved quotations</li>
-          <li>Re-download any past quote as XLS</li>
-          <li>View draft quotes (generated but not yet approved)</li>
-          <li>Manually approve a draft with ✓ Approve button</li>
+          <li>Quotation document appears instantly — no extra steps</li>
+          <li>Click <b>🔄 Switch</b> on any row to see all variants for that product</li>
+          <li>Pick a different variant → row updates + totals recalculate instantly</li>
+          <li>Edit QTY, Price/Pc, GST% directly in the table</li>
+          <li>Remove rows with ✕</li>
         </ul>
       </div>
       <div class="step-col">
-        <b>How it helps future quotes:</b>
+        <b>Currency handling:</b>
         <ul class="step-list">
-          <li>Approved quotes serve as training examples for the AI</li>
-          <li>Similar prompts in future will give similar results</li>
-          <li>All quotes stored with reference number, client name, date</li>
+          <li><b>INR items</b> — shown with ₹ in INR section</li>
+          <li><b>USD items</b> — auto-converted at <b>live exchange rate</b></li>
+          <li>Both sections shown separately with their totals</li>
+          <li>Combined grand total at the bottom</li>
+          <li>Amount in words auto-calculated (Indian number system)</li>
         </ul>
       </div>
     </div>
-    <div class="step-note">📌 Reference numbers follow format: SMI-YYYYMM-XXXX (e.g. SMI-202606-0001)</div>
+    <div class="step-note">📌 The 🔄 Switch button only appears when 2+ variants exist for a product. Single-match products have no Switch button.</div>
+  </div>
+
+  <!-- STEP 5 -->
+  <div class="card">
+    <div class="step-header" style="background:#27ae60;">
+      <span class="step-num">5</span>
+      <span>Download, Print or Approve</span>
+      <span style="margin-left:auto;font-size:.82rem;opacity:.8;">Tab: 📋 Result → Action bar</span>
+    </div>
+    <div class="step-body">
+      <div class="step-col">
+        <b>Export options:</b>
+        <ul class="step-list">
+          <li><b>🖨 Print / PDF</b> — prints the clean quotation document (no buttons/chrome)</li>
+          <li><b>⬇ Download XLS</b> — exports as Excel with all item details</li>
+          <li><b>💾 Save Edits</b> — saves inline changes to database</li>
+        </ul>
+      </div>
+      <div class="step-col">
+        <b>Repository &amp; Feedback:</b>
+        <ul class="step-list">
+          <li>All generated quotes saved automatically as drafts</li>
+          <li>Click <b>✅ Approve</b> → moves to Repository</li>
+          <li>👍 Good / 👎 Not Good feedback trains the AI for future</li>
+          <li>Past quotes viewable in 🗄 Repository tab</li>
+        </ul>
+      </div>
+    </div>
+    <div class="step-note">📌 Every quotation gets a unique reference number (QT-YYYYMMDD-HHMMSS) and is stored in the database permanently.</div>
   </div>
 
   <!-- TECH STACK -->
   <div class="card">
     <h2 data-icon="⚙️">Technology Stack</h2>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:12px;">
-      <div class="tech-box"><div class="tech-icon">🐍</div><b>FastAPI</b><div class="tech-desc">Python backend — handles all API calls, file parsing, DB operations</div></div>
-      <div class="tech-box"><div class="tech-icon">🤖</div><b>Groq AI</b><div class="tech-desc">LLaMA 3.3 70B model — understands requirements and matches products</div></div>
-      <div class="tech-box"><div class="tech-icon">🗄</div><b>SQLite</b><div class="tech-desc">Local database — stores catalog, quotations, feedback</div></div>
-      <div class="tech-box"><div class="tech-icon">📊</div><b>Pandas + openpyxl</b><div class="tech-desc">Reads .xls/.xlsx files, detects columns, extracts all sheets</div></div>
-      <div class="tech-box"><div class="tech-icon">💱</div><b>Frankfurter API</b><div class="tech-desc">Live USD→INR exchange rate (free, no API key needed)</div></div>
-      <div class="tech-box"><div class="tech-icon">🌐</div><b>Vanilla JS</b><div class="tech-desc">Frontend — no frameworks, fast and lightweight</div></div>
+      <div class="tech-box"><div class="tech-icon">🐍</div><b>FastAPI</b><div class="tech-desc">Python backend — API routes, file parsing, DB, XLS generation</div></div>
+      <div class="tech-box"><div class="tech-icon">🤖</div><b>Groq + LLaMA 3.3</b><div class="tech-desc">Extracts product names &amp; quantities from plain English text</div></div>
+      <div class="tech-box"><div class="tech-icon">🗄</div><b>SQLite</b><div class="tech-desc">Local DB — product catalog, quotations, feedback all stored here</div></div>
+      <div class="tech-box"><div class="tech-icon">📊</div><b>Pandas + openpyxl</b><div class="tech-desc">Reads multi-sheet Excel, auto-detects columns, extracts images</div></div>
+      <div class="tech-box"><div class="tech-icon">💱</div><b>Frankfurter API</b><div class="tech-desc">Live USD→INR exchange rate on every page load (free)</div></div>
+      <div class="tech-box"><div class="tech-icon">🌐</div><b>Vanilla JS + HTML</b><div class="tech-desc">Single-file frontend — no frameworks, fast, works on mobile</div></div>
     </div>
   </div>
 
