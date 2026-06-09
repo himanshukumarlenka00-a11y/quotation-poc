@@ -515,8 +515,13 @@
 <!-- ── SECTION 4: Repository ── -->
 <section id="sec-repository" class="section">
   <div class="card">
-    <h2 data-icon="🗄">Approved Quotations Repository</h2>
-    <p style="color:var(--muted);font-size:.9rem;margin-bottom:16px;">All approved quotations are stored here. These also serve as training examples for the AI.</p>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+      <div>
+        <h2 data-icon="🗄" style="margin-bottom:4px;">Approved Quotations Repository</h2>
+        <p style="color:var(--muted);font-size:.9rem;">All approved quotations are stored here.</p>
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="clearAllQuotations()">🗑 Clear All</button>
+    </div>
     <div id="repo-list"><p style="color:var(--muted);">No approved quotations yet.</p></div>
   </div>
   <div class="card">
@@ -1500,6 +1505,17 @@ function repoCard(q, status) {
       ${status==='draft' ? `<button class="btn btn-sm btn-success" onclick="approveQuote(${q.id})">✓ Approve</button>` : ''}
     </div>
   </div>`;
+}
+
+async function clearAllQuotations() {
+  if (!confirm('Delete ALL quotations (approved + drafts)? This cannot be undone.')) return;
+  const res = await fetch(`${API}/api/quotations/clear-all`, { method: 'DELETE' });
+  if (res.ok) {
+    loadRepository();
+    alert('All quotations cleared.');
+  } else {
+    alert('Failed to clear.');
+  }
 }
 
 async function approveQuote(id) {

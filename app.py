@@ -1549,6 +1549,16 @@ def submit_feedback(req: FeedbackRequest):
     return {"message": "Feedback saved. Thank you!" if req.rating == "good" else "Feedback recorded — we'll improve!"}
 
 
+@app.delete("/api/quotations/clear-all")
+def clear_all_quotations():
+    conn = get_db()
+    count = conn.execute("SELECT COUNT(*) FROM quotations").fetchone()[0]
+    conn.execute("DELETE FROM quotations")
+    conn.commit()
+    conn.close()
+    return {"deleted": count}
+
+
 @app.post("/api/approve/{qid}")
 def approve_quotation(qid: int):
     conn = get_db()
