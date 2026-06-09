@@ -226,6 +226,74 @@
   /* Doc footer */
   .quot-foot { background:var(--primary); color:rgba(255,255,255,.6); text-align:center; padding:8px; font-size:.73rem; letter-spacing:.3px; }
 
+  /* ── MOBILE RESPONSIVE ── */
+  @media (max-width: 768px) {
+    /* Nav */
+    nav { padding: 0 12px; height: auto; flex-wrap: wrap; gap: 4px; padding: 8px 12px; }
+    nav .logo { font-size: .9rem; width: 100%; padding: 4px 0; }
+    nav .tabs { display: flex; flex-wrap: wrap; gap: 2px; width: 100%; }
+    nav .tabs button { padding: 6px 10px; font-size: .75rem; flex: 1; min-width: 0; text-align: center; }
+
+    /* Main */
+    main { padding: 12px; }
+
+    /* Cards */
+    .card { padding: 16px; }
+
+    /* Quote header stats */
+    .quote-header { grid-template-columns: 1fr; }
+
+    /* Quotation document */
+    .quot-lh { flex-direction: column; align-items: flex-start; gap: 12px; padding: 16px; }
+    .quot-logo { margin-right: 0; width: 56px; height: 56px; }
+    .quot-co-name { font-size: 1.1rem; }
+    .quot-meta { grid-template-columns: 1fr; }
+    .quot-meta-l { border-right: none; border-bottom: 1px solid var(--border); padding: 14px 16px; }
+    .quot-meta-r { padding: 14px 16px; }
+    .quot-sal { padding: 12px 16px; font-size: .82rem; }
+    .quot-total { padding: 12px 16px; flex-direction: column; align-items: flex-end; gap: 4px; }
+    .quot-total-val { font-size: 1.2rem; }
+    .quot-words { padding: 8px 16px; font-size: .75rem; }
+    .quot-sigs { grid-template-columns: 1fr; gap: 16px; padding: 16px; }
+    .quot-terms { padding: 12px 16px; }
+    .quot-terms ol { font-size: .74rem; }
+    .quot-lh > div .quot-co-addr { font-size: .68rem; }
+
+    /* Table - allow horizontal scroll on mobile only for table */
+    .table-wrap { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+    table { table-layout: auto !important; min-width: 600px; font-size: .78rem; }
+    th, td { padding: 6px 6px !important; }
+
+    /* Action buttons */
+    .quot-actions { flex-direction: column; align-items: stretch; }
+    .quot-actions .btn { width: 100%; justify-content: center; }
+    .quot-refbadge { margin-left: 0; text-align: center; }
+
+    /* Variant picker */
+    .vp-topbar { flex-direction: column; align-items: stretch; }
+    .switch-cards { flex-direction: column; }
+    .switch-card { min-width: 100%; }
+
+    /* Inputs */
+    td input[type=number] { width: 60px !important; }
+
+    /* Drop zone */
+    .drop-zone { padding: 20px; }
+
+    /* Catalog selector */
+    #catalog-selector { flex-direction: column; }
+
+    /* Feedback */
+    .rating-btns { flex-direction: column; }
+    .rating-btn { width: 100%; }
+  }
+
+  @media (max-width: 480px) {
+    nav .tabs button { font-size: .68rem; padding: 5px 6px; }
+    .quot-co-name { font-size: .95rem; }
+    .btn { padding: 8px 14px; font-size: .82rem; }
+  }
+
   /* Print */
   @media print {
     nav, .quot-actions, .card.feedback-box { display:none !important; }
