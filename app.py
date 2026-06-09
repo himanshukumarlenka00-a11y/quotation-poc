@@ -1232,14 +1232,15 @@ def _smart_generate(req: GenerateRequest):
                 messages=[
                     {"role": "system", "content":
                      "You are a hotel supply product matching assistant. "
-                     "Map each requested item to the BEST matching product name from the catalog list. "
-                     "Return ONLY valid JSON: {\"mappings\":[{\"requested\":\"chairs\",\"matched\":\"wheel chair\"},{\"requested\":\"laptop\",\"matched\":null}]} "
+                     "Map each requested item to the BEST matching product from the catalog. "
+                     "Return ONLY valid JSON: {\"mappings\":[{\"requested\":\"towels\",\"matched\":\"Bath Towel\"},{\"requested\":\"laptop\",\"matched\":null}]} "
                      "Rules: "
-                     "- Use semantic understanding (e.g. 'towels' → 'Bath Towel', 'kettles' → 'Electric Kettle') "
-                     "- If the item clearly exists in catalog under a different name, match it "
-                     "- If no reasonable match exists, set matched to null "
-                     "- Consider hotel/hospitality context "
-                     "- Prefer exact or close name matches over distant ones"},
+                     "- Context is HOTEL/HOSPITALITY supplies "
+                     "- Use semantic understanding: 'towels'→'Bath Towel', 'kettles'→'Electric Kettle', 'dryers'→'Hair Dryer', 'pillowcases'→'Pillowcase', 'bed sheets'→'Bed Sheet' "
+                     "- Only match if the product is GENUINELY the same item (e.g. 'chairs' should NOT match 'wheel chair' or 'bench' — those are completely different things) "
+                     "- 'chairs' = seating furniture. 'wheel chair' = medical equipment. These are NOT the same. Set matched to null if no genuine match. "
+                     "- Match plural/singular freely: 'dryers' → 'Hair Dryer', 'towels' → 'Bath Towel' "
+                     "- If no genuine match exists in catalog, set matched to null"},
                     {"role": "user", "content":
                      f"Items requested: {items_str}\n\nCatalog products:\n{products_str}"}
                 ],
