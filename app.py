@@ -99,6 +99,7 @@ def migrate_db():
     for col, definition in [
         ("sheet_name", "TEXT DEFAULT ''"),
         ("price_currency", "TEXT DEFAULT 'INR'"),
+        ("image_data", "TEXT DEFAULT ''"),
     ]:
         try:
             conn.execute(f"ALTER TABLE boq_items ADD COLUMN {col} {definition}")
@@ -557,8 +558,22 @@ def build_xls_from_template(template_path: str, structure: dict,
     return str(out)
 
 
+def get_usd_inr_rate() -> float:
+    """Fetch live USD->INR rate; fall back to 84 on failure."""
+    try:
+        import urllib.request
+        with urllib.request.urlopen("https://api.frankfurter.app/latest?from=USD&to=INR", timeout=5) as r:
+            data = json.loads(r.read().decode())
+            return float(data["rates"]["INR"])
+    except Exception:
+        return 84.0
+
+
 def build_xls_minimal(quotation: dict, items: list) -> str:
-    """Build a professional invoice-style Excel quotation."""
+    """Build a professional invoice-style Excel quotation (INR, with product images)."""
+    import base64 as _b64, io as _io
+    usd_rate = get_usd_inr_rate()
+
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "QUOTATION"
@@ -593,36 +608,33 @@ def build_xls_minimal(quotation: dict, items: list) -> str:
             if "all"    in sides: kw = {"top":side,"bottom":side,"left":side,"right":side}
             cl.border = Border(**kw)
 
-    COLS = 12   # SL, Product, QTY, Desc, Model, Brand, Spec, HSN, Price/Pc, Amount, GST%, GST Val
-    col_widths = [5, 20, 6, 22, 16, 12, 28, 11, 13, 14, 7, 14]
+    COLS = 13   # SL, Image, Product, QTY, Desc, Model, Brand, Spec, HSN, Price/Pc, Amount, GST%, GST Val
+    col_widths = [5, 12, 20, 6, 22, 15, 11, 26, 10, 13, 14, 7, 14]
     for i, w in enumerate(col_widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
 
     ref_no      = quotation.get("ref_no", "—")
     client_name = quotation.get("client_name", "—")
     date_str    = datetime.now().strftime("%d %b %Y")
-    valid_str   = (datetime.now().replace(day=datetime.now().day)).strftime("%d %b %Y")
 
     # ── Row 1: Company name ──
-    ws.merge_cells(f"A1:L1")
+    ws.merge_cells("A1:M1")
     cell(1, 1, "DEMO", bold=True, size=18, color=WHITE, bg=NAVY, align="center")
     ws.row_dimensions[1].height = 30
 
     # ── Row 2: Sub-title ──
-    ws.merge_cells("A2:L2")
+    ws.merge_cells("A2:M2")
     cell(2, 1, "Demo Company  |  123, Industrial Area, New Delhi – 110001  |  +91-98765-43210  |  info@demo.com",
          size=9, color=WHITE, bg=NAVY, align="center", italic=True)
     ws.row_dimensions[2].height = 16
 
-    # ── Row 3: spacer ──
     ws.row_dimensions[3].height = 6
 
     # ── Row 4: QUOTATION title ──
-    ws.merge_cells("A4:L4")
+    ws.merge_cells("A4:M4")
     cell(4, 1, "Q U O T A T I O N", bold=True, size=14, color=WHITE, bg=DARK, align="center")
     ws.row_dimensions[4].height = 24
 
-    # ── Row 5: spacer ──
     ws.row_dimensions[5].height = 6
 
     # ── Rows 6-8: Meta info ──
@@ -630,32 +642,29 @@ def build_xls_minimal(quotation: dict, items: list) -> str:
     cell(7, 1, client_name, bold=True, size=11, color=NAVY)
     cell(8, 1, "Attn: Purchase Manager", size=9, color="666666", italic=True)
 
-    cell(6,  8, "Quotation No.", bold=True, size=9, color=NAVY)
-    cell(6,  9, ref_no, bold=True, size=9)
-    cell(7,  8, "Date",          bold=True, size=9, color=NAVY)
-    cell(7,  9, date_str, size=9)
-    cell(8,  8, "Valid Until",   bold=True, size=9, color=NAVY)
-    cell(8,  9, "30 days from date above", size=9)
-    cell(6, 10, "", bg=LIGHT); cell(7, 10, "", bg=LIGHT); cell(8, 10, "", bg=LIGHT)
+    cell(6,  9, "Quotation No.", bold=True, size=9, color=NAVY)
+    cell(6, 10, ref_no, bold=True, size=9)
+    cell(7,  9, "Date",          bold=True, size=9, color=NAVY)
+    cell(7, 10, date_str, size=9)
+    cell(8,  9, "Valid Until",   bold=True, size=9, color=NAVY)
+    cell(8, 10, "30 days from date above", size=9)
 
     for r in [6,7,8]:
         ws.row_dimensions[r].height = 16
 
-    # ── Row 9: spacer ──
     ws.row_dimensions[9].height = 6
 
     # ── Row 10: Salutation ──
-    ws.merge_cells("A10:L10")
+    ws.merge_cells("A10:M10")
     cell(10, 1, "Dear Sir/Ma'am,  We are pleased to submit our best quotation for your kind consideration.",
          size=9, color="333333", italic=True)
     ws.row_dimensions[10].height = 16
 
-    # ── Row 11: spacer ──
     ws.row_dimensions[11].height = 4
 
     # ── Row 12: Table header ──
-    headers = ["SL", "PRODUCT", "QTY", "DESCRIPTION", "MODEL NO", "BRAND",
-               "SPECIFICATION", "HSN", "PRICE/PC", "AMOUNT", "GST%", "GST VALUE"]
+    headers = ["SL", "IMAGE", "PRODUCT", "QTY", "DESCRIPTION", "MODEL NO", "BRAND",
+               "SPECIFICATION", "HSN", "PRICE/PC (₹)", "AMOUNT (₹)", "GST%", "GST VALUE (₹)"]
     for i, h in enumerate(headers, 1):
         cell(12, i, h, bold=True, size=9, color=WHITE, bg=NAVY, align="center")
     border_row(12, COLS, "all")
@@ -671,8 +680,9 @@ def build_xls_minimal(quotation: dict, items: list) -> str:
         qty     = int(item.get("qty") or 0)
         gst_pct = float(item.get("gst_pct") or 18)
         cur     = item.get("price_currency", "INR")
-        # If USD, note in price column
-        price_label = price  # store numeric
+        # Convert everything to INR
+        if cur == "USD":
+            price = price * usd_rate
         amount  = qty * price
         gst_val = amount * gst_pct / 100
         sub_total += amount
@@ -681,43 +691,59 @@ def build_xls_minimal(quotation: dict, items: list) -> str:
         bg_row = "F2F2F2" if idx % 2 == 1 else WHITE
 
         cell(row_num, 1,  idx+1,                       bg=bg_row, align="center", size=9)
-        cell(row_num, 2,  item.get("product",""),       bg=bg_row, bold=True, size=9, wrap=True)
-        cell(row_num, 3,  qty,                          bg=bg_row, align="center", size=9)
-        cell(row_num, 4,  item.get("description",""),   bg=bg_row, size=8, wrap=True)
-        cell(row_num, 5,  item.get("model_no",""),      bg=bg_row, size=8, wrap=True)
-        cell(row_num, 6,  item.get("brand",""),         bg=bg_row, size=9)
-        cell(row_num, 7,  item.get("specification",""), bg=bg_row, size=8, wrap=True)
-        cell(row_num, 8,  item.get("hsn_code",""),      bg=bg_row, size=8, align="center")
-        pc = ws.cell(row_num, 9,  price_label)
-        pc.number_format = f'{"$" if cur=="USD" else "₹"}#,##0.00'
+        cell(row_num, 2,  "",                           bg=bg_row)   # image placeholder
+        cell(row_num, 3,  item.get("product",""),       bg=bg_row, bold=True, size=9, wrap=True)
+        cell(row_num, 4,  qty,                          bg=bg_row, align="center", size=9)
+        cell(row_num, 5,  item.get("description",""),   bg=bg_row, size=8, wrap=True)
+        cell(row_num, 6,  item.get("model_no",""),      bg=bg_row, size=8, wrap=True)
+        cell(row_num, 7,  item.get("brand",""),         bg=bg_row, size=9)
+        cell(row_num, 8,  item.get("specification",""), bg=bg_row, size=8, wrap=True)
+        cell(row_num, 9,  item.get("hsn_code",""),      bg=bg_row, size=8, align="center")
+        pc = ws.cell(row_num, 10, round(price, 2))
+        pc.number_format = '₹#,##0.00'
         pc.font = Font(size=9, name="Calibri"); pc.fill = PatternFill("solid", start_color=bg_row)
         pc.alignment = Alignment(horizontal="right")
-        am = ws.cell(row_num, 10, amount)
-        am.number_format = f'{"$" if cur=="USD" else "₹"}#,##0.00'
+        am = ws.cell(row_num, 11, round(amount, 2))
+        am.number_format = '₹#,##0.00'
         am.font = Font(size=9, name="Calibri"); am.fill = PatternFill("solid", start_color=bg_row)
         am.alignment = Alignment(horizontal="right")
-        cell(row_num, 11, gst_pct/100, bg=bg_row, align="center", size=9, num_fmt="0%")
-        gv = ws.cell(row_num, 12, gst_val)
+        cell(row_num, 12, gst_pct/100, bg=bg_row, align="center", size=9, num_fmt="0%")
+        gv = ws.cell(row_num, 13, round(gst_val, 2))
         gv.number_format = "₹#,##0.00"
         gv.font = Font(size=9, name="Calibri"); gv.fill = PatternFill("solid", start_color=bg_row)
         gv.alignment = Alignment(horizontal="right")
 
         border_row(row_num, COLS, "bottom")
-        ws.row_dimensions[row_num].height = 40
+        ws.row_dimensions[row_num].height = 55
+
+        # ── Embed product image (catalog image or uploaded) ──
+        img_b64 = item.get("image_data") or item.get("local_image") or ""
+        if img_b64 and "," in img_b64:
+            try:
+                raw = _b64.b64decode(img_b64.split(",", 1)[1])
+                bio = _io.BytesIO(raw)
+                xl_img = XLImage(bio)
+                # scale to fit cell (~70px wide, ~70px tall)
+                xl_img.width  = 70
+                xl_img.height = 65
+                xl_img.anchor = f"B{row_num}"
+                ws.add_image(xl_img)
+            except Exception:
+                pass
+
         row_num += 1
 
-    # ── Spacer ──
     row_num += 1
 
     # ── Sub total row ──
-    ws.merge_cells(f"A{row_num}:H{row_num}")
+    ws.merge_cells(f"A{row_num}:I{row_num}")
     cell(row_num, 1, "SUB TOTAL", bold=True, size=10, color=NAVY, bg=LIGHT, align="right")
-    ws.cell(row_num, 9).value = ""; ws.cell(row_num, 9).fill = PatternFill("solid", start_color=LIGHT)
-    am2 = ws.cell(row_num, 10, sub_total)
+    am2 = ws.cell(row_num, 11, round(sub_total, 2))
     am2.number_format = "₹#,##0.00"; am2.font = Font(bold=True, size=10, name="Calibri")
     am2.fill = PatternFill("solid", start_color=LIGHT); am2.alignment = Alignment(horizontal="right")
-    ws.cell(row_num, 11).fill = PatternFill("solid", start_color=LIGHT)
-    gv2 = ws.cell(row_num, 12, gst_total)
+    ws.cell(row_num, 10).fill = PatternFill("solid", start_color=LIGHT)
+    ws.cell(row_num, 12).fill = PatternFill("solid", start_color=LIGHT)
+    gv2 = ws.cell(row_num, 13, round(gst_total, 2))
     gv2.number_format = "₹#,##0.00"; gv2.font = Font(bold=True, size=10, name="Calibri")
     gv2.fill = PatternFill("solid", start_color=LIGHT); gv2.alignment = Alignment(horizontal="right")
     ws.row_dimensions[row_num].height = 20
@@ -725,38 +751,62 @@ def build_xls_minimal(quotation: dict, items: list) -> str:
 
     # ── Grand total row ──
     grand = sub_total + gst_total
-    ws.merge_cells(f"A{row_num}:I{row_num}")
+    ws.merge_cells(f"A{row_num}:J{row_num}")
     cell(row_num, 1, "GRAND TOTAL  (incl. GST)", bold=True, size=12, color=WHITE, bg=NAVY, align="right")
-    gt = ws.cell(row_num, 10, grand)
+    gt = ws.cell(row_num, 11, round(grand, 2))
     gt.number_format = "₹#,##0.00"
     gt.font = Font(bold=True, size=12, color=WHITE, name="Calibri")
     gt.fill = PatternFill("solid", start_color=NAVY); gt.alignment = Alignment(horizontal="right")
-    ws.merge_cells(f"J{row_num}:L{row_num}")
-    ws.cell(row_num, 11).fill = PatternFill("solid", start_color=NAVY)
+    ws.merge_cells(f"L{row_num}:M{row_num}")
     ws.cell(row_num, 12).fill = PatternFill("solid", start_color=NAVY)
+    ws.cell(row_num, 13).fill = PatternFill("solid", start_color=NAVY)
     ws.row_dimensions[row_num].height = 24
     row_num += 2
 
     # ── Amount in words ──
-    ws.merge_cells(f"A{row_num}:L{row_num}")
-    # Simple words (just show numeric for now, can expand)
-    cell(row_num, 1, f"Amount in Words:  ₹{grand:,.2f}  (inclusive of all taxes)",
+    ws.merge_cells(f"A{row_num}:M{row_num}")
+    cell(row_num, 1, f"Amount in Words:  {_amount_in_words(grand)}",
          size=9, color="333333", italic=True)
     ws.row_dimensions[row_num].height = 16
     row_num += 2
 
     # ── Footer ──
-    ws.merge_cells(f"A{row_num}:L{row_num}")
+    ws.merge_cells(f"A{row_num}:M{row_num}")
     cell(row_num, 1, "This is a computer-generated quotation.  Thank you for choosing Demo.",
          size=8, color=WHITE, bg=NAVY, align="center", italic=True)
     ws.row_dimensions[row_num].height = 16
 
-    # Freeze panes below header
     ws.freeze_panes = "A13"
 
     out = EXPORTS_DIR / f"Quote_{quotation.get('ref_no','export').replace('/','-')}.xlsx"
     wb.save(str(out))
     return str(out)
+
+
+def _amount_in_words(n: float) -> str:
+    """Indian number system amount-in-words."""
+    ones = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten',
+            'Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen',
+            'Eighteen','Nineteen']
+    tens = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety']
+    def two(x):
+        if x < 20: return ones[x]
+        return tens[x//10] + ((' ' + ones[x%10]) if x%10 else '')
+    def three(x):
+        if x < 100: return two(x)
+        return ones[x//100] + ' Hundred' + ((' ' + two(x%100)) if x%100 else '')
+    n = int(round(n))
+    if n == 0: return "Zero Rupees Only"
+    parts = []
+    crore = n // 10000000; n %= 10000000
+    lakh  = n // 100000;   n %= 100000
+    thou  = n // 1000;     n %= 1000
+    hund  = n
+    if crore: parts.append(three(crore) + ' Crore')
+    if lakh:  parts.append(three(lakh) + ' Lakh')
+    if thou:  parts.append(three(thou) + ' Thousand')
+    if hund:  parts.append(three(hund))
+    return ' '.join(parts) + ' Rupees Only'
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1354,6 +1404,7 @@ def _smart_generate(req: GenerateRequest):
             "price_per_pc": float(best.get("price") or 0),
             "price_currency":best.get("price_currency", "INR"),
             "gst_pct":      float(best.get("gst_pct") or 18),
+            "image_data":   best.get("image_data", "") or "",
             "_variants":    variants_sorted,
             "_requested":   item.get("product", ""),
         })

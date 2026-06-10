@@ -1154,50 +1154,49 @@ async function generateQuote() {
 // ── Result ───────────────────────────────────────────────────────────────────
 function fmt(n, dec=0) { return n.toLocaleString('en-IN', {maximumFractionDigits: dec}); }
 
-function renderItemRow(item, idx, hasUsd) {
-  const isINR = (item.price_currency || 'INR') === 'INR';
-  const qty   = item.qty || 0;
-  const price = item.price_per_pc || 0;
-  const gst   = item.gst_pct || 18;
+function renderItemRow(item, idx) {
+  const isINR   = (item.price_currency || 'INR') === 'INR';
+  const qty     = item.qty || 0;
+  const price   = item.price_per_pc || 0;
+  const gst     = item.gst_pct || 18;
 
-  // USD item: price is in USD, convert to INR
-  const priceUsd = isINR ? '' : price;
+  // Always convert to INR
   const priceInr = isINR ? price : price * usdToInr;
   const amtInr   = qty * priceInr;
   const gstVal   = amtInr * gst / 100;
 
-  // Store converted values back for totals
   item._priceInr = priceInr;
   item._amtInr   = amtInr;
   item._gstVal   = gstVal;
-
-  const usdCol = hasUsd
-    ? `<td class="price-usd-cell" style="font-size:.85rem;color:#b7950b;">${isINR ? '—' : '$'+fmt(priceUsd,2)}</td>`
-    : '';
-  const amtUsdCol = hasUsd
-    ? `<td class="amt-usd-cell" style="font-size:.85rem;color:#b7950b;">${isINR ? '—' : '$'+fmt(qty*priceUsd,2)}</td>`
-    : '';
 
   const hasVariants = item._variants && item._variants.length > 1;
   const switchBtn   = hasVariants
     ? `<button class="btn-switch" onclick="switchVariant(${idx})">🔄 Switch</button>`
     : '';
 
+  // Image cell — catalog image first, then manually uploaded, else upload button
+  const imgSrc = item.local_image || item.image_data || '';
+  const imgCell = imgSrc
+    ? `<img src="${imgSrc}" style="width:60px;height:48px;object-fit:contain;border-radius:4px;border:1px solid #ddd;display:block;margin:0 auto;cursor:pointer;" onclick="reAddImage(${idx})" title="Click to change">`
+    : `<label style="cursor:pointer;font-size:.72rem;color:var(--primary);display:block;text-align:center;padding:4px;">
+         📷 Add<br>Image
+         <input type="file" accept="image/*" style="display:none" onchange="handleRowImage(${idx},this)">
+       </label>`;
+
   return `<tr data-idx="${idx}">
-    <td>${item.sl_no||idx+1}</td>
+    <td style="text-align:center;">${item.sl_no||idx+1}</td>
+    <td style="width:70px;text-align:center;">${imgCell}</td>
     <td><strong>${item.product||''}</strong>${switchBtn}</td>
-    <td><input type="number" class="qty-input" value="${qty}" onchange="recalcRow(${idx})" style="width:70px"></td>
+    <td><input type="number" class="qty-input" value="${qty}" onchange="recalcRow(${idx})" style="width:60px"></td>
     <td style="font-size:.82rem">${item.description||''}</td>
     <td style="font-size:.8rem">${item.model_no||''}</td>
     <td>${item.brand||''}</td>
     <td><div class="spec-text">${(item.specification||'').replace(/\\n/g,'\n')}</div></td>
     <td>${item.hsn_code||''}</td>
-    ${usdCol}
-    <td><input type="number" class="price-input" value="${fmt(priceInr,2)}" onchange="recalcRow(${idx})" style="width:110px"></td>
+    <td><input type="number" class="price-input" value="${fmt(priceInr,2)}" onchange="recalcRow(${idx})" style="width:100px"></td>
     <td class="amount-cell">₹${fmt(amtInr)}</td>
-    <td><input type="number" class="gst-input" value="${gst}" onchange="recalcRow(${idx})" style="width:55px"></td>
+    <td><input type="number" class="gst-input" value="${gst}" onchange="recalcRow(${idx})" style="width:50px"></td>
     <td class="gst-val-cell">₹${fmt(gstVal)}</td>
-    ${amtUsdCol}
     <td><button class="btn btn-sm btn-danger" onclick="removeRow(${idx})">✕</button></td>
   </tr>`;
 }
@@ -1216,14 +1215,14 @@ function switchVariant(idx) {
 
   const cards = item._variants.map((v, vi) => {
     const isCur    = v.product === item.product && String(v.price) === String(item.price_per_pc);
-    const priceStr = v.price_currency === 'USD'
-      ? `$${(v.price||0).toFixed(2)} USD`
-      : `₹${(v.price||0).toLocaleString('en-IN')}`;
+    const priceInr = v.price_currency === 'USD' ? (v.price||0) * usdToInr : (v.price||0);
+    const origStr  = v.price_currency === 'USD' ? ` ($${(v.price||0).toFixed(2)} USD)` : '';
+    const priceStr = `₹${priceInr.toLocaleString('en-IN', {maximumFractionDigits:2})}${origStr}`;
     const fileShort = (v.file_name||'').replace(/QUOTATION FOR /i,'').substring(0,28);
     return `
       <div class="switch-card ${isCur?'active':''}" onclick="applySwitch(${idx},${vi})">
         <div class="sc-name">${v.product||''}</div>
-        <div class="sc-price" style="color:${v.price_currency==='USD'?'#b7950b':'var(--success)'};">${priceStr}</div>
+        <div class="sc-price" style="color:var(--success);">${priceStr}</div>
         <div class="sc-file">📁 ${fileShort}</div>
         ${isCur ? '<div class="sc-tick">✓ Currently selected</div>' : ''}
       </div>`;
@@ -1294,60 +1293,33 @@ function renderResult(q) {
     nfBanner.style.display = 'none';
   }
 
-  const items    = q.items || [];
-  const hasUsd   = items.some(i => (i.price_currency||'INR') === 'USD');
-  const inrItems = items.filter(i => (i.price_currency||'INR') === 'INR');
-  const usdItems = items.filter(i => (i.price_currency||'INR') === 'USD');
+  const items = q.items || [];
 
-  // Update table headers dynamically
+  // Single unified header — all in INR
   const thead = document.querySelector('#items-table thead tr');
-  if (hasUsd) {
-    thead.innerHTML = `<th>SL</th><th>Product</th><th>QTY</th><th>Description</th>
-      <th>Model No</th><th>Brand</th><th>Specification</th><th>HSN</th>
-      <th style="color:#f0c040">Price/Pc (USD)</th>
-      <th>Price/Pc (₹)</th><th>Amount (₹)</th><th>GST%</th><th>GST Val (₹)</th>
-      <th style="color:#f0c040">Amount (USD)</th><th></th>`;
-  } else {
-    thead.innerHTML = `<th>SL</th><th>Product</th><th>QTY</th><th>Description</th>
-      <th>Model No</th><th>Brand</th><th>Specification</th><th>HSN</th>
-      <th>Price/Pc (₹)</th><th>Amount (₹)</th><th>GST%</th><th>GST Val (₹)</th><th></th>`;
-  }
+  thead.innerHTML = `<th>SL</th><th style="width:70px">Image</th><th>Product</th><th>QTY</th>
+    <th>Description</th><th>Model No</th><th>Brand</th><th>Specification</th>
+    <th>HSN</th><th>Price/Pc (₹)</th><th>Amount (₹)</th><th>GST%</th><th>GST Val (₹)</th><th></th>`;
 
+  const colSpan = 14;
   let html = '';
-  const colSpan = hasUsd ? 15 : 13;
 
-  // ── INR section ──
-  if (inrItems.length > 0) {
-    html += `<tr style="background:#eaf4fb;"><td colspan="${colSpan}" style="padding:8px 12px;font-weight:700;font-size:.82rem;color:var(--primary);">▶ INR ITEMS</td></tr>`;
-    inrItems.forEach(item => { html += renderItemRow(item, items.indexOf(item), hasUsd); });
-    const inrTotal = inrItems.reduce((s,i) => s+(i._amtInr||0), 0);
-    const inrGst   = inrItems.reduce((s,i) => s+(i._gstVal||0), 0);
-    const inrGrand = inrTotal + inrGst;
-    const tdR = `style="text-align:right;padding-right:16px"`;
-    html += `<tr class="total-row"><td colspan="${colSpan-4}" ${tdR}>TOTAL (INR)</td><td>₹${fmt(inrTotal)}</td><td></td><td>₹${fmt(inrGst)}</td>${hasUsd?'<td></td>':''}<td></td></tr>`;
-    html += `<tr class="total-row" style="background:#d5f5e3"><td colspan="${colSpan-4}" ${tdR}><strong>GRAND TOTAL (incl. GST)</strong></td><td colspan="4"><strong>₹${fmt(inrGrand)}</strong></td></tr>`;
-  }
+  items.forEach(item => { html += renderItemRow(item, items.indexOf(item)); });
 
-  // ── USD section ──
-  if (usdItems.length > 0) {
-    const rate = usdToInr;
-    html += `<tr style="background:#fef9e7;"><td colspan="${colSpan}" style="padding:8px 12px;font-weight:700;font-size:.82rem;color:#b7950b;">▶ USD ITEMS &nbsp;<span style="font-weight:400;font-size:.78rem;">(Converted at 1 USD = ₹${fmt(rate,2)} — live rate)</span></td></tr>`;
-    usdItems.forEach(item => { html += renderItemRow(item, items.indexOf(item), hasUsd); });
-    const usdAmtUsd = usdItems.reduce((s,i) => s+((i.qty||0)*(i.price_per_pc||0)), 0);
-    const usdAmtInr = usdItems.reduce((s,i) => s+(i._amtInr||0), 0);
-    const usdGst    = usdItems.reduce((s,i) => s+(i._gstVal||0), 0);
-    const usdGrand  = usdAmtInr + usdGst;
-    const tdR = `style="text-align:right;padding-right:16px"`;
-    html += `<tr style="background:#fef9e7;font-weight:600"><td colspan="${colSpan-4}" ${tdR}>TOTAL (USD converted to INR)</td><td>₹${fmt(usdAmtInr)}</td><td></td><td>₹${fmt(usdGst)}</td><td>$${fmt(usdAmtUsd,2)}</td><td></td></tr>`;
-    html += `<tr style="background:#fdebd0;font-weight:700"><td colspan="${colSpan-4}" ${tdR}>GRAND TOTAL USD ITEMS (incl. GST)</td><td colspan="4">₹${fmt(usdGrand)} &nbsp;<span style="color:#b7950b;font-size:.82rem;">($${fmt(usdAmtUsd,2)} USD)</span></td></tr>`;
-  }
+  // Totals
+  const subTotal = items.reduce((s,i) => s+(i._amtInr||0), 0);
+  const gstTotal = items.reduce((s,i) => s+(i._gstVal||0), 0);
+  const grandTotal = subTotal + gstTotal;
+  const tdR = `style="text-align:right;padding-right:16px;font-weight:700;"`;
 
-  // ── Combined total if both exist ──
-  if (inrItems.length > 0 && usdItems.length > 0) {
-    const allInr  = items.reduce((s,i) => s+(i._amtInr||0)+(i._gstVal||0), 0);
-    const allUsd  = usdItems.reduce((s,i) => s+((i.qty||0)*(i.price_per_pc||0)), 0);
-    html += `<tr style="background:#1a3a6b;color:#fff;font-weight:700"><td colspan="${colSpan-2}" style="text-align:right;padding-right:16px;">COMBINED GRAND TOTAL (INR + USD converted)</td><td colspan="3">₹${fmt(allInr)} &nbsp;<span style="font-size:.8rem;opacity:.8;">($${fmt(allUsd,2)} USD)</span></td></tr>`;
-  }
+  html += `<tr style="background:#eaf4fb;font-weight:700;">
+    <td colspan="${colSpan-3}" ${tdR}>SUB TOTAL</td>
+    <td>₹${fmt(subTotal)}</td><td></td><td>₹${fmt(gstTotal)}</td><td></td>
+  </tr>`;
+  html += `<tr style="background:#1a3a6b;color:#fff;font-weight:700;">
+    <td colspan="${colSpan-3}" ${tdR} style="text-align:right;padding-right:16px;font-weight:700;color:#fff;">GRAND TOTAL (incl. GST)</td>
+    <td colspan="4" style="font-size:1.05rem;">₹${fmt(grandTotal)}</td>
+  </tr>`;
 
   document.getElementById('items-body').innerHTML = html;
   document.getElementById('items-foot').innerHTML = '';
@@ -1381,15 +1353,7 @@ function recalcRow(idx) {
   row.querySelector('.amount-cell').textContent  = '₹' + fmt(amtInr);
   row.querySelector('.gst-val-cell').textContent = '₹' + fmt(gstVal);
 
-  // Update USD cells if visible
-  const priceUsdCell = row.querySelector('.price-usd-cell');
-  const amtUsdCell   = row.querySelector('.amt-usd-cell');
-  if (!isINR && priceUsdCell) {
-    const priceUsd = priceInr / usdToInr;
-    priceUsdCell.textContent = '$' + fmt(priceUsd, 2);
-    if (amtUsdCell) amtUsdCell.textContent = '$' + fmt(qty * priceUsd, 2);
-  }
-
+  const isINR = (item.price_currency||'INR') === 'INR';
   item.qty = qty; item.price_per_pc = isINR ? priceInr : priceInr / usdToInr;
   item.gst_pct = gst; item._amtInr = amtInr; item._gstVal = gstVal;
   updateGrandTotal();
@@ -1411,21 +1375,23 @@ function handleRowImage(idx, input) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
-    const dataUrl = e.target.result;
-    // Store in currentQuotation
     if (currentQuotation && currentQuotation.items[idx]) {
-      currentQuotation.items[idx].local_image = dataUrl;
+      currentQuotation.items[idx].local_image = e.target.result;
     }
-    // Update preview in table
-    const preview = document.getElementById(`img-preview-${idx}`);
-    if (preview) {
-      preview.innerHTML = `<img src="${dataUrl}" style="width:72px;height:56px;object-fit:contain;border-radius:4px;border:1px solid #ddd;">`;
+    // Re-render just that row's image cell
+    const row = document.querySelector(`#items-body tr[data-idx="${idx}"]`);
+    if (row && row.cells[1]) {
+      row.cells[1].innerHTML = `<img src="${e.target.result}" style="width:56px;height:44px;object-fit:contain;border-radius:4px;border:1px solid #ddd;display:block;margin:0 auto;cursor:pointer;" onclick="reAddImage(${idx})" title="Click to change">`;
     }
-    // Update label
-    const label = preview.nextElementSibling;
-    if (label) label.childNodes[0].textContent = '📷 Change ';
   };
   reader.readAsDataURL(file);
+}
+
+function reAddImage(idx) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*';
+  inp.onchange = () => handleRowImage(idx, inp);
+  inp.click();
 }
 
 function removeRow(idx) {
