@@ -609,7 +609,7 @@ def build_xls_minimal(quotation: dict, items: list) -> str:
             cl.border = Border(**kw)
 
     COLS = 13   # SL, Image, Product, QTY, Desc, Model, Brand, Spec, HSN, Price/Pc, Amount, GST%, GST Val
-    col_widths = [5, 12, 20, 6, 22, 15, 11, 26, 10, 13, 14, 7, 14]
+    col_widths = [5, 13, 20, 6, 22, 15, 11, 26, 10, 13, 14, 7, 14]
     for i, w in enumerate(col_widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
 
@@ -714,19 +714,36 @@ def build_xls_minimal(quotation: dict, items: list) -> str:
         gv.alignment = Alignment(horizontal="right")
 
         border_row(row_num, COLS, "bottom")
-        ws.row_dimensions[row_num].height = 55
+        ws.row_dimensions[row_num].height = 60   # ~80px tall box
 
-        # ── Embed product image (catalog image or uploaded) ──
+        # ── Embed product image centered neatly inside the IMAGE cell ──
         img_b64 = item.get("image_data") or item.get("local_image") or ""
         if img_b64 and "," in img_b64:
             try:
+                from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, AnchorMarker
+                from openpyxl.drawing.xdr import XDRPositiveSize2D
+                from openpyxl.utils.units import pixels_to_EMU
+                from PIL import Image as PILImage
+
                 raw = _b64.b64decode(img_b64.split(",", 1)[1])
+                # Determine scaled size preserving aspect ratio inside box
+                box_w, box_h = 76, 74          # px usable area inside the cell
+                pim = PILImage.open(_io.BytesIO(raw))
+                ow, oh = pim.size
+                scale = min(box_w / ow, box_h / oh)
+                sw, sh = max(1, int(ow * scale)), max(1, int(oh * scale))
+
+                # center offsets within the cell (col B = index 1)
+                col_px_w, row_px_h = 91, 80    # approx cell pixel size
+                off_x = max(2, (col_px_w - sw) // 2)
+                off_y = max(2, (row_px_h - sh) // 2)
+
                 bio = _io.BytesIO(raw)
                 xl_img = XLImage(bio)
-                # scale to fit cell (~70px wide, ~70px tall)
-                xl_img.width  = 70
-                xl_img.height = 65
-                xl_img.anchor = f"B{row_num}"
+                marker = AnchorMarker(col=1, colOff=pixels_to_EMU(off_x),
+                                      row=row_num - 1, rowOff=pixels_to_EMU(off_y))
+                size   = XDRPositiveSize2D(pixels_to_EMU(sw), pixels_to_EMU(sh))
+                xl_img.anchor = OneCellAnchor(_from=marker, ext=size)
                 ws.add_image(xl_img)
             except Exception:
                 pass
