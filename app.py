@@ -304,7 +304,9 @@ def parse_boq_excel(filepath: str, filename: str):
     except Exception:
         return items, structure, img_map
 
-    skip_keywords = {"TOTAL", "GRAND TOTAL", "GST VALUE", "ADD GST", "NAN", "", "OPTION",
+    # Note: "OPTION" is handled specially (treated as an alternative variant of the
+    # product above it), so it is NOT in skip_keywords.
+    skip_keywords = {"TOTAL", "GRAND TOTAL", "GST VALUE", "ADD GST", "NAN", "",
                      "SUMMARY", "TERMS", "BANK", "SI NO", "SHEET NAME"}
 
     for sheet_pos, sheet_name in enumerate(sheet_names):
@@ -361,6 +363,8 @@ def parse_boq_excel(filepath: str, filename: str):
         if ci["product"] is None:
             continue
 
+        last_product_name = ""   # tracks the most recent real product for OPTION rows
+
         for df_row_idx, row in df.iloc[sheet_thr + 1:].iterrows():
             vals = row.values
 
@@ -370,6 +374,16 @@ def parse_boq_excel(filepath: str, filename: str):
             product_str = str(product).strip()
             if not product_str or product_str.upper() in skip_keywords:
                 continue
+
+            # "OPTION" / "OPTION 1" rows = alternative variant of the product above.
+            # Inherit that product's name so it becomes a selectable variant.
+            if product_str.upper().startswith("OPTION"):
+                if last_product_name:
+                    product_str = last_product_name
+                else:
+                    continue   # no preceding product to attach to
+            else:
+                last_product_name = product_str
             # Skip rows that look like headers or section titles (no price)
             price_col = ci.get("price_inr") or ci.get("price_usd") or ci.get("price")
             if price_col is not None:
