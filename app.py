@@ -986,7 +986,11 @@ def get_latest_template(conn):
 
 @app.get("/")
 def index():
-    return FileResponse(str(BASE / "static" / "index.html"))
+    return FileResponse(
+        str(BASE / "static" / "index.html"),
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate",
+                 "Pragma": "no-cache", "Expires": "0"},
+    )
 
 
 @app.post("/api/scan-boq")
