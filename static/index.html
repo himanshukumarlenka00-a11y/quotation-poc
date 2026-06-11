@@ -1257,6 +1257,8 @@ function applySwitch(idx, vi) {
   item.description   = v.description  || '';
   item.specification = v.specification|| '';
   item.hsn_code      = v.hsn_code     || '';
+  item.image_data    = v.image_data   || '';
+  item.local_image   = '';            // use the variant's catalog image
   document.querySelectorAll('.switch-panel').forEach(p => p.remove());
   renderResult(currentQuotation);
 }

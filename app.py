@@ -16,6 +16,32 @@ from copy import copy
 import warnings
 warnings.filterwarnings("ignore")
 
+try:
+    from xls_image_extractor import extract_images as _xls_extract_images
+except Exception:
+    _xls_extract_images = None
+
+
+def _make_thumb_data_url(img_bytes: bytes, ext: str, max_px: int = 200) -> str:
+    """Downscale an image and return a base64 data URL (keeps DB small)."""
+    try:
+        from PIL import Image as _PILImage
+        im = _PILImage.open(io.BytesIO(img_bytes))
+        if im.mode in ("RGBA", "P", "LA"):
+            im = im.convert("RGB")
+        im.thumbnail((max_px, max_px))
+        out = io.BytesIO()
+        im.save(out, format="JPEG", quality=72)
+        b64 = base64.b64encode(out.getvalue()).decode("ascii")
+        return f"data:image/jpeg;base64,{b64}"
+    except Exception:
+        try:
+            b64 = base64.b64encode(img_bytes).decode("ascii")
+            mime = "png" if ext == "png" else "jpeg"
+            return f"data:image/{mime};base64,{b64}"
+        except Exception:
+            return ""
+
 BASE = Path(__file__).parent
 DATA_DIR = BASE / "data"
 UPLOADS_DIR = BASE / "uploads"
@@ -249,6 +275,18 @@ def parse_boq_excel(filepath: str, filename: str):
     img_map = {}
     structure = {}
 
+    # ── Dynamic image extraction for legacy .xls (pure-Python, no LibreOffice) ──
+    # Builds {(sheet_position, anchor_row): data_url}
+    xls_img_by_pos = {}
+    if filepath.endswith(".xls") and _xls_extract_images:
+        try:
+            for im in _xls_extract_images(filepath):
+                url = _make_thumb_data_url(im["data"], im["ext"])
+                if url:
+                    xls_img_by_pos[(im["sheet_index"], im["row"])] = url
+        except Exception as e:
+            print(f"xls image extraction failed (non-fatal): {e}")
+
     # openpyxl only works with .xlsx — use it for images/structure when possible
     if filepath.endswith(".xlsx"):
         try:
@@ -269,7 +307,7 @@ def parse_boq_excel(filepath: str, filename: str):
     skip_keywords = {"TOTAL", "GRAND TOTAL", "GST VALUE", "ADD GST", "NAN", "", "OPTION",
                      "SUMMARY", "TERMS", "BANK", "SI NO", "SHEET NAME"}
 
-    for sheet_name in sheet_names:
+    for sheet_pos, sheet_name in enumerate(sheet_names):
         try:
             df = pd.read_excel(filepath, sheet_name=sheet_name, header=None)
         except Exception:
@@ -362,6 +400,15 @@ def parse_boq_excel(filepath: str, filename: str):
                 except Exception:
                     pass
 
+            # ── .xls embedded image: match by (sheet position, row) with tolerance ──
+            image_data = ""
+            if xls_img_by_pos:
+                for dr in (0, 1, -1, 2):
+                    key = (sheet_pos, df_row_idx + dr)
+                    if key in xls_img_by_pos:
+                        image_data = xls_img_by_pos.pop(key)  # consume so it's not reused
+                        break
+
             items.append({
                 "file_name": filename,
                 "product": product_str,
@@ -374,6 +421,7 @@ def parse_boq_excel(filepath: str, filename: str):
                 "price_currency": "INR" if gn("price_inr") else ("USD" if gn("price_usd") else "INR"),
                 "gst_pct": (lambda g: round(g * 100, 2) if g and g <= 1 else (g or 18.0))(gn("gst_pct")),
                 "image_path": img_path,
+                "image_data": image_data,
                 "uploaded_at": datetime.now().isoformat(),
                 "sheet_name": sheet_name,
             })
@@ -994,11 +1042,11 @@ async def _upload_boq(file: UploadFile):
     for item in items:
         conn.execute(
             "INSERT INTO boq_items (file_name,product,description,model_no,brand,"
-            "specification,hsn_code,price,price_currency,gst_pct,image_path,sheet_name,uploaded_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "specification,hsn_code,price,price_currency,gst_pct,image_path,image_data,sheet_name,uploaded_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (item["file_name"], item["product"], item["description"], item["model_no"],
              item["brand"], item["specification"], item["hsn_code"], item["price"],
              item.get("price_currency","INR"), item["gst_pct"], item["image_path"],
-             item.get("sheet_name",""), item["uploaded_at"])
+             item.get("image_data",""), item.get("sheet_name",""), item["uploaded_at"])
         )
 
     # Save template structure (supports xlsx only for template-based generation)
@@ -1402,6 +1450,8 @@ def _smart_generate(req: GenerateRequest):
                 s += 40 + int(ratio * 40)         # up to 80 for compact
             if (v.get("price") or 0) > 0:
                 s += 60                           # has a real price
+            if v.get("image_data"):
+                s += 20                           # prefer a variant that has a product image
             if (v.get("price_currency") or "INR") == "INR":
                 s += 5                            # slight INR preference as tiebreaker
             return s
