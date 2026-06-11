@@ -1355,7 +1355,6 @@ function recalcRow(idx) {
   row.querySelector('.amount-cell').textContent  = '₹' + fmt(amtInr);
   row.querySelector('.gst-val-cell').textContent = '₹' + fmt(gstVal);
 
-  const isINR = (item.price_currency||'INR') === 'INR';
   item.qty = qty; item.price_per_pc = isINR ? priceInr : priceInr / usdToInr;
   item.gst_pct = gst; item._amtInr = amtInr; item._gstVal = gstVal;
   updateGrandTotal();
