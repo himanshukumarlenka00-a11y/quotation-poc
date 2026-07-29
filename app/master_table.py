@@ -91,6 +91,132 @@ _FANOUT = {
 }
 
 
+FILE_TYPES = {
+    "price_list": "Supplier price list",
+    "client_boq": "Client requirement / BOQ",
+    "quotation": "A quotation we already issued",
+    "unknown": "Not sure",
+}
+
+
+def detect_file_type(filepath):
+    """Guess whether a workbook is a supplier price list, a client BOQ, or a
+    quotation we previously sent.
+
+    Importing the wrong type is expensive and quiet. The OPM quotation was
+    loaded as a master catalog: its 705 "products" were the client's own BOQ
+    wording, its cost column held our old SELLING price, GST came in at 0% on
+    every row, and "GN pan" then matched "Pan, Roasting Large" at Rs 19,380.
+    Nothing in the import complained.
+
+    Signals are structural rather than content-based, so they hold regardless
+    of the supplier's wording. Returns a guess for a human to confirm — the
+    caller decides, this never blocks on its own.
+    """
+    import pandas as _pd
+    try:
+        xl = _pd.ExcelFile(filepath)
+        sheets = xl.sheet_names
+        xl.close()
+    except Exception:
+        return {"type": "unknown", "confidence": 0.0, "reasons": [], "sheets": 0}
+
+    # Scan a few sheets: a client BOQ is often split by category, while a
+    # supplier list is usually one long sheet.
+    headers, rows_seen = [], 0
+    for name in sheets[:4]:
+        try:
+            df = _pd.read_excel(filepath, sheet_name=name, header=None, nrows=25)
+        except Exception:
+            continue
+        idx, cmap = _find_header_row(df)
+        if "product" not in cmap:
+            continue
+        headers.append([_norm(v) for v in df.iloc[idx].values if str(v).strip() and str(v) != "nan"])
+        rows_seen += 1
+    if not headers:
+        return {"type": "unknown", "confidence": 0.0, "reasons": ["no header row found"],
+                "sheets": len(sheets)}
+
+    flat = [h for hs in headers for h in hs]
+    hset = set(flat)
+
+    # Compare whole headings, not substrings. A client stock sheet carried
+    # "RECEIVE QTY AMOUNT" and "DAMAGE QTY AMOUNT"; a substring test saw
+    # "AMOUNT", decided the file was priced, and mislabelled a requirement
+    # list as a quotation.
+    def has(*names):
+        return any(n in hset for n in names)
+
+    def has_suffix(*words):
+        return any(h == w or h.endswith(" " + w) for h in flat for w in words)
+
+    # A header repeated within one sheet means two blocks of the same fields —
+    # the client's columns followed by ours. Only a quotation looks like that.
+    dupes = 0
+    for hs in headers:
+        seen = set()
+        for h in hs:
+            if h in seen and h in ("BRAND", "MODEL NO", "SPECIFICATION", "IMAGE", "PRODUCT"):
+                dupes += 1
+            seen.add(h)
+
+    has_qty = has("QTY", "QUANTITY") or has_suffix("REQUIREMENT", "REQD")
+    has_amount = has("AMOUNT", "TOTAL VALUE", "LINE TOTAL", "TOTAL AMOUNT")
+    has_unit_price = has("PRICE/PC", "PRICE / PC", "RATE/PC", "UNIT PRICE", "PRICE PER PC")
+    has_price = any("PRICE" in h or h in ("RATE", "MRP") for h in flat)
+    has_cost = has("COST")
+    has_stock = has("STOCK")
+
+    score = {"price_list": 0, "client_boq": 0, "quotation": 0}
+    why = {"price_list": [], "client_boq": [], "quotation": []}
+
+    if dupes:
+        score["quotation"] += 3
+        why["quotation"].append(f"{dupes} column heading(s) appear twice — the client's, then ours")
+    if has_amount and has_qty:
+        score["quotation"] += 3
+        why["quotation"].append("has both QTY and AMOUNT — line totals, i.e. a priced document")
+    if has_unit_price:
+        score["quotation"] += 1
+        why["quotation"].append("has a per-piece price column")
+
+    if has_qty and not has_cost and not has_amount:
+        score["client_boq"] += 3
+        why["client_boq"].append("has a quantity column but no pricing — a requirement list")
+    if has_qty and not has_price:
+        score["client_boq"] += 2
+        why["client_boq"].append("no price column at all")
+
+    if has_cost:
+        score["price_list"] += 2
+        why["price_list"].append("has a COST column")
+    if has_stock:
+        score["price_list"] += 1
+        why["price_list"].append("has a STOCK column")
+    if has_price and not has_qty:
+        score["price_list"] += 2
+        why["price_list"].append("priced per product, with no quantities")
+    if len(sheets) == 1:
+        score["price_list"] += 1
+        why["price_list"].append("a single sheet, as catalogs usually are")
+
+    best = max(score, key=score.get)
+    total = sum(score.values()) or 1
+    conf = round(score[best] / total, 2)
+    if score[best] == 0:
+        best, conf = "unknown", 0.0
+
+    return {
+        "type": best,
+        "label": FILE_TYPES[best],
+        "confidence": conf,
+        "reasons": why.get(best, []),
+        "scores": score,
+        "sheets": len(sheets),
+    }
+
+
 def describe_columns(filepath, max_samples=1):
     """Report how each column in the sheet will be interpreted on import.
 

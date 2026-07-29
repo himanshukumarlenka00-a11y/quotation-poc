@@ -191,7 +191,7 @@ Return json format:
 @limiter.limit("30/minute")
 def smart_generate(request: Request, req: GenerateRequest, user: dict = Depends(get_current_user)):
     try:
-        return _smart_generate(req, user)
+        return _strip_cost(_smart_generate(req, user), user)
     except HTTPException:
         raise
     except Exception as e:
@@ -251,6 +251,25 @@ def _smart_generate(req: GenerateRequest, user: dict):
     conn.commit()
     conn.close()
     log_action(user, "smart_generate_quotation", target=ref_no)
+    return data
+
+
+def _strip_cost(data, user):
+    """Remove purchase cost from a quotation payload for non-admins.
+
+    Quotation items carry the master-table `cost` so margin can be shown to an
+    admin. Employees have no need for it, and leaving it in the JSON exposed
+    what we pay suppliers to anyone who opened devtools — the on-screen table
+    hiding the column is not a control.
+    """
+    if (user or {}).get("role") == "admin" or not isinstance(data, dict):
+        return data
+    for item in data.get("items") or []:
+        if isinstance(item, dict):
+            item.pop("cost", None)
+            for v in item.get("_variants") or []:
+                if isinstance(v, dict):
+                    v.pop("cost", None)
     return data
 
 
@@ -617,7 +636,7 @@ def smart_generate_from_boq(
     Table via the exact same resolver, so typing a requirement and
     uploading one produce identically-priced results."""
     try:
-        return _smart_generate_from_boq(file, client_name, tiers, user)
+        return _strip_cost(_smart_generate_from_boq(file, client_name, tiers, user), user)
     except HTTPException:
         raise
     except Exception as e:

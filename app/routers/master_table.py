@@ -8,7 +8,8 @@ from app.config import MASTER_UPLOADS_DIR
 from app.db import get_db
 from app.auth import get_current_user, require_role, log_action
 from app.images import _image_file_path
-from app.master_table import parse_master_excel, parse_matched_boq_workbook, describe_columns
+from app.master_table import (parse_master_excel, parse_matched_boq_workbook,
+                              describe_columns, detect_file_type)
 from app.routers.catalog import _save_upload_validated
 
 router = APIRouter()
@@ -64,6 +65,14 @@ async def scan_master_table(file: UploadFile = File(...), admin: dict = Depends(
             columns = describe_columns(str(tmp_path))
         except Exception:
             columns = None
+        # What KIND of file is this? Importing a past quotation as a catalog
+        # is quiet and expensive — it happened with the OPM file and produced
+        # 705 rows of client wording, a cost column holding our old selling
+        # price, GST 0% throughout, and wrong product matches.
+        try:
+            file_type = detect_file_type(str(tmp_path))
+        except Exception:
+            file_type = None
         try:
             os.unlink(tmp_path)
         except OSError:
@@ -76,6 +85,7 @@ async def scan_master_table(file: UploadFile = File(...), admin: dict = Depends(
             "images_found": images_exact,
             "unmatched_columns": unmatched,
             "columns": columns,
+            "file_type": file_type,
             "preview": items[:15],
         }
     except HTTPException:
@@ -234,14 +244,26 @@ def suggest_master_products(q: str = "", tier: str = "3star", user: dict = Depen
 
 @router.get("/api/master-table")
 def list_master_products(user: dict = Depends(get_current_user)):
-    """Any authenticated user may view (read-only) — see 'master-table-access-control'."""
+    """Any authenticated user may view (read-only) — see 'master-table-access-control'.
+
+    Purchase cost is stripped for non-admins. Employees need selling prices to
+    build a quote, but what we PAY a supplier — and so our margin on every
+    product — is commercially sensitive and was previously returned to every
+    logged-in user. Removed server-side rather than hidden in the UI, so it
+    never reaches the browser at all.
+    """
+    is_admin = (user or {}).get("role") == "admin"
     conn = get_db()
     rows = conn.execute("SELECT * FROM master_products ORDER BY file_name, sl_no").fetchall()
     conn.close()
+    COST_FIELDS = ("cost", "cost_currency", "mrp")
     result = []
     for r in rows:
         item = dict(r)
         item["has_image"] = bool(_image_file_path(item.get("image_path", "")))
+        if not is_admin:
+            for f in COST_FIELDS:
+                item.pop(f, None)
         result.append(item)
     return result
 

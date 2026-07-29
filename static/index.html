@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=9">
+<link rel="stylesheet" href="/static/css/main.css?v=11">
 </head>
 <body>
 
@@ -66,6 +66,7 @@
     <button class="active" onclick="show('generate')">✨ Generate Quote</button>
     <button onclick="show('result')">📋 Result</button>
     <button onclick="show('repository')">🗄 Repository</button>
+    <button id="tab-audit" onclick="show('audit')" style="display:none">📜 Activity</button>
   </div>
   <div class="nav-user" id="nav-user"></div>
 </nav>
@@ -484,9 +485,30 @@
 </section>
 
 
+<!-- ── SECTION: Activity / audit log (admin only) ── -->
+<section id="sec-audit" class="section">
+  <div class="page-head">
+    <h1>Activity</h1>
+    <p>Every change to the catalog, master table and quotations — who did it, and when.</p>
+  </div>
+
+  <div class="card">
+    <div class="audit-filters">
+      <select id="audit-user" onchange="loadAuditLog()"><option value="">Everyone</option></select>
+      <select id="audit-action" onchange="renderAuditLog()"><option value="">All activity</option></select>
+      <input type="text" id="audit-search" placeholder="Search by file, product or reference..."
+             oninput="renderAuditLog()" onkeydown="stopEnterSubmit(event)">
+      <span id="audit-count" class="mbp-hint"></span>
+    </div>
+    <div id="audit-view" style="margin-top:14px;">
+      <p style="color:var(--muted);font-size:.9rem;">Loading...</p>
+    </div>
+  </div>
+</section>
+
 </main>
 
 
-<script src="/static/js/app.js?v=9"></script>
+<script src="/static/js/app.js?v=11"></script>
 </body>
 </html>

@@ -55,6 +55,9 @@ function onAuthed() {
   document.getElementById('tab-upload').style.display = currentUser.role === 'admin' ? '' : 'none';
   // Master Table is viewable by everyone, but only Admins can import/replace it.
   document.getElementById('master-admin-upload').style.display = currentUser.role === 'admin' ? '' : 'none';
+  // Activity log is admin-only — the endpoint enforces it too, this just
+  // avoids showing a tab that would 403.
+  document.getElementById('tab-audit').style.display = currentUser.role === 'admin' ? '' : 'none';
 }
 
 async function doLogin(evt) {
@@ -251,6 +254,114 @@ function show(tab) {
   if (tab === 'master')    { loadMasterFiles(); loadMasterTable(); }
   if (tab === 'generate')  loadCatalogSelector();
   if (tab === 'repository') loadRepository();
+  if (tab === 'audit')     loadAuditLog();
+}
+
+// ── Activity / audit log ─────────────────────────────────────────────────────
+// Admin-only. Answers "who changed this, and when" — the log is what showed
+// the KMW catalog had been deleted rather than lost to a bug.
+let auditRows = [];
+
+// Plain-English names; the raw action strings read like database events.
+const AUDIT_LABELS = {
+  upload_master_table: 'Imported master table', delete_master_table_file: 'Deleted master catalog',
+  edit_master_product_price: 'Edited a product price', bulk_set_tier_pricing: 'Bulk tier pricing',
+  reset_tier_pricing: 'Reset tier pricing', add_products_from_boq: 'Added products from a BOQ',
+  confirm_column_mapping: 'Taught a column mapping', delete_column_mapping: 'Removed a column mapping',
+  upload_catalog: 'Uploaded a BOQ catalog', delete_catalog_file: 'Deleted a BOQ catalog',
+  upload_matched_boq: 'Imported a matched BOQ',
+  smart_generate_quotation: 'Generated a quotation', smart_generate_from_boq: 'Generated from a BOQ',
+  edit_quotation: 'Edited a quotation', delete_quotation: 'Deleted a quotation',
+  clear_all_quotations: 'Cleared all quotations', self_register: 'Signed up',
+};
+// Destructive actions get called out — they're the ones worth spotting fast.
+const AUDIT_DANGER = new Set(['delete_master_table_file', 'delete_catalog_file', 'delete_quotation',
+                              'clear_all_quotations', 'delete_column_mapping']);
+
+async function loadAuditLog() {
+  const view = document.getElementById('audit-view');
+  const uid = document.getElementById('audit-user').value;
+  view.innerHTML = '<p style="color:var(--muted);font-size:.9rem;">Loading...</p>';
+  try {
+    const res = await fetch(`${API}/api/audit-log${uid ? '?user_id=' + uid : ''}`);
+    const d = await res.json();
+    if (!res.ok) { view.innerHTML = `<div class="alert alert-error">${apiErr(d)}</div>`; return; }
+    auditRows = d;
+    populateAuditFilters();
+    renderAuditLog();
+  } catch (e) {
+    view.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+  }
+}
+
+function populateAuditFilters() {
+  const actSel = document.getElementById('audit-action');
+  const keep = actSel.value;
+  const actions = [...new Set(auditRows.map(r => r.action))].sort();
+  actSel.innerHTML = '<option value="">All activity</option>' +
+    actions.map(a => `<option value="${a}">${AUDIT_LABELS[a] || a}</option>`).join('');
+  actSel.value = keep;
+
+  const userSel = document.getElementById('audit-user');
+  if (userSel.options.length <= 1) {
+    const users = [...new Map(auditRows.filter(r => r.user_id)
+      .map(r => [r.user_id, r.user_name || r.user_email || ('User #' + r.user_id)])).entries()];
+    userSel.innerHTML = '<option value="">Everyone</option>' +
+      users.map(([id, name]) => `<option value="${id}">${name}</option>`).join('');
+  }
+}
+
+function renderAuditLog() {
+  const view = document.getElementById('audit-view');
+  const act = document.getElementById('audit-action').value;
+  const term = document.getElementById('audit-search').value.trim().toLowerCase();
+
+  let rows = auditRows;
+  if (act) rows = rows.filter(r => r.action === act);
+  if (term) rows = rows.filter(r =>
+    (r.target || '').toLowerCase().includes(term) ||
+    (r.user_name || '').toLowerCase().includes(term) ||
+    (AUDIT_LABELS[r.action] || r.action).toLowerCase().includes(term));
+
+  document.getElementById('audit-count').textContent =
+    `${rows.length} of ${auditRows.length} entries`;
+
+  if (!rows.length) {
+    view.innerHTML = '<p style="color:var(--muted);font-size:.9rem;">Nothing matches that filter.</p>';
+    return;
+  }
+
+  view.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:150px">When</th><th style="width:150px">Who</th>
+                   <th style="width:210px">Action</th><th>Details</th></tr></thead>
+        <tbody>${rows.map(r => {
+          const when = r.created_at ? String(r.created_at).replace('T', ' ').slice(0, 19) : '—';
+          const who  = r.user_name || r.user_email || (r.user_id ? '#' + r.user_id : 'system');
+          const label = AUDIT_LABELS[r.action] || r.action;
+          return `<tr class="${AUDIT_DANGER.has(r.action) ? 'audit-danger' : ''}">
+            <td class="audit-when">${when}</td>
+            <td>${who}</td>
+            <td><span class="audit-action">${label}</span></td>
+            <td class="audit-target">${r.target || '—'}${renderAuditExtra(r)}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>`;
+}
+
+// after_json holds what actually changed (rows updated, price set, etc.) —
+// summarised inline rather than dumped as raw JSON.
+function renderAuditExtra(r) {
+  if (!r.after_json) return '';
+  try {
+    const a = JSON.parse(r.after_json);
+    const bits = Object.entries(a)
+      .filter(([, v]) => v !== null && v !== '' && v !== undefined)
+      .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`);
+    return bits.length ? `<span class="audit-extra">${bits.join(' · ')}</span>` : '';
+  } catch (e) { return ''; }
 }
 
 // ── Upload ───────────────────────────────────────────────────────────────────
@@ -474,6 +585,7 @@ async function scanMasterFiles() {
             🖼 <b>${d.images_found}</b> with a confirmed image
             ${d.unmatched_columns.length ? `&nbsp;·&nbsp; ⚠️ columns not found: ${d.unmatched_columns.join(', ')}` : ''}
           </div>
+          ${renderFileTypeNotice(d.file_type)}
           ${renderColumnReport(d.columns)}
           <div class="table-wrap" style="margin-top:12px">
             <table>
@@ -1194,6 +1306,27 @@ function setBoqReqFile(file) {
 // The parser used to decide silently: the Nilkamal sheet's "PRICES IN INR"
 // went unrecognised and 493 products imported with no price at all, which
 // only surfaced days later. This makes that decision visible at scan time.
+// Phase E: warn when the file doesn't look like a supplier price list.
+// Importing a past quotation as a catalog is silent and expensive — it turned
+// 705 lines of a client's own BOQ wording into "products", loaded our old
+// selling price into the cost column, and left GST at 0% on every row.
+function renderFileTypeNotice(ft) {
+  if (!ft || ft.type === 'price_list' || ft.type === 'unknown') return '';
+  const why = (ft.reasons || []).map(r => `<li>${r}</li>`).join('');
+  return `
+    <div class="ftype-warn">
+      <div class="ftype-head">⚠️ This doesn't look like a supplier price list</div>
+      <div class="ftype-body">
+        It looks like <strong>${ft.label}</strong>.
+        ${ft.type === 'quotation'
+          ? 'Importing a quotation as a catalog stores the client\'s wording as product names and your <em>selling</em> price as cost — margins and matching both go wrong.'
+          : 'A requirement sheet has no pricing, so the products would import with no price.'}
+        <ul>${why}</ul>
+        You can still import it if that\'s what you intended.
+      </div>
+    </div>`;
+}
+
 let mappableFields = [];   // [{field,label}] — loaded once, used by every picker
 
 async function ensureMappableFields() {

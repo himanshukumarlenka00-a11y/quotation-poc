@@ -751,6 +751,28 @@
     animation:mbpResetSpin .7s linear infinite;
   }
 
+  /* ── Activity / audit log ── */
+  .audit-filters { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .audit-filters select { width:auto; min-width:150px; }
+  .audit-filters input[type=text] { width:auto; flex:1; min-width:200px; }
+  .audit-when   { font-family:ui-monospace,Consolas,monospace; font-size:.78rem; color:var(--muted); white-space:nowrap; }
+  .audit-action { font-size:.8rem; }
+  .audit-target { font-size:.82rem; word-break:break-word; }
+  .audit-extra  { display:block; font-size:.74rem; color:var(--muted); margin-top:2px; }
+  /* Deletions are what you scan this page looking for. */
+  .audit-danger td { background:rgba(231,76,60,.07); }
+  .audit-danger .audit-action { color:#e74c3c; font-weight:600; }
+
+  /* ── File-type warning (scan step) ── */
+  .ftype-warn {
+    margin-top:12px; border:1px solid rgba(232,160,32,.45); border-left:4px solid var(--accent);
+    border-radius:10px; background:rgba(232,160,32,.08); padding:12px 14px;
+  }
+  .ftype-head { font-weight:700; color:var(--accent); margin-bottom:6px; font-size:.9rem; }
+  .ftype-body { font-size:.84rem; color:var(--text); line-height:1.5; }
+  .ftype-body ul { margin:8px 0 6px 18px; color:var(--muted); }
+  .ftype-body li { margin:2px 0; }
+
   /* ── Column mapping report (scan step) ── */
   .colmap { margin-top:14px; border:1px solid var(--border); border-radius:10px; overflow:hidden; }
   .colmap-bar {
