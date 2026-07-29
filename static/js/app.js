@@ -1,0 +1,1954 @@
+let currentQuotation = null;
+let selectedRating = null;
+let usdToInr = 1; // USD column removed for now — prices shown as-is in INR (no conversion)
+let currentUser = null;
+
+const API = window.location.origin;
+
+// FastAPI returns `detail` as a plain string for HTTPException, but as an
+// ARRAY of {loc, msg, type} objects for request-validation (422) errors.
+// Interpolating that array straight into a template renders the useless
+// "[object Object],[object Object]" — so unpack it into readable text.
+function apiErr(body, fallback = 'Request failed') {
+  const d = body && body.detail;
+  if (!d) return (body && body.message) || fallback;
+  if (typeof d === 'string') return d;
+  if (Array.isArray(d)) {
+    return d.map(e => {
+      const field = Array.isArray(e.loc) ? e.loc[e.loc.length - 1] : '';
+      return field ? `${field}: ${e.msg}` : e.msg;
+    }).join('; ');
+  }
+  return d.msg || fallback;
+}
+
+// These inputs live outside any <form> — in some browsers, Enter inside a
+// loose (non-form) input can still trigger an implicit page reload/flicker.
+// Blocking it here (and committing the value via blur, which fires
+// whatever onchange handler the input already has) avoids that entirely.
+function stopEnterSubmit(event) {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    event.target.blur();
+  }
+}
+
+// ── Auth ────────────────────────────────────────────────────────────────────
+async function checkAuth() {
+  try {
+    const res = await fetch(`${API}/api/auth/me`);
+    if (res.status === 200) {
+      currentUser = await res.json();
+      onAuthed();
+      return;
+    }
+  } catch (e) {}
+  currentUser = null;
+  document.body.classList.remove('authed');
+}
+
+function onAuthed() {
+  document.body.classList.add('authed');
+  const nav = document.getElementById('nav-user');
+  nav.innerHTML = `<span>${currentUser.name}</span><span class="role-badge">${currentUser.role}</span><button onclick="doLogout()">Log out</button>`;
+  // Only Admins manage the BOQ catalog — hide the tab for everyone else.
+  document.getElementById('tab-upload').style.display = currentUser.role === 'admin' ? '' : 'none';
+  // Master Table is viewable by everyone, but only Admins can import/replace it.
+  document.getElementById('master-admin-upload').style.display = currentUser.role === 'admin' ? '' : 'none';
+}
+
+async function doLogin(evt) {
+  evt.preventDefault();
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errBox = document.getElementById('login-err');
+  errBox.textContent = '';
+  try {
+    const res = await fetch(`${API}/api/auth/login`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email, password})
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      errBox.textContent = body.detail || 'Login failed';
+      return;
+    }
+    currentUser = await res.json();
+    document.getElementById('login-password').value = '';
+    onAuthed();
+  } catch (e) {
+    errBox.textContent = 'Could not reach the server';
+  }
+}
+
+async function doLogout() {
+  await fetch(`${API}/api/auth/logout`, {method: 'POST'});
+  currentUser = null;
+  document.body.classList.remove('authed');
+  document.getElementById('login-email').value = '';
+  document.getElementById('login-password').value = '';
+}
+
+function getResetTokenFromUrl() {
+  return new URLSearchParams(window.location.search).get('reset_token');
+}
+
+const LOGIN_GATE_FORMS = ['login-form', 'forgot-form', 'reset-form', 'register-form'];
+
+function _showOnlyForm(idToShow) {
+  LOGIN_GATE_FORMS.forEach(id => {
+    document.getElementById(id).style.display = (id === idToShow) ? '' : 'none';
+  });
+}
+
+function showLoginForm(evt) {
+  if (evt) evt.preventDefault();
+  _showOnlyForm('login-form');
+}
+
+function showForgotForm(evt) {
+  if (evt) evt.preventDefault();
+  _showOnlyForm('forgot-form');
+  document.getElementById('forgot-err').textContent = '';
+  document.getElementById('forgot-msg').textContent = '';
+}
+
+function showResetForm() {
+  _showOnlyForm('reset-form');
+}
+
+function showRegisterForm(evt) {
+  if (evt) evt.preventDefault();
+  _showOnlyForm('register-form');
+  document.getElementById('register-err').textContent = '';
+}
+
+async function doForgotPassword(evt) {
+  evt.preventDefault();
+  const email = document.getElementById('forgot-email').value.trim();
+  const errBox = document.getElementById('forgot-err');
+  const msgBox = document.getElementById('forgot-msg');
+  errBox.textContent = '';
+  msgBox.textContent = '';
+  try {
+    const res = await fetch(`${API}/api/auth/forgot-password`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email})
+    });
+    const body = await res.json().catch(() => ({}));
+    msgBox.textContent = body.message || 'If that email is registered, a reset link has been sent.';
+  } catch (e) {
+    errBox.textContent = 'Could not reach the server';
+  }
+}
+
+async function doResetPassword(evt) {
+  evt.preventDefault();
+  const pw = document.getElementById('reset-password').value;
+  const pw2 = document.getElementById('reset-password-confirm').value;
+  const errBox = document.getElementById('reset-err');
+  const msgBox = document.getElementById('reset-msg');
+  errBox.textContent = '';
+  msgBox.textContent = '';
+  if (pw !== pw2) {
+    errBox.textContent = 'Passwords do not match';
+    return;
+  }
+  if (pw.length < 8) {
+    errBox.textContent = 'Password must be at least 8 characters';
+    return;
+  }
+  const token = getResetTokenFromUrl();
+  try {
+    const res = await fetch(`${API}/api/auth/reset-password`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({token, new_password: pw})
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      errBox.textContent = body.detail || 'Reset failed';
+      return;
+    }
+    msgBox.textContent = body.message || 'Password reset — please log in.';
+    // Drop the token from the URL so a page refresh doesn't re-show this form.
+    window.history.replaceState({}, '', window.location.pathname);
+    setTimeout(showLoginForm, 1500);
+  } catch (e) {
+    errBox.textContent = 'Could not reach the server';
+  }
+}
+
+async function doRegister(evt) {
+  evt.preventDefault();
+  const name = document.getElementById('register-name').value.trim();
+  const email = document.getElementById('register-email').value.trim();
+  const password = document.getElementById('register-password').value;
+  const errBox = document.getElementById('register-err');
+  errBox.textContent = '';
+  try {
+    const res = await fetch(`${API}/api/auth/register`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name, email, password})
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      errBox.textContent = body.detail || 'Sign up failed';
+      return;
+    }
+    // Registration logs the new account straight in — same shape as /login.
+    currentUser = body;
+    document.getElementById('register-password').value = '';
+    onAuthed();
+  } catch (e) {
+    errBox.textContent = 'Could not reach the server';
+  }
+}
+
+// Rate is fixed (no live fetch) so quotations stay consistent between sessions.
+async function fetchUsdRate() { /* fixed rate; intentionally no-op */ }
+
+window.addEventListener('DOMContentLoaded', () => {
+  if (getResetTokenFromUrl()) {
+    // A password-reset link always shows the reset form, regardless of
+    // whether there's already a valid session — skip the normal auth check.
+    showResetForm();
+  } else {
+    checkAuth();
+  }
+  // Scroll-reveal for landing-page elements
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { threshold: .12 });
+    document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+  } else {
+    document.querySelectorAll('.reveal').forEach(el => el.classList.add('in'));
+  }
+});
+
+// Fill the requirement box from a one-click example, then scroll to Generate
+function useExample(btn) {
+  const ta = document.getElementById('req-prompt');
+  ta.value = btn.textContent.trim();
+  ta.focus();
+  document.getElementById('gen-btn').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// ── Navigation ──────────────────────────────────────────────────────────────
+function show(tab) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('nav .tabs button').forEach(b => {
+    const t = b.getAttribute('onclick').match(/show\('(\w+)'\)/)?.[1];
+    b.classList.toggle('active', t === tab);
+  });
+  document.getElementById('sec-' + tab).classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'instant' in document.documentElement.style ? 'instant' : 'auto' });
+  if (tab === 'upload')    { loadCatalog(); loadUploadedFiles(); }
+  if (tab === 'master')    { loadMasterFiles(); loadMasterTable(); }
+  if (tab === 'generate')  loadCatalogSelector();
+  if (tab === 'repository') loadRepository();
+}
+
+// ── Upload ───────────────────────────────────────────────────────────────────
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+let selectedFiles = [];
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag'); setFiles(e.dataTransfer.files); });
+fileInput.addEventListener('change', e => setFiles(e.target.files));
+
+function setFiles(files) {
+  selectedFiles = Array.from(files);
+  if (selectedFiles.length) {
+    dropZone.querySelector('p').innerHTML = `<strong>${selectedFiles.map(f=>f.name).join(', ')}</strong> selected`;
+    document.getElementById('scan-btn').disabled = false;
+    document.getElementById('upload-btn').disabled = false;
+    document.getElementById('scan-result').innerHTML = '';
+    document.getElementById('upload-status').innerHTML = '';
+  }
+}
+
+async function scanFile() {
+  if (!selectedFiles.length) return;
+  const btn = document.getElementById('scan-btn');
+  btn.disabled = true; btn.textContent = '🔍 Scanning...';
+  const out = document.getElementById('scan-result');
+  out.innerHTML = '';
+  for (const file of selectedFiles) {
+    const fd = new FormData(); fd.append('file', file);
+    try {
+      const res = await fetch(`${API}/api/scan-boq`, { method: 'POST', body: fd });
+      const d = await res.json();
+      if (!res.ok) { out.innerHTML += `<div class="alert alert-error">${apiErr(d)}</div>`; continue; }
+      out.innerHTML += `
+        <div class="card" style="margin-top:0;border-left:4px solid var(--primary);position:relative;">
+          <button onclick="this.closest('.card').remove()" style="position:absolute;top:10px;right:10px;background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--muted);" title="Close">✕</button>
+          <strong>📄 ${d.filename}</strong>
+          <div style="margin-top:8px;font-size:.85rem;color:var(--muted)">
+            ✅ <b>${d.total_products}</b> products found &nbsp;·&nbsp;
+            🖼 <b>${d.images_found}</b> images &nbsp;·&nbsp;
+            📋 Columns: <code style="background:#f0f3f8;padding:2px 6px;border-radius:4px">${d.columns_detected.join(', ')}</code>
+          </div>
+          <div class="table-wrap" style="margin-top:12px">
+            <table>
+              <thead><tr><th>Product</th><th>Brand</th><th>Model</th><th>Price</th><th>GST%</th></tr></thead>
+              <tbody>${(d.preview||[]).map(i=>`<tr>
+                <td><strong>${i.product||'—'}</strong></td>
+                <td>${i.brand||'—'}</td>
+                <td style="font-size:.8rem">${i.model_no||'—'}</td>
+                <td>₹${i.price||0}</td>
+                <td>${i.gst_pct??18}%</td>
+              </tr>`).join('')}</tbody>
+            </table>
+          </div>
+          ${d.total_products > 8 ? `<p style="font-size:.8rem;color:var(--muted);margin-top:6px">...and ${d.total_products - 8} more products</p>` : ''}
+        </div>`;
+    } catch(e) { out.innerHTML += `<div class="alert alert-error">Scan failed: ${e.message}</div>`; }
+  }
+  btn.disabled = false; btn.textContent = '🔍 Scan First';
+}
+
+async function uploadFile() {
+  if (!selectedFiles.length) return;
+  const btn = document.getElementById('upload-btn');
+  btn.disabled = true; btn.textContent = '📤 Uploading...';
+  const status = document.getElementById('upload-status');
+  status.innerHTML = '';
+  for (const file of selectedFiles) {
+    const fd = new FormData(); fd.append('file', file);
+    try {
+      const res = await fetch(`${API}/api/upload-boq`, { method: 'POST', body: fd });
+      const data = await res.json();
+      status.innerHTML += `<div class="alert alert-${res.ok ? 'success' : 'error'}">${res.ok ? data.message : apiErr(data)}</div>`;
+    } catch (e) {
+      status.innerHTML += `<div class="alert alert-error">Upload failed: ${e.message}</div>`;
+    }
+  }
+  btn.disabled = false; btn.textContent = '📤 Upload to Catalog';
+  loadCatalog();
+}
+
+async function handleFiles(files) { setFiles(files); }
+
+async function loadUploadedFiles() {
+  const res = await fetch(`${API}/api/boq-files`);
+  const files = await res.json();
+  const el = document.getElementById('uploaded-files');
+  if (!files.length) { el.innerHTML = '<p style="color:var(--muted);font-size:.9rem;">No files uploaded yet.</p>'; return; }
+  el.innerHTML = files.map(f => `
+    <div class="repo-item">
+      <div>
+        <strong>📄 ${f.file_name}</strong>
+        <div class="meta">${f.count} products &nbsp;·&nbsp; uploaded ${new Date(f.uploaded_at).toLocaleDateString('en-IN')}</div>
+      </div>
+      <button class="btn btn-sm btn-danger" onclick="deleteFile('${f.file_name}')">🗑 Delete</button>
+    </div>`).join('');
+}
+
+async function deleteFile(filename) {
+  if (!confirm(`Remove '${filename}' from catalog?`)) return;
+  const res = await fetch(`${API}/api/boq-files/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+  const d = await res.json();
+  alert(d.message);
+  loadUploadedFiles();
+  loadCatalog();
+}
+
+async function loadCatalog() {
+  const res = await fetch(`${API}/api/boq-items`);
+  const items = await res.json();
+  document.getElementById('catalog-count').textContent = items.length;
+  const el = document.getElementById('catalog-table');
+  if (!items.length) { el.innerHTML = '<p style="color:var(--muted);font-size:.9rem;">No products yet.</p>'; return; }
+
+  // Group by file
+  const groups = {};
+  items.forEach(i => {
+    const key = i.file_name || 'Unknown';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(i);
+  });
+
+  el.innerHTML = Object.entries(groups).map(([fname, prods], gIdx) => `
+    <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden;">
+      <div onclick="toggleFolder(${gIdx})" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--card-soft);cursor:pointer;user-select:none;">
+        <div>
+          <span style="font-size:1rem;">📁</span>
+          <strong style="margin-left:8px;font-size:.95rem;">${fname}</strong>
+          <span style="margin-left:10px;background:var(--accent);color:#fff;font-size:.72rem;padding:2px 8px;border-radius:10px;">${prods.length} products</span>
+        </div>
+        <span id="arrow-${gIdx}" style="font-size:1.1rem;transition:transform .2s;">▶</span>
+      </div>
+      <div id="folder-${gIdx}" style="display:none;">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Image</th><th>Product</th><th>Sheet</th><th>Brand</th><th>Model No</th><th>Price (₹)</th><th>GST%</th><th>HSN</th></tr></thead>
+            <tbody>${prods.map(i => `<tr>
+              <td style="text-align:center;position:relative;">${i.has_image
+                ? `<img src="${API}/api/product-image/${i.id}" style="width:76px;height:60px;object-fit:contain;border-radius:4px;border:1px solid ${i.image_match==='guess' ? '#e6a817' : '#ddd'};cursor:zoom-in;" onclick="showImageLightbox('${API}/api/product-image/${i.id}')" title="${i.image_match==='guess' ? 'Best-effort match — please verify this is the right photo' : 'Click to enlarge'}" onerror="this.style.display='none'">
+                   ${i.image_match==='guess' ? `<span style="position:absolute;top:2px;right:2px;background:#e6a817;color:#fff;font-size:.62rem;font-weight:600;padding:1px 4px;border-radius:6px;" title="Best-effort match — please verify">?</span>` : ''}`
+                : `<span style="color:#ccc;font-size:.75rem;">—</span>`}</td>
+              <td><strong>${i.product}</strong></td>
+              <td style="font-size:.78rem;color:var(--muted)">${i.sheet_name||'—'}</td>
+              <td>${i.brand||'—'}</td>
+              <td style="font-size:.8rem">${i.model_no||'—'}</td>
+              <td>₹${(i.price||0).toLocaleString('en-IN')}</td>
+              <td>${i.gst_pct??18}%</td>
+              <td>${i.hsn_code||'—'}</td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function toggleFolder(idx) {
+  const content = document.getElementById(`folder-${idx}`);
+  const arrow = document.getElementById(`arrow-${idx}`);
+  const open = content.style.display === 'block';
+  content.style.display = open ? 'none' : 'block';
+  arrow.style.transform = open ? '' : 'rotate(90deg)';
+}
+
+// ── Master Table ─────────────────────────────────────────────────────────────
+const masterDropZone = document.getElementById('master-drop-zone');
+const masterFileInput = document.getElementById('master-file-input');
+let masterSelectedFiles = [];
+
+masterDropZone.addEventListener('dragover', e => { e.preventDefault(); masterDropZone.classList.add('drag'); });
+masterDropZone.addEventListener('dragleave', () => masterDropZone.classList.remove('drag'));
+masterDropZone.addEventListener('drop', e => {
+  e.preventDefault(); masterDropZone.classList.remove('drag');
+  setMasterFiles(e.dataTransfer.files);
+});
+masterFileInput.addEventListener('change', e => setMasterFiles(e.target.files));
+
+function setMasterFiles(files) {
+  const list = Array.from(files || []);
+  if (!list.length) return;
+  masterSelectedFiles = list;
+  masterDropZone.querySelector('p').innerHTML = `<strong>${list.map(f => f.name).join(', ')}</strong> selected`;
+  document.getElementById('master-scan-btn').disabled = false;
+  document.getElementById('master-upload-status').innerHTML = '';
+  document.getElementById('master-scan-result').innerHTML = '';
+  // A new selection (or re-scan) invalidates any previously-scanned preview —
+  // must scan again before Confirm & Import is trusted to match what's shown.
+  const uploadBtn = document.getElementById('master-upload-btn');
+  uploadBtn.style.display = 'none';
+  uploadBtn.disabled = true;
+}
+
+async function scanMasterFiles() {
+  if (!masterSelectedFiles.length) return;
+  const status = document.getElementById('master-upload-status');
+  const resultEl = document.getElementById('master-scan-result');
+  const btn = document.getElementById('master-scan-btn');
+  btn.disabled = true; btn.textContent = '🔍 Scanning...';
+  status.innerHTML = '';
+  resultEl.innerHTML = '';
+  document.getElementById('master-upload-btn').style.display = 'none';
+  await ensureMappableFields();   // populates the per-column pickers below
+  let anyOk = false;
+  for (const file of masterSelectedFiles) {
+    const fd = new FormData(); fd.append('file', file);
+    try {
+      const res = await fetch(`${API}/api/master-table/scan`, { method: 'POST', body: fd });
+      const d = await res.json();
+      if (!res.ok) {
+        resultEl.innerHTML += `<div class="alert alert-error">'${file.name}': ${apiErr(d)}</div>`;
+        continue;
+      }
+      anyOk = true;
+      resultEl.innerHTML += `
+        <div class="card" style="margin-top:0;margin-bottom:12px;border-left:4px solid var(--primary);">
+          <strong>📄 ${d.filename}</strong>
+          <div style="margin-top:8px;font-size:.85rem;color:var(--muted)">
+            ✅ <b>${d.total_products}</b> products found &nbsp;·&nbsp;
+            🖼 <b>${d.images_found}</b> with a confirmed image
+            ${d.unmatched_columns.length ? `&nbsp;·&nbsp; ⚠️ columns not found: ${d.unmatched_columns.join(', ')}` : ''}
+          </div>
+          ${renderColumnReport(d.columns)}
+          <div class="table-wrap" style="margin-top:12px">
+            <table>
+              <thead><tr><th>Product</th><th>Brand</th><th>Model</th><th>3★ (₹)</th><th>4★ (₹)</th><th>GST%</th></tr></thead>
+              <tbody>${d.preview.map(i => `<tr>
+                <td><strong>${i.product||'—'}</strong></td>
+                <td>${i.brand||'—'}</td>
+                <td style="font-size:.8rem">${i.original_model||'—'}</td>
+                <td>₹${i.price_3star||0}</td>
+                <td>₹${i.price_4star||0}</td>
+                <td>${i.gst_pct??0}%</td>
+              </tr>`).join('')}</tbody>
+            </table>
+          </div>
+          ${d.total_products > 15 ? `<p style="font-size:.8rem;color:var(--muted);margin-top:6px">...and ${d.total_products - 15} more products</p>` : ''}
+        </div>`;
+    } catch (e) {
+      resultEl.innerHTML += `<div class="alert alert-error">'${file.name}' scan failed: ${e.message}</div>`;
+    }
+  }
+  if (anyOk) {
+    const uploadBtn = document.getElementById('master-upload-btn');
+    uploadBtn.style.display = '';
+    uploadBtn.disabled = false;
+  }
+  btn.disabled = false; btn.textContent = '🔍 Scan First';
+}
+
+async function uploadMasterFile() {
+  if (!masterSelectedFiles.length) return;
+  const btn = document.getElementById('master-upload-btn');
+  btn.disabled = true;
+  const status = document.getElementById('master-upload-status');
+  status.innerHTML = '';
+  const results = [];
+  for (let i = 0; i < masterSelectedFiles.length; i++) {
+    const file = masterSelectedFiles[i];
+    btn.textContent = `📥 Importing ${i + 1}/${masterSelectedFiles.length}...`;
+    const fd = new FormData(); fd.append('file', file);
+    try {
+      const res = await fetch(`${API}/api/master-table/upload`, { method: 'POST', body: fd });
+      const data = await res.json();
+      results.push(`<div class="alert alert-${res.ok ? 'success' : 'error'}">${res.ok ? data.message : apiErr(data)}</div>`);
+    } catch (e) {
+      results.push(`<div class="alert alert-error">'${file.name}' failed: ${e.message}</div>`);
+    }
+    status.innerHTML = results.join('');
+  }
+  btn.disabled = false; btn.textContent = '✅ Confirm & Import';
+  btn.style.display = 'none';
+  document.getElementById('master-scan-result').innerHTML = '';
+  loadMasterFiles();
+  loadMasterTable();
+}
+
+async function loadMasterFiles() {
+  const res = await fetch(`${API}/api/master-table/files`);
+  const files = await res.json();
+  const el = document.getElementById('master-files');
+  if (!files.length) { el.innerHTML = '<p style="color:var(--muted);font-size:.9rem;">No files imported yet.</p>'; return; }
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  el.innerHTML = files.map(f => `
+    <div class="repo-item">
+      <div>
+        <strong>📄 ${f.file_name}</strong>
+        <div class="meta">${f.count} products &nbsp;·&nbsp; imported ${new Date(f.uploaded_at).toLocaleDateString('en-IN')}</div>
+      </div>
+      ${isAdmin ? `<button class="btn btn-sm btn-danger" onclick="deleteMasterFile('${f.file_name}')">🗑 Delete</button>` : ''}
+    </div>`).join('');
+}
+
+async function deleteMasterFile(filename) {
+  if (!confirm(`Remove '${filename}' from the master table?`)) return;
+  const res = await fetch(`${API}/api/master-table/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+  const d = await res.json();
+  alert(d.message);
+  loadMasterFiles();
+  loadMasterTable();
+}
+
+let masterAllItems = [];
+
+function onMasterSearchFocus() {
+  document.getElementById('master-search-box').classList.add('active');
+}
+function onMasterSearchBlur() {
+  // Stay expanded while there's an active search term — collapsing on
+  // blur would hide the very filter the user just typed.
+  const box = document.getElementById('master-search-box');
+  if (!document.getElementById('master-search').value.trim()) {
+    box.classList.remove('active');
+  }
+}
+
+async function loadMasterTable() {
+  const res = await fetch(`${API}/api/master-table`);
+  masterAllItems = await res.json();
+  document.getElementById('master-count').textContent = masterAllItems.length;
+  renderMasterProducts(masterAllItems);
+}
+
+function filterMasterTable() {
+  const term = document.getElementById('master-search').value.trim().toLowerCase();
+  pulseMasterSearchBox();
+  if (!term) { renderMasterProducts(masterAllItems); return; }
+  const matches = masterAllItems.filter(i =>
+    (i.product || '').toLowerCase().includes(term) ||
+    (i.brand || '').toLowerCase().includes(term) ||
+    (i.original_model || '').toLowerCase().includes(term));
+  // Searching implies "show me the matches now" — auto-expand every catalog
+  // that has a hit instead of making the user click each folder open.
+  const matchedFiles = new Set(matches.map(i => i.file_name || 'Unknown'));
+  renderMasterProducts(matches, matchedFiles, term);
+}
+
+let _masterPulseTimer = null;
+function pulseMasterSearchBox() {
+  const box = document.getElementById('master-search-box');
+  if (!box) return;
+  box.classList.remove('pulse');
+  // Force reflow so the animation restarts on every keystroke instead of
+  // only firing once (re-adding a class mid-animation is a no-op otherwise).
+  void box.offsetWidth;
+  box.classList.add('pulse');
+  clearTimeout(_masterPulseTimer);
+  _masterPulseTimer = setTimeout(() => box.classList.remove('pulse'), 500);
+}
+
+function renderMasterProducts(items, forceExpanded, searchTerm) {
+  const el = document.getElementById('master-table-view');
+  if (!items.length) {
+    el.innerHTML = `<p style="color:var(--muted);font-size:.9rem;">${searchTerm ? 'No products match your search.' : 'No products yet.'}</p>`;
+    return;
+  }
+
+  // A bulk-price apply or a per-product edit both refresh this whole view
+  // by replacing its innerHTML — without remembering which catalog was
+  // expanded, that folder silently snaps shut on every save, making the
+  // just-applied prices seem to "vanish" until the user re-expands it.
+  // Capture what's open now so the rebuild below can restore it exactly.
+  // (Search results instead use forceExpanded, passed in by the caller.)
+  const expandedFiles = forceExpanded || (() => {
+    const set = new Set();
+    document.querySelectorAll('#master-table-view > div').forEach(div => {
+      const body = div.querySelector('.master-folder-body');
+      const nameEl = div.querySelector('strong');
+      if (body && nameEl && body.classList.contains('open')) {
+        set.add(nameEl.textContent.trim());
+      }
+    });
+    return set;
+  })();
+
+  const groups = {};
+  items.forEach(i => {
+    const key = i.file_name || 'Unknown';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(i);
+  });
+
+  const isAdminView = currentUser && currentUser.role === 'admin';
+
+  el.innerHTML = Object.entries(groups).map(([fname, prods], gIdx) => {
+    const headerCells = `<th>3★ Price (₹)</th><th>3★ Price ($)</th><th>4★ Price (₹)</th><th>4★ Price ($)</th>`;
+
+    // Every catalog gets independent 3★/4★ fields now — a catalog that
+    // started as single-price (e.g. a matched-BOQ import, where both tiers
+    // were just the one real price mirrored) is no exception; admins can
+    // now give it its own distinct 4★ price the same way KMW already has.
+    // USD stays display-only — it's a separately-stored field, not derived,
+    // so editing it isn't part of this.
+    const priceCells = i => {
+      if (!isAdminView) {
+        return `<td>₹${(i.price_3star||0).toLocaleString('en-IN')}</td>
+                 <td>$${(i.price_3star_usd||0).toFixed(2)}</td>
+                 <td>₹${(i.price_4star||0).toLocaleString('en-IN')}</td>
+                 <td>$${(i.price_4star_usd||0).toFixed(2)}</td>`;
+      }
+      return `<td><input id="mt-3star-${i.id}" type="number" step="0.01" class="mt-price-input" value="${i.price_3star||0}"
+                 onchange="updateMasterPrice(${i.id}, this.value, document.getElementById('mt-4star-${i.id}').value)"
+                 onkeydown="stopEnterSubmit(event)" style="width:90px"></td>
+               <td>$${(i.price_3star_usd||0).toFixed(2)}</td>
+               <td><input id="mt-4star-${i.id}" type="number" step="0.01" class="mt-price-input" value="${i.price_4star||0}"
+                 onchange="updateMasterPrice(${i.id}, document.getElementById('mt-3star-${i.id}').value, this.value)"
+                 onkeydown="stopEnterSubmit(event)" style="width:90px"></td>
+               <td>$${(i.price_4star_usd||0).toFixed(2)}</td>`;
+    };
+
+    const fnameEsc = fname.replace(/'/g, "\\'");
+    const bulkPricingBar = isAdminView ? `
+      <div class="master-bulk-pricing">
+        <span class="mbp-icon">%</span>
+        <span class="mbp-label">Set whole catalog</span>
+        <div class="mbp-field">
+          <span class="mbp-caption"><span class="mbp-stars">⭐</span>3★ off cost</span>
+          <input type="number" id="bulk-pct3-${gIdx}" placeholder="%" step="0.1" min="0" onkeydown="stopEnterSubmit(event)">
+        </div>
+        <div class="mbp-field">
+          <span class="mbp-caption"><span class="mbp-stars">⭐⭐</span>4★ off cost</span>
+          <input type="number" id="bulk-pct4-${gIdx}" placeholder="%" step="0.1" min="0" onkeydown="stopEnterSubmit(event)">
+        </div>
+        <div class="mbp-field">
+          <span class="mbp-caption">$ rate (₹ per $1)</span>
+          <input type="number" id="bulk-usdrate-${gIdx}" class="mbp-usd-input" placeholder="e.g. 83" step="0.01" min="0" onkeydown="stopEnterSubmit(event)">
+        </div>
+        <button class="btn btn-sm btn-primary" id="bulk-apply-${gIdx}" onclick="applyBulkTierPricing(${gIdx}, '${fnameEsc}')">✨ Apply to all ${prods.length}</button>
+        <button class="mbp-reset" id="bulk-reset-${gIdx}" onclick="resetBulkTierPricing(${gIdx}, '${fnameEsc}')"
+                title="Revert to the prices before the last bulk change" aria-label="Reset pricing">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>
+            <path d="M3 3.4v4.2h4.2" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <span id="bulk-status-${gIdx}" class="mbp-hint"></span>
+      </div>` : '';
+
+    const wasExpanded = expandedFiles.has(fname);
+    return `
+    <div class="master-folder">
+      <div class="master-folder-head" onclick="toggleMasterFolder(${gIdx})">
+        <div class="mf-title">
+          <span class="mf-icon">📁</span>
+          <strong>${fname}</strong>
+          <span class="mf-count">${prods.length} products</span>
+        </div>
+        <span id="master-arrow-${gIdx}" class="master-arrow${wasExpanded ? ' open' : ''}">▶</span>
+      </div>
+      <div id="master-folder-${gIdx}" class="master-folder-body${wasExpanded ? ' open' : ''}">
+        <div class="master-folder-content">
+        ${bulkPricingBar}
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Image</th><th>Product</th><th>Brand</th><th>Model</th>${headerCells}<th>GST%</th><th>HSN</th></tr></thead>
+            <tbody>${prods.map(i => `<tr>
+              <td style="text-align:center;">${i.has_image
+                ? `<img src="${API}/api/image/${i.image_path}" style="width:64px;height:52px;object-fit:contain;border-radius:4px;border:1px solid #ddd;cursor:zoom-in;" onclick="showImageLightbox('${API}/api/image/${i.image_path}')" title="Click to enlarge" onerror="this.style.display='none'">`
+                : `<span style="color:#ccc;font-size:.75rem;">—</span>`}</td>
+              <td><strong>${i.product}</strong></td>
+              <td>${i.brand||'—'}</td>
+              <td style="font-size:.8rem">${i.original_model||'—'}</td>
+              ${priceCells(i)}
+              <td>${i.gst_pct||0}%</td>
+              <td>${i.hsn_code||'—'}</td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function updateMasterPrice(id, price3, price4) {
+  const p3 = parseFloat(price3), p4 = parseFloat(price4);
+  if (isNaN(p3) || isNaN(p4) || p3 < 0 || p4 < 0) {
+    alert('Enter a valid, non-negative price.');
+    loadMasterTable();
+    return;
+  }
+  try {
+    const res = await fetch(`${API}/api/master-table/product/${id}`, {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({price_3star: p3, price_4star: p4})
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      alert(d.detail || 'Update failed');
+      loadMasterTable();
+    }
+  } catch (e) {
+    alert('Update failed: ' + e.message);
+    loadMasterTable();
+  }
+}
+
+async function applyBulkTierPricing(gIdx, fname) {
+  const pct3 = document.getElementById(`bulk-pct3-${gIdx}`).value;
+  const pct4 = document.getElementById(`bulk-pct4-${gIdx}`).value;
+  const usdRateEl = document.getElementById(`bulk-usdrate-${gIdx}`);
+  const usdRate = usdRateEl ? usdRateEl.value : '';
+  const statusEl = document.getElementById(`bulk-status-${gIdx}`);
+  // Two valid ways to use this: both percentages (recompute ₹ off cost, USD
+  // rate optional), or the $ rate alone (just convert the existing ₹ prices).
+  const bothPct = pct3 !== '' && pct4 !== '';
+  const usdOnly = pct3 === '' && pct4 === '' && usdRate !== '';
+  if (!bothPct && !usdOnly) {
+    statusEl.innerHTML = '<span style="color:#c0392b;">Enter both %, or just the $ rate on its own.</span>';
+    return;
+  }
+  const btn = document.getElementById(`bulk-apply-${gIdx}`);
+  btn.disabled = true; btn.textContent = 'Applying...';
+  statusEl.innerHTML = '';
+  try {
+    const res = await fetch(`${API}/api/master-table/bulk-tier-pricing/${encodeURIComponent(fname)}`, {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        pct_3star: pct3 === '' ? null : parseFloat(pct3),
+        pct_4star: pct4 === '' ? null : parseFloat(pct4),
+        usd_rate: usdRate === '' ? 0 : parseFloat(usdRate)
+      })
+    });
+    const d = await res.json();
+    if (!res.ok) {
+      statusEl.innerHTML = `<span style="color:#c0392b;">${apiErr(d)}</span>`;
+    } else {
+      statusEl.innerHTML = `<span style="color:#1e9e56;">✅ ${d.message}</span>`;
+      loadMasterTable();
+    }
+  } catch (e) {
+    statusEl.innerHTML = `<span style="color:#c0392b;">${e.message}</span>`;
+  }
+  btn.disabled = false; btn.textContent = `Apply to all`;
+}
+
+async function resetBulkTierPricing(gIdx, fname) {
+  const statusEl = document.getElementById(`bulk-status-${gIdx}`);
+  const btn = document.getElementById(`bulk-reset-${gIdx}`);
+
+  btn.disabled = true; btn.classList.add('spinning');
+  statusEl.innerHTML = '';
+  try {
+    const res = await fetch(`${API}/api/master-table/reset-tier-pricing/${encodeURIComponent(fname)}`,
+                            { method: 'PUT' });
+    const d = await res.json();
+    if (!res.ok) {
+      statusEl.innerHTML = `<span style="color:#c0392b;">${apiErr(d)}</span>`;
+    } else {
+      statusEl.innerHTML = `<span style="color:#1e9e56;">✅ ${d.message}</span>`;
+      // Clear the inputs too, so the panel doesn't still show the values that
+      // produced the pricing we just undid.
+      ['bulk-pct3', 'bulk-pct4', 'bulk-usdrate'].forEach(p => {
+        const el = document.getElementById(`${p}-${gIdx}`);
+        if (el) el.value = '';
+      });
+      loadMasterTable();
+    }
+  } catch (e) {
+    statusEl.innerHTML = `<span style="color:#c0392b;">${e.message}</span>`;
+  }
+  btn.disabled = false; btn.classList.remove('spinning');
+}
+
+function toggleMasterFolder(idx) {
+  const content = document.getElementById(`master-folder-${idx}`);
+  const arrow = document.getElementById(`master-arrow-${idx}`);
+  const open = content.classList.contains('open');
+  content.classList.toggle('open', !open);
+  arrow.classList.toggle('open', !open);
+}
+
+// ── Catalog Selector ─────────────────────────────────────────────────────────
+async function loadCatalogSelector() {
+  const res = await fetch(`${API}/api/boq-files`);
+  const files = await res.json();
+  const el = document.getElementById('catalog-selector');
+  if (!files.length) {
+    el.innerHTML = '<span style="color:var(--muted);font-size:.85rem;">No catalogs uploaded yet.</span>';
+    return;
+  }
+  el.innerHTML = files.map(f => `
+    <label style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:#fff;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:.88rem;user-select:none;" id="lbl-${CSS.escape(f.file_name)}">
+      <input type="checkbox" class="catalog-check" value="${f.file_name}" onchange="highlightCatalogLabel(this)" style="width:16px;height:16px;cursor:pointer;">
+      <span>📁 ${f.file_name}</span>
+      <span style="background:var(--accent);color:#fff;font-size:.72rem;padding:1px 7px;border-radius:10px;">${f.count}</span>
+    </label>`).join('');
+}
+
+function highlightCatalogLabel(cb) {
+  const lbl = cb.closest('label');
+  if (cb.checked) {
+    lbl.style.borderColor = 'var(--primary)';
+    lbl.style.background = '#eaf4fb';
+  } else {
+    lbl.style.borderColor = 'var(--border)';
+    lbl.style.background = '#fff';
+  }
+}
+
+function getSelectedCatalogs() {
+  return Array.from(document.querySelectorAll('.catalog-check:checked')).map(c => c.value);
+}
+
+// ── Price Tier ───────────────────────────────────────────────────────────────
+let selectedTiers = [];   // nothing pre-selected — the user must actively choose
+
+function toggleTier(tier) {
+  const isSelected = selectedTiers.includes(tier);
+  selectedTiers = isSelected ? selectedTiers.filter(t => t !== tier) : [...selectedTiers, tier];
+  const el = document.getElementById(`tier-${tier}`);
+  el.classList.toggle('active', !isSelected);
+  el.classList.remove('tier-pop'); void el.offsetWidth; el.classList.add('tier-pop');
+}
+
+
+// ── Type-ahead product suggestions (Generate Quote textarea) ─────────────────
+let suggestTimer = null;
+let suggestResults = [];
+let suggestActiveIdx = -1;
+
+const SUGGEST_STOPWORDS = new Set(['give','me','need','want','please','the','a','an','and',
+  'for','of','to','in','at','than','then','greater','less','under','above','over','below',
+  'between','with','also','some','more','around','about']);
+
+function currentWords(textarea) {
+  // Comma still splits distinct items when the user writes that way
+  // ("10 irons, 5 towels"), but real single-sentence requests often have no
+  // commas at all ("give me 90 Colander Dia under 1000") — so within
+  // whichever chunk we're in, narrow further to the last couple of words
+  // actively being typed, skipping quantities and filler/price words.
+  // Returns {phrase, start} — phrase for searching, start (offset into the
+  // full textarea value) for precise replacement on pick.
+  const cursor = textarea.selectionStart;
+  const upToCursor = textarea.value.slice(0, cursor);
+  const chunkStart = upToCursor.lastIndexOf(',') + 1;
+  const chunk = upToCursor.slice(chunkStart);
+  const tokenRe = /\S+/g;
+  const tokens = [];
+  let m;
+  while ((m = tokenRe.exec(chunk))) {
+    const clean = m[0].replace(/[^a-z0-9]/gi, '');
+    if (clean && !/^\d+$/.test(clean) && !SUGGEST_STOPWORDS.has(clean.toLowerCase())) {
+      tokens.push({index: m.index});
+    }
+  }
+  if (!tokens.length) return { phrase: '', start: cursor };
+  const picked = tokens.slice(-2);
+  const start = chunkStart + picked[0].index;
+  return { phrase: chunk.slice(picked[0].index).trim(), start };
+}
+
+function onPromptInput(e) {
+  clearTimeout(suggestTimer);
+  const { phrase } = currentWords(e.target);
+  if (phrase.length < 2) { hideSuggestions(); return; }
+  suggestTimer = setTimeout(() => fetchSuggestions(phrase), 200);
+}
+
+async function fetchSuggestions(term) {
+  const tier = selectedTiers[0] || '3star';
+  const isStale = () => currentWords(document.getElementById('req-prompt')).phrase !== term;
+  try {
+    let res = await fetch(`${API}/api/master-table/suggest?q=${encodeURIComponent(term)}&tier=${tier}`);
+    let data = res.ok ? await res.json() : [];
+    // A multi-word phrase ("Colander Dia") is more precise, but if it finds
+    // nothing, retry with just the last word — better a broader match than
+    // none at all.
+    const lastWord = term.split(/\s+/).pop();
+    if (!data.length && lastWord !== term) {
+      res = await fetch(`${API}/api/master-table/suggest?q=${encodeURIComponent(lastWord)}&tier=${tier}`);
+      data = res.ok ? await res.json() : [];
+    }
+    if (isStale()) return;  // textarea moved on while this request was in flight
+    renderSuggestions(data);
+  } catch (e) { hideSuggestions(); }
+}
+
+function renderSuggestions(results) {
+  suggestResults = results;
+  suggestActiveIdx = -1;
+  const box = document.getElementById('suggest-dropdown');
+  if (!results.length) { hideSuggestions(); return; }
+  box.innerHTML = `<div class="suggest-header">Matching products · lowest price first</div>` +
+    `<div class="suggest-list">` +
+    results.map((r, i) => `
+      <div class="suggest-opt" data-idx="${i}" style="animation-delay:${Math.min(i, 10) * 30}ms" onmousedown="event.preventDefault(); pickSuggestion(${i})">
+        <span class="so-name">${r.product}${r.brand ? ` <span class="so-brand">· ${r.brand}</span>` : ''}</span>
+        <span class="so-price">₹${(r.price||0).toLocaleString('en-IN')}</span>
+      </div>`).join('') +
+    `</div>`;
+  box.style.display = 'block';
+}
+
+function hideSuggestions() {
+  suggestResults = [];
+  suggestActiveIdx = -1;
+  document.getElementById('suggest-dropdown').style.display = 'none';
+}
+
+function pickSuggestion(i) {
+  const r = suggestResults[i];
+  if (!r) return;
+  const textarea = document.getElementById('req-prompt');
+  const cursor = textarea.selectionStart;
+  const before = textarea.value.slice(0, cursor);
+  const after = textarea.value.slice(cursor);
+
+  // Replace only the word actively being typed (same word currentSegment
+  // matched against) with the full product name — everything else in the
+  // sentence, before and after the cursor, stays exactly as written.
+  const chunkStart = before.lastIndexOf(',') + 1;
+  const chunk = before.slice(chunkStart);
+  const wordMatch = chunk.match(/(\S+)$/);
+  const wordStart = wordMatch ? chunkStart + chunk.length - wordMatch[1].length : cursor;
+
+  const newValue = before.slice(0, wordStart) + r.product + after;
+  textarea.value = newValue;
+  const newCursor = wordStart + r.product.length;
+  textarea.focus();
+  textarea.setSelectionRange(newCursor, newCursor);
+  hideSuggestions();
+}
+
+function onPromptKeydown(e) {
+  if (!suggestResults.length || document.getElementById('suggest-dropdown').style.display === 'none') return;
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    suggestActiveIdx = Math.min(suggestActiveIdx + 1, suggestResults.length - 1);
+    updateSuggestActive();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    suggestActiveIdx = Math.max(suggestActiveIdx - 1, 0);
+    updateSuggestActive();
+  } else if (e.key === 'Enter' && suggestActiveIdx >= 0) {
+    e.preventDefault();
+    pickSuggestion(suggestActiveIdx);
+  } else if (e.key === 'Escape') {
+    hideSuggestions();
+  }
+}
+
+function updateSuggestActive() {
+  document.querySelectorAll('#suggest-dropdown .suggest-opt').forEach((el, i) => {
+    el.classList.toggle('suggest-active', i === suggestActiveIdx);
+  });
+}
+
+const promptTextarea = document.getElementById('req-prompt');
+if (promptTextarea) {
+  promptTextarea.addEventListener('input', onPromptInput);
+  promptTextarea.addEventListener('keydown', onPromptKeydown);
+  promptTextarea.addEventListener('blur', () => setTimeout(hideSuggestions, 150));
+}
+
+// ── Variant Picker ───────────────────────────────────────────────────────────
+let vpGroups = [];   // holds last /api/variants response
+let vpClient = '';
+
+function renderVariantPicker(data) {
+  vpGroups  = data.groups || [];
+  vpClient  = data.client_name || '';
+
+  const found    = vpGroups.filter(g => g.found);
+  const notFound = vpGroups.filter(g => !g.found);
+
+  // Not-found banner
+  const nfBox = document.getElementById('vp-notfound-box');
+  if (notFound.length) {
+    nfBox.style.display = 'block';
+    document.getElementById('vp-notfound-items').textContent =
+      notFound.map(g => g.requested).join(', ');
+  } else {
+    nfBox.style.display = 'none';
+  }
+
+  document.getElementById('vp-summary').textContent =
+    `${found.length} product type(s) found — pick your preferred variant for each`;
+
+  const container = document.getElementById('vp-groups');
+  container.innerHTML = found.map((g, gi) => {
+    const multi = g.variants.length > 1;
+    const inputType = 'checkbox';   // allow picking multiple variants
+
+    const variantRows = g.variants.map((v, vi) => {
+      const priceINR = `₹${fmt(v.price||0, 2)}`;   // USD column removed — show as-is in INR
+      const priceClass = '';
+      const fileShort  = (v.file_name||'').replace(/QUOTATION FOR /i,'').substring(0,30);
+      const checked    = vi === 0 && (v.price||0) > 0 ? 'checked' : '';
+      const rowId      = `vp-${gi}-${vi}`;
+      return `
+        <label class="vp-variant-row ${checked ? 'selected' : ''}" id="row-${rowId}" onclick="vpToggle(this)">
+          <input type="${inputType}" name="vp-group-${gi}" id="${rowId}"
+            data-gi="${gi}" data-vi="${vi}" ${checked} onchange="vpToggle(this.closest('label'))">
+          <span class="vp-prod-name">${v.product||''}</span>
+          <span class="vp-price ${priceClass}">${priceINR}</span>
+          <span class="vp-file-tag">📁 ${fileShort}</span>
+        </label>`;
+    }).join('');
+
+    return `
+      <div class="vp-group">
+        <div class="vp-group-header">
+          <span class="vp-group-icon">📦</span>
+          <span class="vp-group-name">${g.requested}</span>
+          <span class="vp-group-badge vp-badge-found">${g.variants.length} variant${g.variants.length>1?'s':''}</span>
+        </div>
+        <div class="vp-variants">${variantRows}</div>
+        <div class="vp-qty-row">
+          <label>Qty requested:</label>
+          <input type="number" id="vp-qty-${gi}" value="${g.qty}" min="1">
+        </div>
+      </div>`;
+  }).join('');
+
+  show('variants');
+}
+
+function vpToggle(label) {
+  label.classList.toggle('selected', label.querySelector('input').checked);
+}
+
+function vpBestPrice() {
+  // For each group, check only the first variant (already sorted best price first)
+  vpGroups.forEach((g, gi) => {
+    g.variants.forEach((v, vi) => {
+      const inp = document.getElementById(`vp-${gi}-${vi}`);
+      const row = document.getElementById(`row-vp-${gi}-${vi}`);
+      if (!inp) return;
+      inp.checked = vi === 0 && (v.price||0) > 0;
+      row?.classList.toggle('selected', inp.checked);
+    });
+  });
+}
+
+async function buildQuotation() {
+  const selectedItems = [];
+  vpGroups.forEach((g, gi) => {
+    const qty = parseInt(document.getElementById(`vp-qty-${gi}`)?.value) || g.qty || 1;
+    g.variants.forEach((v, vi) => {
+      const inp = document.getElementById(`vp-${gi}-${vi}`);
+      if (inp && inp.checked) {
+        selectedItems.push({ ...v, qty, price_per_pc: v.price, sl_no: selectedItems.length + 1 });
+      }
+    });
+  });
+
+  if (!selectedItems.length) { alert('Please select at least one variant.'); return; }
+
+  const btn = document.querySelector('#sec-variants .btn-primary');
+  btn.disabled = true; btn.textContent = '⏳ Building...';
+
+  try {
+    const res = await fetch(`${API}/api/build-quotation`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ client_name: vpClient, items: selectedItems })
+    });
+    const q = await res.json();
+    if (!res.ok) { alert(q.detail || 'Build failed'); return; }
+    currentQuotation = q;
+    renderResult(q);
+    show('result');
+  } catch(e) {
+    alert('Error: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '📋 Build Quotation →';
+  }
+}
+
+// ── Generate ─────────────────────────────────────────────────────────────────
+async function generateQuote() {
+  const prompt = document.getElementById('req-prompt').value.trim();
+  const client = document.getElementById('client-name').value.trim();
+  if (!prompt) { alert('Please enter customer requirements.'); return; }
+  if (!selectedTiers.length) {
+    alert('Please select a price tier (3 Star or 4 Star) first.');
+    ['tier-3star', 'tier-4star'].forEach(id => {
+      const el = document.getElementById(id);
+      el.classList.remove('tier-shake'); void el.offsetWidth; el.classList.add('tier-shake');
+    });
+    return;
+  }
+
+  const btn = document.getElementById('gen-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loader"></span> Generating...';
+  document.getElementById('gen-status').innerHTML = '<div class="alert alert-info">AI is analyzing requirements and matching products...</div>';
+
+  try {
+    const selectedCatalogs = getSelectedCatalogs();
+    document.getElementById('gen-status').innerHTML = '<div class="alert alert-info">🤖 AI is matching your requirements to the catalog...</div>';
+    const res = await fetch(`${API}/api/smart-generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, client_name: client, catalogs: selectedCatalogs, tiers: selectedTiers })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Generation failed');
+    currentQuotation = data;
+    renderResult(data);
+    show('result');
+    const nf = (data.not_found||[]).length;
+    document.getElementById('gen-status').innerHTML =
+      `<div class="alert alert-success">✅ Quotation ready — ${(data.items||[]).length} item(s) matched.${nf ? ` ⚠️ ${nf} not found.` : ''}</div>`;
+  } catch (e) {
+    document.getElementById('gen-status').innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span>✨</span> Generate Quotation';
+  }
+}
+
+// ── Generate from an uploaded client BOQ (requirement) file ───────────────────
+// File-based counterpart to generateQuote() — same Master Table matching,
+// same tier selection, just a client's Excel instead of typed text.
+const boqReqDropZone  = document.getElementById('boq-req-drop-zone');
+const boqReqFileInput = document.getElementById('boq-req-file-input');
+let boqReqSelectedFile = null;
+
+boqReqDropZone.addEventListener('dragover', e => { e.preventDefault(); boqReqDropZone.classList.add('drag'); });
+boqReqDropZone.addEventListener('dragleave', () => boqReqDropZone.classList.remove('drag'));
+boqReqDropZone.addEventListener('drop', e => {
+  e.preventDefault(); boqReqDropZone.classList.remove('drag');
+  setBoqReqFile(e.dataTransfer.files[0]);
+});
+boqReqFileInput.addEventListener('change', e => setBoqReqFile(e.target.files[0]));
+
+function setBoqReqFile(file) {
+  if (!file) return;
+  boqReqSelectedFile = file;
+  boqReqDropZone.querySelector('p').innerHTML = `<strong>${file.name}</strong> selected`;
+  document.getElementById('gen-boq-btn').disabled = false;
+  document.getElementById('check-boq-btn').disabled = false;
+  document.getElementById('gen-boq-status').innerHTML = '';
+  document.getElementById('boq-coverage').innerHTML = '';
+}
+
+// ── Phase A: show how each column will be read, before anything is imported ──
+// The parser used to decide silently: the Nilkamal sheet's "PRICES IN INR"
+// went unrecognised and 493 products imported with no price at all, which
+// only surfaced days later. This makes that decision visible at scan time.
+let mappableFields = [];   // [{field,label}] — loaded once, used by every picker
+
+async function ensureMappableFields() {
+  if (mappableFields.length) return mappableFields;
+  try {
+    const res = await fetch(`${API}/api/master-table/column-mappings`);
+    if (res.ok) mappableFields = (await res.json()).fields || [];
+  } catch (e) { /* picker falls back to a plain list below */ }
+  return mappableFields;
+}
+
+function renderColumnReport(cols) {
+  if (!cols || !cols.columns || !cols.columns.length) return '';
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  const bad = cols.columns.filter(c => !c.recognised).length;
+
+  const picker = (c, i) => {
+    if (!isAdmin) return `<span class="colmap-none">not recognised — ignored</span>`;
+    const opts = mappableFields.map(f =>
+      `<option value="${f.field}"${f.field === c.suggested ? ' selected' : ''}>${f.label}</option>`).join('');
+    // A suggestion is pre-selected but never applied on its own — the admin
+    // still has to press Teach. Guessing a price column silently is how a
+    // whole catalog gets mispriced.
+    return `
+      <div class="colmap-fix">
+        <select id="cmsel-${i}" class="colmap-select">
+          <option value="">— ignore this column —</option>${opts}
+        </select>
+        <button class="btn btn-sm btn-primary" onclick="teachColumn(${i}, '${String(c.header).replace(/'/g, "\\'")}')">Teach</button>
+        ${c.suggested ? `<span class="colmap-why">suggested: ${c.reason}</span>` : ''}
+      </div>`;
+  };
+
+  const rows = cols.columns.map((c, i) => `
+    <tr class="${c.recognised ? '' : 'colmap-warn'}" id="cmrow-${i}">
+      <td class="colmap-head">${c.header}</td>
+      <td class="colmap-tick">${c.recognised ? '✓' : '✕'}</td>
+      <td>${c.recognised
+            ? `<span class="colmap-field">${c.label || c.field}</span>${
+                c.source === 'learned' ? ' <span class="colmap-learned">learned</span>' : ''}`
+            : picker(c, i)}</td>
+      <td class="colmap-sample">${c.sample ? String(c.sample).slice(0, 44) : '—'}</td>
+    </tr>`).join('');
+
+  return `
+    <div class="colmap">
+      <div class="colmap-bar">
+        <strong>How your columns will be read</strong>
+        <span class="colmap-ok">✓ ${cols.recognised_count} matched</span>
+        ${bad ? `<span class="colmap-bad">✕ ${bad} not recognised</span>` : ''}
+        <span class="mbp-hint">sheet "${cols.sheet}", header on row ${cols.header_row}</span>
+      </div>
+      <div class="table-wrap" style="max-height:300px;overflow:auto;">
+        <table>
+          <thead><tr><th>Column in your file</th><th></th><th>Understood as</th><th>First value</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// Teach the system what one unrecognised header means. The lesson persists,
+// so the next file using that wording maps itself (Phase B).
+async function teachColumn(idx, header) {
+  const sel = document.getElementById(`cmsel-${idx}`);
+  const row = document.getElementById(`cmrow-${idx}`);
+  if (!sel || !row) return;
+  const field = sel.value;
+  const btn = row.querySelector('button');
+  btn.disabled = true; btn.textContent = '...';
+  try {
+    const res = await fetch(`${API}/api/master-table/confirm-mapping`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ header, field })
+    });
+    const d = await res.json();
+    if (!res.ok) {
+      btn.disabled = false; btn.textContent = 'Teach';
+      row.insertAdjacentHTML('afterend',
+        `<tr><td colspan="4" class="colmap-msg err">${apiErr(d, 'Could not save')}</td></tr>`);
+      return;
+    }
+    row.classList.remove('colmap-warn');
+    row.querySelector('.colmap-tick').textContent = '✓';
+    row.querySelector('td:nth-child(3)').innerHTML = field
+      ? `<span class="colmap-field">${sel.options[sel.selectedIndex].text}</span> <span class="colmap-learned">learned</span>`
+      : `<span class="colmap-none">ignored on purpose</span>`;
+    row.insertAdjacentHTML('afterend',
+      `<tr><td colspan="4" class="colmap-msg ok">${d.message} — re-scan the file to apply it.</td></tr>`);
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Teach';
+  }
+}
+
+// ── Motive 3: does the Master Table already cover this client's BOQ? ─────────
+// Read-only — reports what we stock and what we don't. Nothing is written and
+// no quotation is created; adding the missing products is a separate,
+// explicit admin action below.
+let boqMissingItems = [];
+
+async function checkBoqCoverage() {
+  if (!boqReqSelectedFile) return;
+  const btn = document.getElementById('check-boq-btn');
+  const out = document.getElementById('boq-coverage');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loader"></span> Checking...';
+  out.innerHTML = '<div class="alert alert-info">Matching every BOQ line against the Master Table...</div>';
+
+  const fd = new FormData();
+  fd.append('file', boqReqSelectedFile);
+  try {
+    const res = await fetch(`${API}/api/master-table/check-boq`, { method: 'POST', body: fd });
+    const d = await res.json();
+    if (!res.ok) throw new Error(apiErr(d, 'Coverage check failed'));
+    boqMissingItems = d.missing || [];
+    renderBoqCoverage(d);
+  } catch (e) {
+    out.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+  }
+  btn.disabled = false;
+  btn.innerHTML = '🔍 Check what we stock';
+}
+
+function renderBoqCoverage(d) {
+  const out = document.getElementById('boq-coverage');
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  const pct = d.coverage_pct;
+  const bar = `
+    <div class="cov-bar"><div class="cov-fill" style="width:${pct}%"></div></div>
+    <div class="cov-legend">
+      <span><b>${d.total}</b> lines in the BOQ</span>
+      <span class="cov-ok">✔ ${d.found_count} we stock</span>
+      <span class="cov-miss">✕ ${d.missing_count} we don't</span>
+      <span class="cov-pct">${pct}% covered</span>
+    </div>`;
+
+  let missing = '';
+  if (d.missing_count) {
+    missing = `
+      <div class="cov-missing">
+        <div class="cov-missing-head">
+          <strong>Not in the Master Table (${d.missing_count})</strong>
+          ${isAdmin ? `<button class="btn btn-sm btn-primary" id="add-missing-btn"
+              onclick="addMissingToMaster()">➕ Add all to Master Table</button>` : ''}
+        </div>
+        <div class="table-wrap" style="max-height:320px;overflow:auto;">
+          <table><thead><tr><th>Product</th><th>Model</th><th>Brand</th><th>Specification</th><th>Qty</th></tr></thead>
+          <tbody>${d.missing.map(m => `<tr>
+            <td><strong>${m.product}</strong></td><td>${m.original_model || '—'}</td>
+            <td>${m.brand || '—'}</td><td style="font-size:.8rem">${m.specification || '—'}</td>
+            <td>${m.qty}</td></tr>`).join('')}</tbody></table>
+        </div>
+        ${isAdmin ? '' : '<p class="mbp-hint">Only an admin can add products to the Master Table.</p>'}
+      </div>`;
+  } else {
+    missing = `<div class="alert alert-success">Every line in this BOQ is already in the Master Table.</div>`;
+  }
+  out.innerHTML = bar + missing;
+}
+
+async function addMissingToMaster() {
+  if (!boqMissingItems.length) return;
+  const btn = document.getElementById('add-missing-btn');
+  btn.disabled = true; btn.textContent = 'Adding...';
+  try {
+    const res = await fetch(`${API}/api/master-table/add-from-boq`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        file_name: `Added from BOQ — ${boqReqSelectedFile ? boqReqSelectedFile.name : 'client BOQ'}`,
+        items: boqMissingItems
+      })
+    });
+    const d = await res.json();
+    const box = document.getElementById('boq-coverage');
+    if (!res.ok) {
+      box.innerHTML += `<div class="alert alert-error">${apiErr(d, 'Add failed')}</div>`;
+    } else {
+      box.innerHTML += `<div class="alert alert-success">${d.message}</div>`;
+      loadMasterTable();
+    }
+  } catch (e) {
+    document.getElementById('boq-coverage').innerHTML += `<div class="alert alert-error">${e.message}</div>`;
+  }
+  btn.disabled = false; btn.textContent = '➕ Add all to Master Table';
+}
+
+async function generateFromBoqFile() {
+  if (!boqReqSelectedFile) return;
+  if (!selectedTiers.length) {
+    alert('Please select a price tier (3 Star or 4 Star) first.');
+    ['tier-3star', 'tier-4star'].forEach(id => {
+      const el = document.getElementById(id);
+      el.classList.remove('tier-shake'); void el.offsetWidth; el.classList.add('tier-shake');
+    });
+    return;
+  }
+  const client = document.getElementById('client-name').value.trim();
+  const btn = document.getElementById('gen-boq-btn');
+  const status = document.getElementById('gen-boq-status');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loader"></span> Generating...';
+  status.innerHTML = '<div class="alert alert-info">🤖 Reading the file and matching against the Master Table...</div>';
+
+  const fd = new FormData();
+  fd.append('file', boqReqSelectedFile);
+  fd.append('client_name', client);
+  fd.append('tiers', selectedTiers.join(','));
+
+  try {
+    const res = await fetch(`${API}/api/smart-generate-from-boq`, { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Generation failed');
+    currentQuotation = data;
+    renderResult(data);
+    show('result');
+    const nf = (data.not_found || []).length;
+    status.innerHTML = `<div class="alert alert-success">✅ Quotation ready — ${(data.items||[]).length} item(s) matched.${nf ? ` ⚠️ ${nf} not found.` : ''}</div>`;
+  } catch (e) {
+    status.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '📤 Generate from BOQ';
+  }
+}
+
+// Add forgotten items to the CURRENT quote (from the result screen)
+async function addToQuote() {
+  if (!currentQuotation) return;
+  const inp = document.getElementById('add-item-input');
+  const prompt = (inp.value || '').trim();
+  if (!prompt) return;
+  const btn = document.getElementById('add-item-btn');
+  const status = document.getElementById('add-item-status');
+  const orig = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<span class="loader"></span> Adding...';
+  status.innerHTML = 'Searching catalogues…';
+  try {
+    const res = await fetch(`${API}/api/smart-generate`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, client_name: currentQuotation.client_name || '', catalogs: [] })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Add failed');
+    const newItems = data.items || [];
+    const nf = data.not_found || [];
+    if (!newItems.length) {
+      status.innerHTML = `<span style="color:#f5a097;">No matching product found${nf.length ? ': ' + nf.join(', ') : ''}.</span>`;
+    } else {
+      currentQuotation.items = (currentQuotation.items || []).concat(newItems);
+      currentQuotation.items.forEach((it, i) => it.sl_no = i + 1);
+      renderResult(currentQuotation);
+      status.innerHTML = `<span style="color:#9fe1cb;">✅ Added ${newItems.length} item(s) to the quote.${nf.length ? ' ⚠️ Not found: ' + nf.join(', ') : ''}</span>`;
+      inp.value = '';
+    }
+  } catch (e) {
+    status.innerHTML = `<span style="color:#f5a097;">${e.message}</span>`;
+  } finally {
+    btn.disabled = false; btn.innerHTML = orig;
+  }
+}
+
+// ── Result ───────────────────────────────────────────────────────────────────
+function fmt(n, dec=0) { return n.toLocaleString('en-IN', {maximumFractionDigits: dec}); }
+
+function renderItemRow(item, idx, show3, show4, hasBoqPricing) {
+  const isINR   = (item.price_currency || 'INR') === 'INR';
+  const qty     = item.qty || 0;
+  const price   = item.price_per_pc || 0;
+  const gst     = item.gst_pct ?? 18;  // ?? not || — a genuine 0% GST must stay 0%
+
+  // Always convert to INR
+  const priceInr = isINR ? price : price * usdToInr;
+  const amtInr   = qty * priceInr;
+  const gstVal   = amtInr * gst / 100;
+  // Two different profit meanings, depending on where the quote came from:
+  //  • BOQ flow  — what the client's BOQ said they'd pay minus our price.
+  //  • Quotation flow — real margin: our selling price minus the Master
+  //    Table cost. boq_price is 0 here, so the BOQ formula would render
+  //    every line as a large negative number.
+  // Both are line TOTALS (× qty), like Amount — not per-unit figures.
+  const boqPrice = item.boq_price || 0;
+  const cost     = item.cost || 0;
+  const profit   = hasBoqPricing ? qty * (boqPrice - priceInr)
+                                 : qty * (priceInr - cost);
+
+  item._priceInr = priceInr;
+  item._amtInr   = amtInr;
+  item._gstVal   = gstVal;
+  item._cost     = cost;
+  item._profit   = profit;
+
+  const activeTier = item.active_tier || (item.tiers && item.tiers[0]) || '3star';
+
+  const hasVariants = item._variants && item._variants.length > 1;
+  const switchBtn   = hasVariants
+    ? `<button class="btn-switch" onclick="switchVariant(${idx})" style="display:block;margin-top:4px;">🔄 Switch</button>`
+    : '';
+
+  // Image cell — manually uploaded image first, else the catalog image (served
+  // from disk via the API, never shipped inline in the JSON response)
+  const imgSrc = item.local_image || (item.image_path ? `${API}/api/image/${item.image_path}` : '');
+  const imgCell = imgSrc
+    ? `<img src="${imgSrc}" style="width:84px;height:66px;object-fit:contain;border-radius:4px;border:1px solid #ddd;display:block;margin:0 auto;cursor:zoom-in;" onclick="showImageLightbox('${imgSrc.replace(/'/g,"\\'")}')" title="Click to enlarge">
+       <span onclick="reAddImage(${idx})" style="cursor:pointer;font-size:.65rem;color:var(--primary);display:block;text-align:center;margin-top:2px;">✎ change</span>`
+    : `<label style="cursor:pointer;font-size:.72rem;color:var(--primary);display:block;text-align:center;padding:4px;">
+         📷 Add<br>Image
+         <input type="file" accept="image/*" style="display:none" onchange="handleRowImage(${idx},this)">
+       </label>`;
+
+  return `<tr data-idx="${idx}">
+    <td style="text-align:center;">${item.sl_no||idx+1}</td>
+    <td style="width:96px;text-align:center;">${imgCell}</td>
+    <td><strong>${item.product||''}</strong>${switchBtn}</td>
+    <td><input type="number" class="qty-input" value="${qty}" onchange="recalcRow(${idx})" style="width:60px"></td>
+    <td style="font-size:.8rem">${item.model_no||''}</td>
+    <td>${item.brand||''}</td>
+    <td><div class="spec-text">${(item.specification||'').replace(/\\n/g,'\n')}</div></td>
+    <td>${item.hsn_code||''}</td>
+    ${show3 ? `<td class="col-3star">
+      <div class="tier-price-cell">
+        <span class="tier-tick ${activeTier==='3star'?'checked':''}" onclick="setRowTier(${idx},'3star')">${activeTier==='3star'?'✓':''}</span>
+        <span class="tier-price-text"><span class="tier-price-inr">₹${(item.price_3star||0).toLocaleString('en-IN')}</span><span class="tier-price-usd">$${(item.price_3star_usd||0).toFixed(2)}</span></span>
+      </div>
+    </td>` : ''}
+    ${show4 ? `<td class="col-4star">
+      <div class="tier-price-cell">
+        <span class="tier-tick ${activeTier==='4star'?'checked':''}" onclick="setRowTier(${idx},'4star')">${activeTier==='4star'?'✓':''}</span>
+        <span class="tier-price-text"><span class="tier-price-inr">₹${(item.price_4star||0).toLocaleString('en-IN')}</span><span class="tier-price-usd">$${(item.price_4star_usd||0).toFixed(2)}</span></span>
+      </div>
+    </td>` : ''}
+    <td><input type="number" step="0.01" class="price-input" value="${(Math.round(priceInr*100)/100)}" onchange="recalcRow(${idx})" style="width:100px"></td>
+    ${hasBoqPricing ? `<td class="boq-price-cell">₹${fmt(boqPrice, 2)}</td>
+    <td class="profit-cell" style="color:${profit >= 0 ? '#1e9e56' : '#d64545'};font-weight:600;">₹${fmt(profit)}</td>` : ''}
+    <td class="amount-cell">₹${fmt(amtInr)}</td>
+    <td><input type="number" class="gst-input" value="${gst}" onchange="recalcRow(${idx})" style="width:50px"></td>
+    <td class="gst-val-cell">₹${fmt(gstVal)}</td>
+    <td><button class="btn btn-sm btn-danger" onclick="removeRow(${idx})">✕</button></td>
+  </tr>`;
+}
+
+// ── Switch Variant ───────────────────────────────────────────────────────────
+function switchVariant(idx) {
+  // Close any open panel first
+  document.querySelectorAll('.switch-panel').forEach(p => p.remove());
+
+  const item = currentQuotation && currentQuotation.items[idx];
+  if (!item || !item._variants || item._variants.length <= 1) return;
+
+  const row = document.querySelector(`#items-body tr[data-idx="${idx}"]`);
+  if (!row) return;
+  const colCount = row.cells.length;
+
+  const cards = item._variants.map((v, vi) => {
+    const isCur    = v.product === item.product && String(v.price) === String(item.price_per_pc);
+    const priceInr = v.price||0;   // USD column removed — show as-is in INR
+    const priceStr = `₹${priceInr.toLocaleString('en-IN', {maximumFractionDigits:2})}`;
+    const fileShort = (v.file_name||'').replace(/QUOTATION FOR /i,'').substring(0,28);
+    const thumbSrc = v.image_path ? `${API}/api/image/${v.image_path}` : '';
+    const thumb = thumbSrc
+      ? `<img class="sc-thumb-img" src="${thumbSrc}" alt="">`
+      : `<div class="sc-thumb-placeholder">📦</div>`;
+    const thumbClick = thumbSrc
+      ? `onclick="event.stopPropagation(); showImageLightbox('${thumbSrc}')" title="Click to enlarge"`
+      : '';
+    return `
+      <div class="switch-card ${isCur?'active':''}" onclick="applySwitch(${idx},${vi},this)" style="animation-delay:${vi * 35}ms">
+        <div class="sc-thumb" ${thumbClick}>${thumb}</div>
+        <div class="sc-body">
+          <div class="sc-name">${v.product||''}</div>
+          <div class="sc-price">${priceStr}</div>
+          <div class="sc-file">📁 ${fileShort}</div>
+          ${isCur ? '<div class="sc-tick">✓ Currently selected</div>' : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  const panel = document.createElement('tr');
+  panel.className = 'switch-panel';
+  panel.innerHTML = `<td colspan="${colCount}">
+    <div class="switch-panel-inner">
+      <div class="switch-panel-title">🔄 Switch Variant — "${item._requested || item.product}"</div>
+      <div class="switch-cards">${cards}</div>
+      <button onclick="document.querySelectorAll('.switch-panel').forEach(p=>p.remove())"
+        style="margin-top:10px;background:none;border:none;cursor:pointer;font-size:.78rem;color:var(--muted);">
+        ✕ Close
+      </button>
+    </div>
+  </td>`;
+  row.insertAdjacentElement('afterend', panel);
+}
+
+function applySwitch(idx, vi, cardEl) {
+  const item = currentQuotation && currentQuotation.items[idx];
+  if (!item || !item._variants) return;
+  const v = item._variants[vi];
+  if (!v) return;
+  // Apply selected variant to item
+  item.product       = v.product      || item.product;
+  item.price_per_pc  = v.price        || 0;
+  item.price_currency= v.price_currency || 'INR';
+  item.brand         = v.brand        || '';
+  item.model_no      = v.model_no     || '';
+  item.description   = v.description  || '';
+  item.specification = v.specification|| '';
+  item.hsn_code      = v.hsn_code     || '';
+  item.image_path     = v.image_path  || '';
+  item.local_image   = '';            // use the variant's catalog image
+  item.price_3star     = v.price_3star     || 0;
+  item.price_3star_usd = v.price_3star_usd || 0;
+  item.price_4star     = v.price_4star     || 0;
+  item.price_4star_usd = v.price_4star_usd || 0;
+
+  const finish = () => {
+    document.querySelectorAll('.switch-panel').forEach(p => p.remove());
+    renderResult(currentQuotation);
+  };
+  if (cardEl) {
+    cardEl.classList.add('picked');
+    setTimeout(finish, 220);   // let the pick animation play before the panel closes
+  } else {
+    finish();
+  }
+}
+
+function amtWords(n) {
+  const a=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
+  const b=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
+  function w(n){if(n===0)return '';if(n<20)return a[n];if(n<100)return b[Math.floor(n/10)]+(n%10?' '+a[n%10]:'');if(n<1e3)return a[Math.floor(n/100)]+' Hundred'+(n%100?' '+w(n%100):'');if(n<1e5)return w(Math.floor(n/1e3))+' Thousand'+(n%1e3?' '+w(n%1e3):'');if(n<1e7)return w(Math.floor(n/1e5))+' Lakh'+(n%1e5?' '+w(n%1e5):'');return w(Math.floor(n/1e7))+' Crore'+(n%1e7?' '+w(n%1e7):'');}
+  return (w(Math.round(n))||'Zero')+' Rupees Only';
+}
+
+function renderResult(q) {
+  document.getElementById('result-empty').style.display = 'none';
+  document.getElementById('result-content').style.display = 'block';
+
+  // Fill document header
+  const refNo = q.ref_no || '—';
+  document.getElementById('stat-ref').textContent  = '📄 ' + refNo;
+  document.getElementById('doc-ref').textContent   = refNo;
+  document.getElementById('doc-client').textContent = q.client_name || '—';
+  const now = new Date();
+  const fd  = d => d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+  document.getElementById('doc-date').textContent  = fd(now);
+  const vd = new Date(now); vd.setDate(vd.getDate()+30);
+  document.getElementById('doc-valid').textContent = fd(vd);
+
+  // Not-found banner
+  const nfBanner = document.getElementById('not-found-banner');
+  const nfList   = q.not_found || [];
+  if (nfList.length && nfBanner) {
+    nfBanner.style.display = 'block';
+    document.getElementById('not-found-items').textContent = nfList.join(', ');
+  } else if (nfBanner) {
+    nfBanner.style.display = 'none';
+  }
+
+  const items = q.items || [];
+
+  // Tier columns are only ever rendered when their checkbox is checked — no
+  // display:none hiding. A hidden-but-still-in-the-DOM column can leave the
+  // browser's table column model out of sync with the footer's colspan math
+  // (a real gap was measured this way once already), so the column simply
+  // doesn't exist in the markup when it's toggled off.
+  const show3 = document.getElementById('show-3star-col') ? document.getElementById('show-3star-col').checked : true;
+  const show4 = document.getElementById('show-4star-col') ? document.getElementById('show-4star-col').checked : true;
+
+  // BOQ Price / Profit columns only appear for a quotation generated from an
+  // uploaded client BOQ that actually had its own pricing — a manually typed
+  // quote has nothing to compare our Master Table price against.
+  const hasBoqPricing = !!q.has_boq_pricing;
+
+  // Single unified header — all in INR
+  const thead = document.querySelector('#items-table thead tr');
+  thead.innerHTML = `<th style="width:40px">SL</th><th style="width:96px">Image</th><th>Product</th><th style="width:56px">QTY</th>
+    <th>Model No</th><th>Brand</th><th>Specification</th>
+    <th>HSN</th>${show3 ? '<th class="col-3star" style="width:110px">⭐ 3★ Price</th>' : ''}${show4 ? '<th class="col-4star" style="width:110px">⭐⭐ 4★ Price</th>' : ''}
+    <th style="width:90px">Price/Pc (₹)</th>${hasBoqPricing ? '<th style="width:100px">BOQ Price (₹)</th><th style="width:90px">Profit (₹)</th>' : ''}<th style="width:100px">Amount (₹)</th><th style="width:56px">GST%</th><th style="width:100px">GST Val (₹)</th><th style="width:40px"></th>`;
+
+  // Cost/Profit are deliberately NOT shown on a typed quotation — that view is
+  // for checking what we stock, not for margin analysis. They appear only on a
+  // BOQ-sourced quote, where BOQ Price gives something real to compare against.
+  const colSpan = 13 + (show3?1:0) + (show4?1:0) + (hasBoqPricing?2:0);
+  let html = '';
+
+  items.forEach(item => { html += renderItemRow(item, items.indexOf(item), show3, show4, hasBoqPricing); });
+
+  // Totals
+  const subTotal = items.reduce((s,i) => s+(i._amtInr||0), 0);
+  const gstTotal = items.reduce((s,i) => s+(i._gstVal||0), 0);
+  const profitTotal = items.reduce((s,i) => s+(i._profit||0), 0);
+  const grandTotal = subTotal + gstTotal;
+  const tdR = `style="text-align:right;padding-right:16px;font-weight:700;"`;
+
+  // Trailing (non-label) footer cells: Amount, GST%, GST Val, delete — plus
+  // Profit only when BOQ pricing is present. Label colspan is whatever's left,
+  // so the two rows always sum to the table's real column count regardless of
+  // which optional columns are showing.
+  const trailingCols = 4 + (hasBoqPricing ? 1 : 0);
+  const labelColspan = colSpan - trailingCols;
+
+  html += `<tr class="quot-subrow" style="background:#eaf4fb;font-weight:700;">
+    <td colspan="${labelColspan}" ${tdR}>SUB TOTAL</td>
+    ${hasBoqPricing ? `<td id="foot-profit">₹${fmt(profitTotal)}</td>` : ''}
+    <td id="foot-sub">₹${fmt(subTotal)}</td><td></td><td id="foot-gst">₹${fmt(gstTotal)}</td><td></td>
+  </tr>`;
+  html += `<tr class="quot-grandrow" style="background:#1a3a6b;color:#fff;font-weight:700;">
+    <td colspan="${labelColspan}" ${tdR} style="text-align:right;padding-right:16px;font-weight:700;color:#fff;">GRAND TOTAL (incl. GST)</td>
+    <td colspan="${trailingCols}" id="foot-grand" style="font-size:1.05rem;color:#fff;">₹${fmt(grandTotal)}</td>
+  </tr>`;
+
+  document.getElementById('items-body').innerHTML = html;
+  document.getElementById('items-foot').innerHTML = '';
+
+  // Update grand total
+  const allInrGrand = items.reduce((s,i) => s+(i._amtInr||0)+(i._gstVal||0), 0);
+  document.getElementById('stat-total').textContent = '₹ ' + fmt(allInrGrand);
+  const wEl = document.getElementById('doc-words');
+  if (wEl) wEl.textContent = amtWords(allInrGrand);
+
+  selectedRating = null;
+  document.getElementById('btn-good').classList.remove('selected');
+  document.getElementById('btn-bad').classList.remove('selected');
+  document.getElementById('feedback-details').style.display = 'none';
+  document.getElementById('feedback-status').innerHTML = '';
+}
+
+function toggleTierColumn() {
+  if (!currentQuotation) return;
+  renderResult(currentQuotation);
+}
+
+function setRowTier(idx, tier) {
+  if (!currentQuotation) return;
+  const item = currentQuotation.items[idx];
+  if (!item) return;
+  item.active_tier = tier;
+  item.price_per_pc = tier === '3star' ? (item.price_3star||0) : (item.price_4star||0);
+  item.price_currency = 'INR';
+  renderResult(currentQuotation);
+}
+
+function recalcRow(idx) {
+  if (!currentQuotation) return;
+  const item = currentQuotation.items[idx];
+  if (!item) return;
+  const row = document.querySelector('#items-body tr[data-idx="' + idx + '"]');
+  if (!row) return;
+  const isINR  = (item.price_currency||'INR') === 'INR';
+  const qty    = parseFloat(row.querySelector('.qty-input').value) || 0;
+  const priceInr = parseFloat(row.querySelector('.price-input').value) || 0;
+  const gst    = parseFloat(row.querySelector('.gst-input').value) || 0;
+  const amtInr = qty * priceInr;
+  const gstVal = amtInr * gst / 100;
+  // Must mirror renderItemRow's rule, or editing a row would flip it back to
+  // the BOQ formula and show a negative margin on a typed quote.
+  const boqPrice = item.boq_price || 0;
+  const cost     = item.cost || 0;
+  const hasBoqPricing = !!(currentQuotation && currentQuotation.has_boq_pricing);
+  const profit   = hasBoqPricing ? qty * (boqPrice - priceInr)
+                                 : qty * (priceInr - cost);
+
+  row.querySelector('.amount-cell').textContent  = '₹' + fmt(amtInr);
+  row.querySelector('.gst-val-cell').textContent = '₹' + fmt(gstVal);
+  const profitCell = row.querySelector('.profit-cell');
+  if (profitCell) {
+    profitCell.textContent = '₹' + fmt(profit);
+    profitCell.style.color = profit >= 0 ? '#1e9e56' : '#d64545';
+  }
+
+  item.qty = qty; item.price_per_pc = isINR ? priceInr : priceInr / usdToInr;
+  item.gst_pct = gst; item._amtInr = amtInr; item._gstVal = gstVal; item._profit = profit;
+  updateGrandTotal();
+}
+
+function renderFoot(items) {}
+
+function updateGrandTotal() {
+  if (!currentQuotation) return;
+  const items = currentQuotation.items || [];
+  const subTotal = items.reduce((s,i) => s+(i._amtInr||0), 0);
+  const gstTotal = items.reduce((s,i) => s+(i._gstVal||0), 0);
+  const profitTotal = items.reduce((s,i) => s+(i._profit||0), 0);
+  const grand = subTotal + gstTotal;
+  // update the in-document SUB TOTAL / GRAND TOTAL rows too (not just the footer)
+  const fs = document.getElementById('foot-sub');   if (fs) fs.textContent = '₹' + fmt(subTotal);
+  const fg = document.getElementById('foot-gst');   if (fg) fg.textContent = '₹' + fmt(gstTotal);
+  const fp = document.getElementById('foot-profit'); if (fp) fp.textContent = '₹' + fmt(profitTotal);
+  const fgr = document.getElementById('foot-grand'); if (fgr) fgr.textContent = '₹' + fmt(grand);
+  document.getElementById('stat-total').textContent = '₹ ' + fmt(grand);
+  const wEl = document.getElementById('doc-words');
+  if (wEl) wEl.textContent = amtWords(grand);
+}
+
+// ── Image Lightbox (click image to enlarge) ──────────────────────────────────
+function showImageLightbox(src) {
+  let ov = document.getElementById('img-lightbox');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'img-lightbox';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;z-index:9999;cursor:zoom-out;';
+    ov.onclick = () => ov.style.display = 'none';
+    ov.innerHTML = '<img style="max-width:90vw;max-height:90vh;width:auto;height:auto;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.5);background:#fff;">';
+    document.body.appendChild(ov);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') ov.style.display = 'none'; });
+  }
+  ov.querySelector('img').src = src;
+  ov.style.display = 'flex';
+}
+
+function handleRowImage(idx, input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    if (currentQuotation && currentQuotation.items[idx]) {
+      currentQuotation.items[idx].local_image = e.target.result;
+    }
+    // Re-render just that row's image cell
+    const row = document.querySelector(`#items-body tr[data-idx="${idx}"]`);
+    if (row && row.cells[1]) {
+      row.cells[1].innerHTML = `<img src="${e.target.result}" style="width:84px;height:66px;object-fit:contain;border-radius:4px;border:1px solid #ddd;display:block;margin:0 auto;cursor:zoom-in;" onclick="showImageLightbox('${e.target.result.replace(/'/g,"\\'")}')" title="Click to enlarge">
+         <span onclick="reAddImage(${idx})" style="cursor:pointer;font-size:.65rem;color:var(--primary);display:block;text-align:center;margin-top:2px;">✎ change</span>`;
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function reAddImage(idx) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*';
+  inp.onchange = () => handleRowImage(idx, inp);
+  inp.click();
+}
+
+function removeRow(idx) {
+  if (!currentQuotation) return;
+  currentQuotation.items.splice(idx, 1);
+  renderResult(currentQuotation);
+}
+
+async function saveEdits(silent) {
+  if (!currentQuotation) return false;
+  const res = await fetch(`${API}/api/quotations/${currentQuotation.id}`, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({items: currentQuotation.items, client_name: currentQuotation.client_name})
+  });
+  if (!silent) { if (res.ok) alert('Changes saved!'); else alert('Save failed.'); }
+  return res.ok;
+}
+
+async function downloadXLS() {
+  if (!currentQuotation) return;
+  // Save the current (edited) values first so the file matches the screen.
+  await saveEdits(true);
+  window.open(`${API}/api/download/${currentQuotation.id}`);
+}
+
+// ── Feedback ─────────────────────────────────────────────────────────────────
+function setRating(val) {
+  selectedRating = val;
+  document.getElementById('btn-good').classList.toggle('selected', val === 'good');
+  document.getElementById('btn-bad').classList.toggle('selected', val === 'not_good');
+  document.getElementById('feedback-details').style.display = val === 'not_good' ? 'block' : 'none';
+  if (val === 'good') submitFeedback();
+}
+
+async function submitFeedback() {
+  if (!currentQuotation || !selectedRating) return;
+  const missing = document.getElementById('feedback-missing').value;
+  const res = await fetch(`${API}/api/feedback`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({quotation_id: currentQuotation.id, rating: selectedRating, missing_items: missing})
+  });
+  const data = await res.json();
+  document.getElementById('feedback-status').innerHTML = `<div class="alert alert-${res.ok?'success':'error'}">${res.ok ? data.message : apiErr(data)}</div>`;
+  if (selectedRating === 'good') loadRepository();
+}
+
+// ── Repository ────────────────────────────────────────────────────────────────
+async function loadRepository() {
+  const [approved, all] = await Promise.all([
+    fetch(`${API}/api/quotations?status=approved`).then(r=>r.json()),
+    fetch(`${API}/api/quotations`).then(r=>r.json())
+  ]);
+  const drafts = all.filter(q => q.status === 'draft');
+
+  document.getElementById('repo-list').innerHTML = approved.length
+    ? approved.map(q => repoCard(q, 'approved')).join('')
+    : '<p style="color:var(--muted);">No approved quotations yet.</p>';
+
+  document.getElementById('drafts-list').innerHTML = drafts.length
+    ? drafts.map(q => repoCard(q, 'draft')).join('')
+    : '<p style="color:var(--muted);">No drafts.</p>';
+}
+
+function repoCard(q, status) {
+  const d = q.items_json;
+  const items = d.items || [];
+  // USD column removed — every item treated as INR (raw price)
+  const grand = items.reduce((s,i) => {
+    const amt = (i.qty||0) * (i.price_per_pc||0);
+    return s + amt + amt*((i.gst_pct||0)/100);
+  }, 0);
+  return `<div class="repo-item">
+    <div>
+      <strong>${d.ref_no || q.ref_no}</strong> &nbsp; <span class="badge badge-${status}">${status}</span>
+      <div class="meta">${d.client_name || q.client_name} &nbsp;·&nbsp; ${items.length} items &nbsp;·&nbsp; ₹${grand.toLocaleString('en-IN',{maximumFractionDigits:0})}</div>
+      <div class="meta">${q.created_at ? new Date(q.created_at).toLocaleDateString('en-IN') : ''}</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="btn btn-sm btn-outline" onclick="viewQuote(${q.id})">👁 View</button>
+      <button class="btn btn-sm btn-accent" onclick="window.open(API+'/api/download/${q.id}')">⬇ XLS</button>
+      ${status==='draft' ? `<button class="btn btn-sm btn-success" onclick="approveQuote(${q.id})">✓ Approve</button>` : ''}
+      <button class="btn btn-sm btn-danger" onclick="deleteQuote(${q.id})" title="Delete" style="padding:6px 10px;">✕</button>
+    </div>
+  </div>`;
+}
+
+async function deleteQuote(id) {
+  if (!confirm('Delete this quotation?')) return;
+  const res = await fetch(`${API}/api/quotations/${id}`, { method: 'DELETE' });
+  if (res.ok) loadRepository();
+  else alert('Delete failed.');
+}
+
+async function clearAllQuotations() {
+  if (!confirm('Delete ALL quotations (approved + drafts)? This cannot be undone.')) return;
+  const res = await fetch(`${API}/api/quotations/clear-all`, { method: 'DELETE' });
+  if (res.ok) {
+    loadRepository();
+    alert('All quotations cleared.');
+  } else {
+    alert('Failed to clear.');
+  }
+}
+
+async function approveQuote(id) {
+  await fetch(`${API}/api/approve/${id}`, {method:'POST'});
+  loadRepository();
+}
+
+async function viewQuote(id) {
+  const res = await fetch(`${API}/api/quotations`);
+  const all = await res.json();
+  const q = all.find(x => x.id === id);
+  if (!q) return;
+  currentQuotation = { ...q.items_json, id: q.id };
+  renderResult(currentQuotation);
+  show('result');
+}
+
+// Init
+fetchUsdRate();
+loadCatalog();
+loadUploadedFiles();
+loadCatalogSelector();

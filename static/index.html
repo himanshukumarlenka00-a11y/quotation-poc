@@ -4,324 +4,170 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  :root {
-    --primary: #1a3a6b;
-    --accent: #e8a020;
-    --success: #27ae60;
-    --danger: #e74c3c;
-    --bg: #f0f3f8;
-    --card: #ffffff;
-    --border: #d0d7e3;
-    --text: #1c2b3a;
-    --muted: #6b7a8d;
-    --radius: 10px;
-  }
-  body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
-  html { overflow-x: hidden; }
-
-  /* NAV */
-  nav { background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: space-between; padding: 0 32px; height: 60px; box-shadow: 0 2px 8px rgba(0,0,0,.25); position: sticky; top: 0; z-index: 100; }
-  nav .logo { font-size: 1.1rem; font-weight: 700; letter-spacing: .5px; }
-  nav .logo span { color: var(--accent); }
-  nav .tabs { display: flex; gap: 4px; }
-  nav .tabs button { background: none; border: none; color: rgba(255,255,255,.7); cursor: pointer; padding: 8px 16px; border-radius: 6px; font-size: .9rem; font-weight: 500; transition: all .2s; }
-  nav .tabs button:hover, nav .tabs button.active { background: rgba(255,255,255,.15); color: #fff; }
-  nav .tabs button.active { background: var(--accent); color: #fff; }
-
-  /* CONTENT */
-  main { max-width: 1400px; margin: 0 auto; padding: 24px 32px; }
-  .section { display: none; }
-  .section.active { display: block; }
-
-  /* CARDS */
-  .card { background: var(--card); border-radius: var(--radius); border: 1px solid var(--border); padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
-  .card h2 { font-size: 1.1rem; color: var(--primary); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
-  .card h2::before { content: attr(data-icon); font-size: 1.2rem; }
-
-  /* FORMS */
-  label { display: block; font-size: .85rem; font-weight: 600; color: var(--muted); margin-bottom: 4px; margin-top: 12px; }
-  input[type=text], textarea, select { width: 100%; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; font-size: .95rem; outline: none; transition: border .2s; }
-  input[type=text]:focus, textarea:focus { border-color: var(--primary); }
-  textarea { resize: vertical; min-height: 80px; }
-
-  /* BUTTONS */
-  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-size: .9rem; font-weight: 600; transition: all .2s; }
-  .btn-primary { background: var(--primary); color: #fff; }
-  .btn-primary:hover { background: #0f2548; }
-  .btn-accent { background: var(--accent); color: #fff; }
-  .btn-accent:hover { background: #c8860c; }
-  .btn-success { background: var(--success); color: #fff; }
-  .btn-success:hover { background: #1e8449; }
-  .btn-danger { background: var(--danger); color: #fff; }
-  .btn-danger:hover { background: #c0392b; }
-  .btn-outline { background: none; color: var(--primary); border: 1.5px solid var(--primary); }
-  .btn-outline:hover { background: var(--primary); color: #fff; }
-  .btn:disabled { opacity: .5; cursor: not-allowed; }
-  .btn-sm { padding: 6px 12px; font-size: .82rem; }
-
-  /* FILE DROP */
-  .drop-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 32px; text-align: center; cursor: pointer; transition: all .2s; color: var(--muted); }
-  .drop-zone:hover, .drop-zone.drag { border-color: var(--primary); background: #f0f4ff; color: var(--primary); }
-  .drop-zone .icon { font-size: 2.5rem; }
-  .drop-zone p { margin-top: 8px; font-size: .9rem; }
-  .drop-zone input { display: none; }
-
-  /* ALERT */
-  .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 12px; font-size: .9rem; }
-  .alert-success { background: #d5f5e3; color: #1e8449; border: 1px solid #a9dfbf; }
-  .alert-error { background: #fadbd8; color: #c0392b; border: 1px solid #f1948a; }
-  .alert-info { background: #d6eaf8; color: #1a5276; border: 1px solid #7fb3d3; }
-
-  /* TABLE */
-  .table-wrap { overflow-x: hidden; width: 100%; }
-  table { width: 100%; border-collapse: collapse; font-size: .88rem; table-layout: fixed; }
-  th { background: var(--primary); color: #fff; padding: 8px 8px; text-align: left; white-space: nowrap; font-size: .78rem; overflow: hidden; }
-  td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; overflow: hidden; word-break: break-word; }
-  tr:hover td { background: #f8faff; }
-  td input { width: 100%; border: 1px solid #ddd; border-radius: 4px; padding: 4px 8px; font-size: .88rem; }
-  td input:focus { outline: none; border-color: var(--primary); }
-
-  /* QUOTE RESULT */
-  .quote-header { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-  .quote-stat { background: #f8faff; border: 1px solid var(--border); border-radius: 8px; padding: 16px; text-align: center; }
-  .quote-stat .val { font-size: 1.4rem; font-weight: 700; color: var(--primary); }
-  .quote-stat .lbl { font-size: .78rem; color: var(--muted); margin-top: 2px; }
-
-  /* FEEDBACK */
-  .feedback-row { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; margin-top: 16px; }
-  .feedback-box { background: #fff9f0; border: 1px solid #f5cba7; border-radius: 8px; padding: 20px; }
-  .rating-btns { display: flex; gap: 10px; }
-  .rating-btn { padding: 10px 24px; border-radius: 8px; border: 2px solid; cursor: pointer; font-weight: 700; font-size: 1rem; background: none; transition: all .2s; }
-  .rating-btn.good { border-color: var(--success); color: var(--success); }
-  .rating-btn.good:hover, .rating-btn.good.selected { background: var(--success); color: #fff; }
-  .rating-btn.bad { border-color: var(--danger); color: var(--danger); }
-  .rating-btn.bad:hover, .rating-btn.bad.selected { background: var(--danger); color: #fff; }
-
-  /* REPO */
-  .repo-item { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; background: #fff; }
-  .repo-item .meta { font-size: .82rem; color: var(--muted); margin-top: 3px; }
-  .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: .75rem; font-weight: 700; }
-  .badge-approved { background: #d5f5e3; color: #1e8449; }
-  .badge-draft { background: #fef9e7; color: #b7950b; }
-
-  /* LOADER */
-  .loader { display: inline-block; width: 20px; height: 20px; border: 3px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* SPEC PREVIEW */
-  .spec-text { white-space: pre-line; font-size: .78rem; color: var(--muted); max-width: 180px; word-break: break-word; }
-
-  .gap-8 { gap: 8px; }
-  .flex { display: flex; }
-  .mt-16 { margin-top: 16px; }
-  .mt-8 { margin-top: 8px; }
-  .text-right { text-align: right; }
-  .total-row { font-weight: 700; background: #eaf4fb; }
-
-  /* Catalog count badge */
-  #catalog-count { background: var(--accent); color: #fff; font-size: .75rem; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
-
-  /* ── VARIANT PICKER ── */
-  .vp-wrap { max-width: 100%; margin: 0 auto 20px; }
-  .vp-topbar { display:flex; align-items:center; gap:12px; margin-bottom:18px; flex-wrap:wrap; }
-  .vp-topbar h2 { font-size:1.1rem; color:var(--primary); font-weight:700; flex:1; }
-  .vp-summary { font-size:.82rem; color:var(--muted); }
-
-  .vp-group { background:#fff; border:1.5px solid var(--border); border-radius:10px; margin-bottom:14px; overflow:hidden; }
-  .vp-group-header { display:flex; align-items:center; gap:10px; padding:12px 18px; background:#f4f7ff; border-bottom:1px solid var(--border); }
-  .vp-group-icon { font-size:1.1rem; }
-  .vp-group-name { font-weight:700; font-size:.95rem; color:var(--primary); flex:1; text-transform:uppercase; }
-  .vp-group-badge { font-size:.75rem; padding:2px 10px; border-radius:12px; font-weight:700; }
-  .vp-badge-found { background:#d5f5e3; color:#1e8449; }
-  .vp-badge-none  { background:#fadbd8; color:#c0392b; }
-
-  .vp-variants { padding:10px 18px 14px; }
-  .vp-variant-row { display:flex; align-items:center; gap:12px; padding:8px 10px; border-radius:7px; cursor:pointer; transition:background .15s; margin-bottom:4px; border:1.5px solid transparent; }
-  .vp-variant-row:hover { background:#f0f4ff; }
-  .vp-variant-row.selected { background:#eaf4fb; border-color:var(--primary); }
-  .vp-variant-row input[type=radio], .vp-variant-row input[type=checkbox] { width:16px; height:16px; cursor:pointer; flex-shrink:0; accent-color:var(--primary); }
-  .vp-prod-name { font-weight:600; font-size:.88rem; flex:1; }
-  .vp-price { font-size:.9rem; font-weight:700; color:var(--primary); min-width:100px; text-align:right; }
-  .vp-price.usd { color:#b7950b; }
-  .vp-file-tag { font-size:.7rem; background:#f0f3f8; color:var(--muted); padding:2px 8px; border-radius:10px; white-space:nowrap; }
-
-  .vp-qty-row { display:flex; align-items:center; gap:8px; padding:6px 10px 2px; }
-  .vp-qty-row label { font-size:.78rem; color:var(--muted); font-weight:600; }
-  .vp-qty-row input { width:80px; padding:5px 8px; border:1.5px solid var(--border); border-radius:6px; font-size:.88rem; }
-
-  .vp-notfound { padding:14px 18px; color:#c0392b; font-size:.85rem; background:#fff8f8; }
-  .vp-notfound span { font-weight:600; }
-
-  .vp-actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding:16px 0 4px; }
-  .vp-not-found-list { background:#fff3f3; border:1px solid #f1948a; border-radius:8px; padding:12px 18px; margin-bottom:14px; font-size:.85rem; color:#922b21; }
-  .vp-not-found-list strong { display:block; margin-bottom:4px; }
-
-  /* ── SWITCH VARIANT PANEL ── */
-  .switch-panel td { padding:0 !important; background:#f4f8ff !important; }
-  .switch-panel-inner { padding:12px 20px 14px; border-top:1px solid #d0ddf0; border-bottom:2px solid var(--primary); }
-  .switch-panel-title { font-size:.78rem; font-weight:800; color:var(--primary); margin-bottom:10px; text-transform:uppercase; letter-spacing:.5px; }
-  .switch-cards { display:flex; flex-wrap:wrap; gap:8px; }
-  .switch-card { padding:8px 14px; border-radius:8px; cursor:pointer; border:2px solid var(--border); background:#fff; font-size:.82rem; min-width:160px; transition:all .15s; }
-  .switch-card:hover { border-color:var(--primary); background:#eaf4fb; }
-  .switch-card.active { border-color:var(--primary); background:#eaf4fb; }
-  .switch-card .sc-name { font-weight:700; color:var(--primary); margin-bottom:2px; }
-  .switch-card .sc-price { font-weight:700; font-size:.88rem; }
-  .switch-card .sc-file { font-size:.7rem; color:var(--muted); margin-top:2px; }
-  .switch-card .sc-tick { font-size:.7rem; color:var(--primary); margin-top:2px; }
-  .btn-switch { background:none; border:1.5px solid var(--primary); color:var(--primary); border-radius:6px; padding:3px 10px; font-size:.75rem; font-weight:700; cursor:pointer; margin-left:6px; }
-  .btn-switch:hover { background:var(--primary); color:#fff; }
-
-  /* ── QUOTATION DOCUMENT ── */
-  .quot-wrap { max-width: 100%; margin: 0 auto 20px; }
-  .quot-actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
-  .quot-refbadge { margin-left:auto; background:#eaf4fb; border:1px solid #b3cde8; border-radius:6px; padding:6px 16px; font-size:.85rem; color:var(--primary); font-weight:600; }
-
-  .quot-doc { background:#fff; border:1px solid #c8d0dc; border-radius:4px; box-shadow:0 4px 24px rgba(0,0,0,.13); overflow:hidden; }
-
-  /* Letterhead */
-  .quot-lh { display:flex; align-items:center; padding:20px 28px; border-bottom:4px solid var(--primary); }
-  .quot-logo { width:72px; height:72px; border:2px dashed #ccd; border-radius:8px; background:#f0f4ff; display:flex; align-items:center; justify-content:center; font-size:.7rem; color:var(--muted); text-align:center; margin-right:20px; flex-shrink:0; }
-  .quot-co-name { font-size:1.5rem; font-weight:800; color:var(--primary); letter-spacing:.5px; }
-  .quot-co-sub  { font-size:.88rem; color:var(--accent); font-weight:700; margin:1px 0 5px; }
-  .quot-co-addr { font-size:.73rem; color:#555; margin-top:2px; }
-
-  /* Title bar */
-  .quot-title { background:var(--primary); color:#fff; text-align:center; padding:9px; font-size:1.05rem; font-weight:800; letter-spacing:6px; }
-
-  /* Meta row */
-  .quot-meta { display:grid; grid-template-columns:1fr 1fr; border-bottom:1px solid var(--border); }
-  .quot-meta-l { padding:16px 28px; border-right:1px solid var(--border); }
-  .quot-meta-r { padding:16px 28px; }
-  .quot-sec-lbl { font-size:.68rem; font-weight:800; color:var(--muted); letter-spacing:1px; text-transform:uppercase; border-bottom:1px solid var(--border); padding-bottom:4px; margin-bottom:6px; }
-  .quot-client  { font-size:1.05rem; font-weight:700; color:var(--primary); }
-  .quot-mt { width:100%; border-collapse:collapse; font-size:.84rem; }
-  .quot-mt td { padding:3px 6px; }
-  .quot-mt td:first-child { color:var(--muted); width:120px; font-size:.77rem; }
-
-  /* Salutation */
-  .quot-sal { padding:13px 28px; font-size:.87rem; color:#333; line-height:1.8; background:#fafbfd; border-bottom:1px solid var(--border); }
-
-  /* Total box */
-  .quot-total { display:flex; justify-content:flex-end; align-items:center; gap:20px; padding:13px 28px; background:#eef3fb; border-top:2px solid var(--primary); border-bottom:1px solid var(--border); }
-  .quot-total-lbl { font-size:.8rem; font-weight:700; color:var(--primary); text-transform:uppercase; letter-spacing:.5px; }
-  .quot-total-val { font-size:1.5rem; font-weight:800; color:var(--primary); }
-
-  /* Amount in words */
-  .quot-words { padding:9px 28px; font-size:.81rem; color:#444; font-style:italic; border-bottom:1px solid var(--border); }
-
-  /* Terms */
-  .quot-terms { padding:13px 28px; background:#fafbfd; border-bottom:1px solid var(--border); }
-  .quot-terms-ttl { font-size:.72rem; font-weight:800; color:var(--primary); text-transform:uppercase; letter-spacing:.5px; margin-bottom:5px; }
-  .quot-terms ol { padding-left:18px; margin:0; font-size:.76rem; color:#555; line-height:1.85; }
-
-  /* Signatures */
-  .quot-sigs { display:grid; grid-template-columns:1fr 1fr; gap:32px; padding:18px 48px 14px; }
-  .quot-sig { text-align:center; }
-  .quot-sig-line { border-top:1px solid #333; margin-top:42px; margin-bottom:6px; }
-  .quot-sig-name { font-size:.82rem; font-weight:700; }
-  .quot-sig-role { font-size:.74rem; color:var(--muted); margin-top:2px; }
-
-  /* Doc footer */
-  .quot-foot { background:var(--primary); color:rgba(255,255,255,.6); text-align:center; padding:8px; font-size:.73rem; letter-spacing:.3px; }
-
-  /* ── MOBILE RESPONSIVE ── */
-  @media (max-width: 768px) {
-    /* Nav */
-    nav { padding: 0 12px; height: auto; flex-wrap: wrap; gap: 4px; padding: 8px 12px; }
-    nav .logo { font-size: .9rem; width: 100%; padding: 4px 0; }
-    nav .tabs { display: flex; flex-wrap: wrap; gap: 2px; width: 100%; }
-    nav .tabs button { padding: 6px 10px; font-size: .75rem; flex: 1; min-width: 0; text-align: center; }
-
-    /* Main */
-    main { padding: 12px; }
-
-    /* Cards */
-    .card { padding: 16px; }
-
-    /* Quote header stats */
-    .quote-header { grid-template-columns: 1fr; }
-
-    /* Quotation document */
-    .quot-lh { flex-direction: column; align-items: flex-start; gap: 12px; padding: 16px; }
-    .quot-logo { margin-right: 0; width: 56px; height: 56px; }
-    .quot-co-name { font-size: 1.1rem; }
-    .quot-meta { grid-template-columns: 1fr; }
-    .quot-meta-l { border-right: none; border-bottom: 1px solid var(--border); padding: 14px 16px; }
-    .quot-meta-r { padding: 14px 16px; }
-    .quot-sal { padding: 12px 16px; font-size: .82rem; }
-    .quot-total { padding: 12px 16px; flex-direction: column; align-items: flex-end; gap: 4px; }
-    .quot-total-val { font-size: 1.2rem; }
-    .quot-words { padding: 8px 16px; font-size: .75rem; }
-    .quot-sigs { grid-template-columns: 1fr; gap: 16px; padding: 16px; }
-    .quot-terms { padding: 12px 16px; }
-    .quot-terms ol { font-size: .74rem; }
-    .quot-lh > div .quot-co-addr { font-size: .68rem; }
-
-    /* Table - allow horizontal scroll on mobile only for table */
-    .table-wrap { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
-    table { table-layout: auto !important; min-width: 600px; font-size: .78rem; }
-    th, td { padding: 6px 6px !important; }
-
-    /* Action buttons */
-    .quot-actions { flex-direction: column; align-items: stretch; }
-    .quot-actions .btn { width: 100%; justify-content: center; }
-    .quot-refbadge { margin-left: 0; text-align: center; }
-
-    /* Variant picker */
-    .vp-topbar { flex-direction: column; align-items: stretch; }
-    .switch-cards { flex-direction: column; }
-    .switch-card { min-width: 100%; }
-
-    /* Inputs */
-    td input[type=number] { width: 60px !important; }
-
-    /* Drop zone */
-    .drop-zone { padding: 20px; }
-
-    /* Catalog selector */
-    #catalog-selector { flex-direction: column; }
-
-    /* Feedback */
-    .rating-btns { flex-direction: column; }
-    .rating-btn { width: 100%; }
-  }
-
-  @media (max-width: 480px) {
-    nav .tabs button { font-size: .68rem; padding: 5px 6px; }
-    .quot-co-name { font-size: .95rem; }
-    .btn { padding: 8px 14px; font-size: .82rem; }
-  }
-
-  /* Print */
-  @media print {
-    nav, .quot-actions, .card.feedback-box { display:none !important; }
-    main { padding:0; max-width:100%; }
-    .quot-doc { box-shadow:none; border:none; }
-    body { background:#fff; }
-    td input { border:none !important; background:transparent !important; }
-    .btn-sm { display:none !important; }
-  }
-</style>
+<link rel="stylesheet" href="/static/css/main.css?v=9">
 </head>
 <body>
 
+<div id="login-gate">
+  <div class="card login-card">
+    <div class="login-logo">Quote<span>Gen</span> AI</div>
+    <form id="login-form" onsubmit="doLogin(event)">
+      <label for="login-email">Email</label>
+      <input type="email" id="login-email" required autocomplete="username">
+      <label for="login-password">Password</label>
+      <input type="password" id="login-password" required autocomplete="current-password">
+      <div class="login-err" id="login-err"></div>
+      <button type="submit" class="btn btn-primary">Log in</button>
+      <div class="login-links">
+        <a href="#" onclick="showForgotForm(event)">Forgot password?</a>
+        &nbsp;·&nbsp;
+        <a href="#" onclick="showRegisterForm(event)">Sign up</a>
+      </div>
+    </form>
+
+    <form id="forgot-form" style="display:none" onsubmit="doForgotPassword(event)">
+      <label for="forgot-email">Email</label>
+      <input type="email" id="forgot-email" required autocomplete="username">
+      <div class="login-err" id="forgot-err"></div>
+      <div class="login-msg" id="forgot-msg"></div>
+      <button type="submit" class="btn btn-primary">Send reset link</button>
+      <div class="login-links"><a href="#" onclick="showLoginForm(event)">Back to log in</a></div>
+    </form>
+
+    <form id="reset-form" style="display:none" onsubmit="doResetPassword(event)">
+      <label for="reset-password">New password</label>
+      <input type="password" id="reset-password" required autocomplete="new-password" minlength="8">
+      <label for="reset-password-confirm">Confirm new password</label>
+      <input type="password" id="reset-password-confirm" required autocomplete="new-password" minlength="8">
+      <div class="login-err" id="reset-err"></div>
+      <div class="login-msg" id="reset-msg"></div>
+      <button type="submit" class="btn btn-primary">Reset password</button>
+    </form>
+
+    <form id="register-form" style="display:none" onsubmit="doRegister(event)">
+      <label for="register-name">Full name</label>
+      <input type="text" id="register-name" required autocomplete="name">
+      <label for="register-email">Company email</label>
+      <input type="email" id="register-email" required autocomplete="username">
+      <label for="register-password">Password</label>
+      <input type="password" id="register-password" required autocomplete="new-password" minlength="8">
+      <div class="login-err" id="register-err"></div>
+      <button type="submit" class="btn btn-primary">Create account</button>
+      <div class="login-links"><a href="#" onclick="showLoginForm(event)">Back to log in</a></div>
+    </form>
+  </div>
+</div>
+
 <nav>
-  <div class="logo">Quote<span>Gen</span> AI &nbsp;·&nbsp; Demo</div>
+  <div class="logo">Quote<span>Gen</span> AI</div>
   <div class="tabs">
-    <button class="active" onclick="show('upload')">📤 Upload BOQ</button>
-    <button onclick="show('generate')">✨ Generate Quote</button>
+    <button id="tab-upload" onclick="show('upload')">📤 Upload BOQ</button>
+    <button onclick="show('master')">🗄 Master Table</button>
+    <button class="active" onclick="show('generate')">✨ Generate Quote</button>
     <button onclick="show('result')">📋 Result</button>
     <button onclick="show('repository')">🗄 Repository</button>
-    <button onclick="show('howto')">❓ How It Works</button>
   </div>
+  <div class="nav-user" id="nav-user"></div>
 </nav>
 
 <main>
 
+<!-- ── SECTION 0: Home / Landing ── -->
+<section id="sec-home" class="section lp">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="lp-wrap hero-inner">
+      <div>
+        <span class="hero-eyebrow">⚡ AI-Powered Quotation Engine</span>
+        <h1>Turn a one-line request into a <span class="hl">professional quotation</span> in seconds.</h1>
+        <p class="sub">QuoteGen AI reads your product catalog, understands plain-English requirements, and builds an accurate, itemised quotation — with images, INR pricing &amp; GST — instantly.</p>
+        <div class="hero-cta">
+          <button class="btn btn-xl btn-glow" onclick="show('generate')">✨ Generate a Quote</button>
+          <button class="btn btn-xl btn-ghost" onclick="show('upload')">📤 Upload Catalog</button>
+        </div>
+        <div class="hero-stats">
+          <div class="s"><div class="n" id="hs-products">400+</div><div class="l">Catalog products</div></div>
+          <div class="s"><div class="n">~3s</div><div class="l">Per quotation</div></div>
+          <div class="s"><div class="n">99%</div><div class="l">Match accuracy</div></div>
+        </div>
+      </div>
+      <div>
+        <div class="hero-card">
+          <div class="bar"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i></div>
+          <div class="row"><div class="thumb">🧺</div><div class="info"><b>Housekeeping Trolley</b><span>Qty 5 · HSN 9403</span></div><div class="amt">₹2,250</div></div>
+          <div class="row"><div class="thumb">🔥</div><div class="info"><b>Electric Iron</b><span>Qty 30 · WALTHR</span></div><div class="amt">₹46,500</div></div>
+          <div class="row"><div class="thumb">💨</div><div class="info"><b>Hair Dryer</b><span>Qty 30 · IR-HR024</span></div><div class="amt">₹540</div></div>
+          <div class="total"><span>Grand Total (incl. GST)</span><span>₹57,684</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FEATURES -->
+  <div class="lp-section alt">
+    <div class="lp-wrap">
+      <div class="lp-head reveal">
+        <span class="kick">Why QuoteGen AI</span>
+        <h2>Everything you need to quote faster</h2>
+        <p>Built for sales teams who turn enquiries into polished quotations — without manual catalog hunting or spreadsheet wrangling.</p>
+      </div>
+      <div class="feat-grid">
+        <div class="feat reveal"><div class="ic">🧠</div><h3>Understands plain English</h3><p>Type “5 housekeeping trolleys and 10 clothes hangers” — it parses items, quantities and qualifiers automatically.</p></div>
+        <div class="feat reveal"><div class="ic">🎯</div><h3>Exact catalog matching</h3><p>Deterministic matching maps every request to the right product &amp; price — no wrong substitutions, 99% accuracy.</p></div>
+        <div class="feat reveal"><div class="ic">🖼️</div><h3>Product images included</h3><p>Pulls embedded images from your Excel catalog into both the on-screen quote and the downloadable XLS.</p></div>
+        <div class="feat reveal"><div class="ic">🇮🇳</div><h3>INR pricing &amp; GST</h3><p>Automatic INR pricing, per-item GST and grand totals — formatted and ready to send to the client.</p></div>
+        <div class="feat reveal"><div class="ic">🔄</div><h3>Variant switching</h3><p>Multiple options for the same item? Switch between catalog variants with one click before finalising.</p></div>
+        <div class="feat reveal"><div class="ic">📄</div><h3>Export &amp; print ready</h3><p>One click to download a branded XLS or print a clean PDF quotation for your customer.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HOW IT WORKS -->
+  <div class="lp-section">
+    <div class="lp-wrap">
+      <div class="lp-head reveal">
+        <span class="kick">How it works</span>
+        <h2>Three steps to a finished quote</h2>
+        <p>From raw catalog to a client-ready quotation in under a minute.</p>
+      </div>
+      <div class="steps">
+        <div class="step reveal"><h3>Upload your catalog</h3><p>Drop in your existing quotation / BOQ Excel files. QuoteGen learns every product, price and image.</p></div>
+        <div class="step reveal"><h3>Describe the requirement</h3><p>Write what the customer needs in plain language. The AI extracts items and quantities instantly.</p></div>
+        <div class="step reveal"><h3>Generate &amp; send</h3><p>Get an itemised quote with images, pricing &amp; GST. Tweak, then export to XLS or PDF.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CTA BAND -->
+  <div class="lp-section alt">
+    <div class="lp-wrap">
+      <div class="cta-band reveal">
+        <h2>Ready to build your first quote?</h2>
+        <p>Upload a catalog or jump straight in and describe what your customer needs.</p>
+        <div class="hero-cta" style="justify-content:center;">
+          <button class="btn btn-xl btn-glow" onclick="show('generate')">✨ Generate a Quote</button>
+          <button class="btn btn-xl btn-ghost" style="border-color:rgba(255,255,255,.4)" onclick="show('upload')">📤 Upload Catalog</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="lp-foot">
+    <div class="lp-wrap">
+      <div class="logo">Quote<span>Gen</span> AI</div>
+      <div>AI-powered quotation generation · Demo build</div>
+    </div>
+  </div>
+</section>
+
 <!-- ── SECTION 1: Upload BOQ ── -->
-<section id="sec-upload" class="section active">
+<section id="sec-upload" class="section">
+  <div class="page-head">
+    <h1>Upload BOQ Catalog</h1>
+    <p>Feed QuoteGen your existing quotation files — it learns every product, price and image.</p>
+  </div>
   <div class="card">
     <h2 data-icon="📤">Upload BOQ / Quotation Files</h2>
     <p style="color:var(--muted);font-size:.9rem;margin-bottom:16px;">Upload your existing quotation Excel files (.xls / .xlsx). The AI will learn from these to generate future quotes.</p>
@@ -349,27 +195,125 @@
   </div>
 </section>
 
-<!-- ── SECTION 2: Generate ── -->
-<section id="sec-generate" class="section">
+<!-- ── SECTION: Master Table ── -->
+<section id="sec-master" class="section">
+  <div class="page-head">
+    <h1>Master Table</h1>
+    <p>The trusted source of truth for products and pricing — viewable by everyone, editable by admins only.</p>
+  </div>
+
+  <div class="card" id="master-admin-upload">
+    <h2 data-icon="📤">Import Master Table</h2>
+    <p style="color:var(--muted);font-size:.9rem;margin-bottom:16px;">Admin only. Uploading a file with the same name replaces its existing data. You can select multiple files at once — each imports as its own separate catalog.</p>
+    <div class="drop-zone" id="master-drop-zone" onclick="document.getElementById('master-file-input').click()">
+      <div class="icon">📂</div>
+      <p><strong>Click or drag &amp; drop</strong> your Excel file(s) here</p>
+      <p style="margin-top:4px;font-size:.8rem;">.xls and .xlsx supported — multiple files allowed</p>
+      <input type="file" id="master-file-input" accept=".xls,.xlsx" multiple>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:10px;">
+      <button class="btn btn-outline" id="master-scan-btn" onclick="scanMasterFiles()" disabled>🔍 Scan First</button>
+      <button class="btn btn-primary" id="master-upload-btn" onclick="uploadMasterFile()" disabled style="display:none;">✅ Confirm &amp; Import</button>
+    </div>
+    <div id="master-upload-status" style="margin-top:8px;"></div>
+    <div id="master-scan-result" style="margin-top:12px;"></div>
+  </div>
 
   <div class="card">
-    <h2 data-icon="✨">Generate Quotation</h2>
-    <label>Customer / Hotel Name</label>
+    <h2 data-icon="📁">Imported Files</h2>
+    <div id="master-files"><p style="color:var(--muted);font-size:.9rem;">No files imported yet.</p></div>
+  </div>
+
+  <div class="card">
+    <div class="master-header-row">
+      <h2 data-icon="🗄">Master Products <span id="master-count">0</span></h2>
+      <div class="master-search-slot">
+        <div class="pill-search-box" id="master-search-box">
+          <input type="text" id="master-search" class="pill-search-input" placeholder="Search by product, brand, or model..."
+                 oninput="filterMasterTable()" onfocus="onMasterSearchFocus()" onblur="onMasterSearchBlur()">
+          <button type="button" class="pill-search-btn" id="master-search-btn" onclick="document.getElementById('master-search').focus()" aria-label="Search">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/>
+              <line x1="16.4" y1="16.4" x2="21" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div id="master-table-view" style="margin-top:16px;"><p style="color:var(--muted);font-size:.9rem;">No products yet.</p></div>
+  </div>
+</section>
+
+<!-- ── SECTION 2: Generate ── -->
+<section id="sec-generate" class="section active">
+
+  <div class="page-head">
+    <h1>Generate a Quotation</h1>
+    <p>Describe what your customer needs in plain English — QuoteGen builds the itemised quote.</p>
+  </div>
+
+  <div class="steps-strip">
+    <div class="step-mini"><span class="step-num">1</span><span><b>Type</b> what you need</span></div>
+    <div class="step-arrow">→</div>
+    <div class="step-mini"><span class="step-num">2</span><span>Press <b>Generate</b></span></div>
+    <div class="step-arrow">→</div>
+    <div class="step-mini"><span class="step-num">3</span><span>Get your <b>quote</b></span></div>
+  </div>
+
+  <div class="card">
+    <h2 data-icon="✨">Create a Quotation</h2>
+
+    <label>Customer / Hotel Name <span style="font-weight:400;color:var(--muted);font-size:.8rem;">(optional)</span></label>
     <input type="text" id="client-name" placeholder="e.g. Taj Hotel, Mumbai">
 
-    <label>Search From Catalog <span style="font-weight:400;color:var(--muted);font-size:.8rem;">(leave all unchecked to search everything)</span></label>
-    <div id="catalog-selector" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px;padding:12px;background:#f8faff;border:1.5px solid var(--border);border-radius:8px;">
-      <span style="color:var(--muted);font-size:.85rem;">Loading catalogs...</span>
+    <!-- catalog selector kept but hidden — defaults to searching everything -->
+    <div id="catalog-selector" style="display:none;"></div>
+
+    <label style="margin-top:18px;">Price tier <span style="font-weight:400;color:var(--muted);font-size:.8rem;">— select one or both</span></label>
+    <div style="display:flex;gap:8px;">
+      <div class="tier-toggle" id="tier-3star" onclick="toggleTier('3star')">⭐ 3 Star</div>
+      <div class="tier-toggle" id="tier-4star" onclick="toggleTier('4star')">⭐⭐ 4 Star</div>
     </div>
 
-    <label>Customer Requirements</label>
-    <textarea id="req-prompt" placeholder="e.g. We need 500 irons and 500 iron boards for our hotel rooms. Also require 10 hot plates for the kitchen." style="min-height:120px;"></textarea>
-    <div style="margin-top:16px;">
-      <button class="btn btn-primary" id="gen-btn" onclick="generateQuote()">
+    <label style="margin-top:18px;font-size:1rem;">What do you need? <span style="font-weight:400;color:var(--muted);font-size:.85rem;">Just type it in plain English.</span></label>
+    <div style="position:relative;">
+      <textarea id="req-prompt" placeholder="e.g. 30 electric kettles, 20 hair dryers and 50 coat hangers" style="min-height:110px;font-size:1rem;"></textarea>
+      <div id="suggest-dropdown" class="suggest-dropdown" style="display:none;"></div>
+    </div>
+
+    <div style="margin-top:20px;">
+      <button class="btn btn-primary" id="gen-btn" onclick="generateQuote()" style="font-size:1.05rem;padding:14px 30px;border-radius:10px;">
         <span id="gen-icon">✨</span> Generate Quotation
       </button>
     </div>
     <div id="gen-status" style="margin-top:12px;"></div>
+  </div>
+
+  <div class="or-divider">
+    <div class="or-line"></div>
+    <span class="or-text">OR</span>
+    <div class="or-line"></div>
+  </div>
+
+  <div class="card card-alt">
+    <h3 class="section-head" data-icon="📋">Check a BOQ against the Master Table</h3>
+    <p class="section-sub">See what we already stock, and add anything missing.</p>
+    <div class="drop-zone" id="boq-req-drop-zone" onclick="document.getElementById('boq-req-file-input').click()">
+      <div class="icon">📂</div>
+      <p><strong>Click or drag &amp; drop</strong> the requirement file here</p>
+      <p style="margin-top:4px;font-size:.8rem;">.xls and .xlsx supported</p>
+      <input type="file" id="boq-req-file-input" accept=".xls,.xlsx">
+    </div>
+    <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn btn-accent" id="check-boq-btn" onclick="checkBoqCoverage()" disabled>🔍 Check what we stock</button>
+      <button class="btn btn-accent" id="gen-boq-btn" onclick="generateFromBoqFile()" disabled>📤 Generate from BOQ</button>
+    </div>
+    <div id="gen-boq-status" style="margin-top:12px;"></div>
+    <div id="boq-coverage" style="margin-top:14px;"></div>
+  </div>
+
+  <div class="hint-box">
+    💡 After it's generated, you can tap any <b>price</b> or <b>quantity</b> to change it before downloading.
   </div>
 </section>
 
@@ -414,6 +358,23 @@
         <span class="quot-refbadge" id="stat-ref">—</span>
       </div>
 
+      <div class="tier-col-toggle">
+        <span class="tctl-label">Show in table:</span>
+        <label class="tctl-check"><input type="checkbox" id="show-3star-col" checked onchange="toggleTierColumn()"> ⭐ 3 Star price</label>
+        <label class="tctl-check"><input type="checkbox" id="show-4star-col" checked onchange="toggleTierColumn()"> ⭐⭐ 4 Star price</label>
+      </div>
+
+      <!-- Add forgotten items to this quote -->
+      <div id="add-item-box" style="background:#11315f;border:1px solid #2c456a;border-radius:10px;padding:14px 16px;margin-bottom:14px;">
+        <div style="font-size:.9rem;color:#bcd6ef;font-weight:600;margin-bottom:8px;">➕ Forgot something? Add it to this quote</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <input type="text" id="add-item-input" placeholder="e.g. 10 coffee machines and 5 ice buckets"
+                 style="flex:1;min-width:220px;" onkeydown="if(event.key==='Enter')addToQuote()">
+          <button class="btn btn-accent" id="add-item-btn" onclick="addToQuote()">➕ Add</button>
+        </div>
+        <div id="add-item-status" style="font-size:.82rem;color:var(--muted);margin-top:8px;">Type any product in plain English — it searches all catalogues and adds new rows. Totals update automatically.</div>
+      </div>
+
       <!-- Not-found warning -->
       <div id="not-found-banner" style="display:none;" class="alert alert-error" style="margin-bottom:14px;">
         ❌ <strong>Not found in catalog:</strong> <span id="not-found-items"></span>
@@ -421,17 +382,6 @@
 
       <!-- ══ QUOTATION DOCUMENT ══ -->
       <div class="quot-doc">
-
-        <!-- Letterhead -->
-        <div class="quot-lh">
-          <div class="quot-logo">🏭<br>LOGO</div>
-          <div>
-            <div class="quot-co-name">DEMO</div>
-            <div class="quot-co-sub">Demo Company</div>
-            <div class="quot-co-addr">📍 123, Industrial Area, New Delhi – 110001 &nbsp;|&nbsp; GSTIN: 07XXXXX1234X1Z5</div>
-            <div class="quot-co-addr">📞 +91-98765-43210 &nbsp;|&nbsp; ✉ info@shantimetal.com &nbsp;|&nbsp; 🌐 www.shantimetal.com</div>
-          </div>
-        </div>
 
         <!-- Title -->
         <div class="quot-title">Q U O T A T I O N</div>
@@ -533,989 +483,10 @@
   </div>
 </section>
 
-<!-- ── SECTION 5: How It Works ── -->
-<section id="sec-howto" class="section">
-
-  <div class="card">
-    <h2 data-icon="❓">How QuoteGen AI Works — Step by Step</h2>
-    <p style="color:var(--muted);font-size:.9rem;">A complete overview of the system — from uploading your catalog to downloading a professional quotation.</p>
-  </div>
-
-  <!-- OVERVIEW FLOW -->
-  <div class="card">
-    <h2 data-icon="🔄">System Overview</h2>
-    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:0;margin-top:8px;">
-      <div class="flow-box" style="background:#1a3a6b;color:#fff;">📤<br>Upload<br>Catalog</div>
-      <div class="flow-arrow">→</div>
-      <div class="flow-box" style="background:#2471a3;color:#fff;">✨<br>Type<br>Requirements</div>
-      <div class="flow-arrow">→</div>
-      <div class="flow-box" style="background:#8e44ad;color:#fff;">🤖<br>AI Extracts<br>Items</div>
-      <div class="flow-arrow">→</div>
-      <div class="flow-box" style="background:#e8a020;color:#fff;">⚡<br>Auto-Pick<br>Best Match</div>
-      <div class="flow-arrow">→</div>
-      <div class="flow-box" style="background:#27ae60;color:#fff;">🔄<br>Switch<br>Variants</div>
-      <div class="flow-arrow">→</div>
-      <div class="flow-box" style="background:#c0392b;color:#fff;">⬇<br>Download<br>/ Print</div>
-    </div>
-  </div>
-
-  <!-- STEP 1 -->
-  <div class="card">
-    <div class="step-header" style="background:#1a3a6b;">
-      <span class="step-num">1</span>
-      <span>Upload Your Product Catalog</span>
-      <span style="margin-left:auto;font-size:.82rem;opacity:.8;">Tab: 📤 Upload BOQ</span>
-    </div>
-    <div class="step-body">
-      <div class="step-col">
-        <b>What you do:</b>
-        <ul class="step-list">
-          <li>Drag &amp; drop Excel files (.xls / .xlsx)</li>
-          <li>Click <b>🔍 Scan First</b> to preview before saving</li>
-          <li>Click <b>📤 Upload to Catalog</b> to save permanently</li>
-          <li>Upload multiple files from different suppliers</li>
-          <li>Delete files with the 🗑 button if needed</li>
-        </ul>
-      </div>
-      <div class="step-col">
-        <b>What happens automatically:</b>
-        <ul class="step-list">
-          <li>Reads <b>every sheet</b> in the Excel file</li>
-          <li>Auto-detects columns — Product, Price, Brand, GST, HSN…</li>
-          <li>Detects whether price is <b>INR or USD</b> from column name</li>
-          <li>Saves all products into the database</li>
-          <li>Duplicate files rejected automatically</li>
-        </ul>
-      </div>
-    </div>
-    <div class="step-note">📌 You can upload multiple catalog files. Each file stays separate — you can filter by file when generating quotes.</div>
-  </div>
-
-  <!-- STEP 2 -->
-  <div class="card">
-    <div class="step-header" style="background:#2471a3;">
-      <span class="step-num">2</span>
-      <span>Type Your Requirements in Plain English</span>
-      <span style="margin-left:auto;font-size:.82rem;opacity:.8;">Tab: ✨ Generate Quote</span>
-    </div>
-    <div class="step-body">
-      <div class="step-col">
-        <b>What you do:</b>
-        <ul class="step-list">
-          <li>Enter customer / hotel name</li>
-          <li>Select which catalog(s) to search (or leave all unchecked = search everything)</li>
-          <li>Type requirements naturally:<br>
-            <code style="background:#f0f3f8;padding:2px 6px;border-radius:4px;font-size:.8rem;">"We need 100 irons, 50 bath towels and 20 hair dryers"</code>
-          </li>
-          <li>Click <b>✨ Generate Quotation</b></li>
-        </ul>
-      </div>
-      <div class="step-col">
-        <b>Catalog filter rules:</b>
-        <ul class="step-list">
-          <li><b>No catalog selected</b> → searches all uploaded files</li>
-          <li><b>1 catalog selected</b> → searches only that file</li>
-          <li><b>Multiple selected</b> → searches all selected files</li>
-          <li>Variants shown only from the selected catalog(s)</li>
-        </ul>
-      </div>
-    </div>
-    <div class="step-note">📌 Groq AI (LLaMA 3.3 70B) is used only to extract product names and quantities from your text — lightweight, fast, uses ~50-100 tokens per request.</div>
-  </div>
-
-  <!-- STEP 3 -->
-  <div class="card">
-    <div class="step-header" style="background:#8e44ad;">
-      <span class="step-num">3</span>
-      <span>AI Extracts Items + Smart Auto-Pick</span>
-      <span style="margin-left:auto;font-size:.82rem;opacity:.8;">Happens automatically</span>
-    </div>
-    <div class="step-body">
-      <div class="step-col">
-        <b>AI extraction:</b>
-        <ul class="step-list">
-          <li>LLaMA 3.3 reads your prompt</li>
-          <li>Extracts product names + quantities</li>
-          <li>e.g. → <code style="background:#f0f3f8;padding:1px 5px;border-radius:3px;font-size:.8rem;">[{iron, 100}, {bath towel, 50}]</code></li>
-          <li>No catalog sent to AI — just your text</li>
-        </ul>
-      </div>
-      <div class="step-col">
-        <b>Smart auto-pick scoring:</b>
-        <ul class="step-list">
-          <li>For each product → finds ALL matching variants in DB</li>
-          <li>Scores each: <b>exact name match +100</b>, compact match +40-80, has price +60, INR preferred +5</b></li>
-          <li>Highest score = auto-selected for the quotation</li>
-          <li>Items not in catalog → shown in ❌ Not Found banner</li>
-          <li>Zero-price items automatically skipped</li>
-        </ul>
-      </div>
-    </div>
-    <div class="step-note">📌 Word-boundary matching prevents wrong results — "table" will NOT match "wall mountable". Only proper word matches count.</div>
-  </div>
-
-  <!-- STEP 4 -->
-  <div class="card">
-    <div class="step-header" style="background:#e8a020;">
-      <span class="step-num">4</span>
-      <span>Review Quotation + Switch Variants</span>
-      <span style="margin-left:auto;font-size:.82rem;opacity:.8;">Tab: 📋 Result</span>
-    </div>
-    <div class="step-body">
-      <div class="step-col">
-        <b>What you can do:</b>
-        <ul class="step-list">
-          <li>Quotation document appears instantly — no extra steps</li>
-          <li>Click <b>🔄 Switch</b> on any row to see all variants for that product</li>
-          <li>Pick a different variant → row updates + totals recalculate instantly</li>
-          <li>Edit QTY, Price/Pc, GST% directly in the table</li>
-          <li>Remove rows with ✕</li>
-        </ul>
-      </div>
-      <div class="step-col">
-        <b>Currency handling:</b>
-        <ul class="step-list">
-          <li><b>INR items</b> — shown with ₹ in INR section</li>
-          <li><b>USD items</b> — auto-converted at <b>live exchange rate</b></li>
-          <li>Both sections shown separately with their totals</li>
-          <li>Combined grand total at the bottom</li>
-          <li>Amount in words auto-calculated (Indian number system)</li>
-        </ul>
-      </div>
-    </div>
-    <div class="step-note">📌 The 🔄 Switch button only appears when 2+ variants exist for a product. Single-match products have no Switch button.</div>
-  </div>
-
-  <!-- STEP 5 -->
-  <div class="card">
-    <div class="step-header" style="background:#27ae60;">
-      <span class="step-num">5</span>
-      <span>Download, Print or Approve</span>
-      <span style="margin-left:auto;font-size:.82rem;opacity:.8;">Tab: 📋 Result → Action bar</span>
-    </div>
-    <div class="step-body">
-      <div class="step-col">
-        <b>Export options:</b>
-        <ul class="step-list">
-          <li><b>🖨 Print / PDF</b> — prints the clean quotation document (no buttons/chrome)</li>
-          <li><b>⬇ Download XLS</b> — exports as Excel with all item details</li>
-          <li><b>💾 Save Edits</b> — saves inline changes to database</li>
-        </ul>
-      </div>
-      <div class="step-col">
-        <b>Repository &amp; Feedback:</b>
-        <ul class="step-list">
-          <li>All generated quotes saved automatically as drafts</li>
-          <li>Click <b>✅ Approve</b> → moves to Repository</li>
-          <li>👍 Good / 👎 Not Good feedback trains the AI for future</li>
-          <li>Past quotes viewable in 🗄 Repository tab</li>
-        </ul>
-      </div>
-    </div>
-    <div class="step-note">📌 Every quotation gets a unique reference number (QT-YYYYMMDD-HHMMSS) and is stored in the database permanently.</div>
-  </div>
-
-  <!-- TECH STACK -->
-  <div class="card">
-    <h2 data-icon="⚙️">Technology Stack</h2>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:12px;">
-      <div class="tech-box"><div class="tech-icon">🐍</div><b>FastAPI</b><div class="tech-desc">Python backend — API routes, file parsing, DB, XLS generation</div></div>
-      <div class="tech-box"><div class="tech-icon">🤖</div><b>Groq + LLaMA 3.3</b><div class="tech-desc">Extracts product names &amp; quantities from plain English text</div></div>
-      <div class="tech-box"><div class="tech-icon">🗄</div><b>SQLite</b><div class="tech-desc">Local DB — product catalog, quotations, feedback all stored here</div></div>
-      <div class="tech-box"><div class="tech-icon">📊</div><b>Pandas + openpyxl</b><div class="tech-desc">Reads multi-sheet Excel, auto-detects columns, extracts images</div></div>
-      <div class="tech-box"><div class="tech-icon">💱</div><b>Frankfurter API</b><div class="tech-desc">Live USD→INR exchange rate on every page load (free)</div></div>
-      <div class="tech-box"><div class="tech-icon">🌐</div><b>Vanilla JS + HTML</b><div class="tech-desc">Single-file frontend — no frameworks, fast, works on mobile</div></div>
-    </div>
-  </div>
-
-</section>
 
 </main>
 
-<style>
-.flow-box { padding:14px 18px;border-radius:10px;text-align:center;font-size:.82rem;font-weight:700;min-width:90px;line-height:1.5; }
-.flow-arrow { font-size:1.6rem;color:var(--muted);padding:0 4px;align-self:center; }
-.step-header { display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:8px 8px 0 0;color:#fff;font-weight:700;font-size:1rem;margin:-24px -24px 16px -24px; }
-.step-num { background:rgba(255,255,255,.25);border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0; }
-.step-body { display:grid;grid-template-columns:1fr 1fr;gap:24px; }
-@media(max-width:700px) { .step-body { grid-template-columns:1fr; } }
-.step-col b { font-size:.85rem;color:var(--primary);display:block;margin-bottom:6px; }
-.step-list { margin:0;padding-left:18px; }
-.step-list li { font-size:.88rem;color:var(--text);margin-bottom:5px;line-height:1.4; }
-.step-note { margin-top:16px;padding:10px 14px;background:#f8faff;border-left:4px solid var(--primary);border-radius:0 6px 6px 0;font-size:.82rem;color:var(--muted); }
-.tech-box { background:#f8faff;border:1px solid var(--border);border-radius:8px;padding:16px;text-align:center; }
-.tech-icon { font-size:1.8rem;margin-bottom:6px; }
-.tech-box b { display:block;margin-bottom:4px;color:var(--primary); }
-.tech-desc { font-size:.78rem;color:var(--muted);line-height:1.4; }
-</style>
 
-<script>
-let currentQuotation = null;
-let selectedRating = null;
-let usdToInr = 84; // default fallback rate
-
-const API = window.location.origin;
-
-// Fetch live USD→INR rate on load
-async function fetchUsdRate() {
-  try {
-    const r = await fetch('https://api.frankfurter.app/latest?from=USD&to=INR');
-    const d = await r.json();
-    if (d.rates && d.rates.INR) {
-      usdToInr = d.rates.INR;
-      console.log('Live USD→INR rate:', usdToInr);
-    }
-  } catch(e) { console.log('Using fallback rate:', usdToInr); }
-}
-
-function saveApiKey() {
-  const key = document.getElementById('api-key-input').value.trim();
-  if (!key.startsWith('gsk_')) {
-    document.getElementById('api-key-status').innerHTML = '<div class="alert alert-error">Invalid key format. Groq keys start with gsk_...</div>';
-    return;
-  }
-  localStorage.setItem('groq_api_key', key);
-  document.getElementById('api-key-status').innerHTML = '<div class="alert alert-success">✅ Groq API key saved!</div>';
-}
-
-function getApiKey() {
-  return localStorage.getItem('groq_api_key') || localStorage.getItem('anthropic_api_key') || '';
-}
-
-// Load saved key on page load
-window.addEventListener('DOMContentLoaded', () => {
-  const saved = getApiKey();
-  if (saved) {
-    document.getElementById('api-key-input').value = saved;
-    document.getElementById('api-key-status').innerHTML = '<div class="alert alert-success">✅ Groq API key loaded from browser storage.</div>';
-  }
-});
-
-// ── Navigation ──────────────────────────────────────────────────────────────
-function show(tab) {
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('nav .tabs button').forEach(b => {
-    const t = b.getAttribute('onclick').match(/show\('(\w+)'\)/)?.[1];
-    b.classList.toggle('active', t === tab);
-  });
-  document.getElementById('sec-' + tab).classList.add('active');
-  if (tab === 'upload')    { loadCatalog(); loadUploadedFiles(); }
-  if (tab === 'generate')  loadCatalogSelector();
-  if (tab === 'repository') loadRepository();
-}
-
-// ── Upload ───────────────────────────────────────────────────────────────────
-const dropZone = document.getElementById('drop-zone');
-const fileInput = document.getElementById('file-input');
-
-let selectedFiles = [];
-
-dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
-dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag'); setFiles(e.dataTransfer.files); });
-fileInput.addEventListener('change', e => setFiles(e.target.files));
-
-function setFiles(files) {
-  selectedFiles = Array.from(files);
-  if (selectedFiles.length) {
-    dropZone.querySelector('p').innerHTML = `<strong>${selectedFiles.map(f=>f.name).join(', ')}</strong> selected`;
-    document.getElementById('scan-btn').disabled = false;
-    document.getElementById('upload-btn').disabled = false;
-    document.getElementById('scan-result').innerHTML = '';
-    document.getElementById('upload-status').innerHTML = '';
-  }
-}
-
-async function scanFile() {
-  if (!selectedFiles.length) return;
-  const btn = document.getElementById('scan-btn');
-  btn.disabled = true; btn.textContent = '🔍 Scanning...';
-  const out = document.getElementById('scan-result');
-  out.innerHTML = '';
-  for (const file of selectedFiles) {
-    const fd = new FormData(); fd.append('file', file);
-    try {
-      const res = await fetch(`${API}/api/scan-boq`, { method: 'POST', body: fd });
-      const d = await res.json();
-      if (!res.ok) { out.innerHTML += `<div class="alert alert-error">${d.detail}</div>`; continue; }
-      out.innerHTML += `
-        <div class="card" style="margin-top:0;border-left:4px solid var(--primary);position:relative;">
-          <button onclick="this.closest('.card').remove()" style="position:absolute;top:10px;right:10px;background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--muted);" title="Close">✕</button>
-          <strong>📄 ${d.filename}</strong>
-          <div style="margin-top:8px;font-size:.85rem;color:var(--muted)">
-            ✅ <b>${d.total_products}</b> products found &nbsp;·&nbsp;
-            🖼 <b>${d.images_found}</b> images &nbsp;·&nbsp;
-            📋 Columns: <code style="background:#f0f3f8;padding:2px 6px;border-radius:4px">${d.columns_detected.join(', ')}</code>
-          </div>
-          <div class="table-wrap" style="margin-top:12px">
-            <table>
-              <thead><tr><th>Product</th><th>Brand</th><th>Model</th><th>Price</th><th>GST%</th></tr></thead>
-              <tbody>${(d.preview||[]).map(i=>`<tr>
-                <td><strong>${i.product||'—'}</strong></td>
-                <td>${i.brand||'—'}</td>
-                <td style="font-size:.8rem">${i.model_no||'—'}</td>
-                <td>₹${i.price||0}</td>
-                <td>${i.gst_pct||18}%</td>
-              </tr>`).join('')}</tbody>
-            </table>
-          </div>
-          ${d.total_products > 8 ? `<p style="font-size:.8rem;color:var(--muted);margin-top:6px">...and ${d.total_products - 8} more products</p>` : ''}
-        </div>`;
-    } catch(e) { out.innerHTML += `<div class="alert alert-error">Scan failed: ${e.message}</div>`; }
-  }
-  btn.disabled = false; btn.textContent = '🔍 Scan First';
-}
-
-async function uploadFile() {
-  if (!selectedFiles.length) return;
-  const btn = document.getElementById('upload-btn');
-  btn.disabled = true; btn.textContent = '📤 Uploading...';
-  const status = document.getElementById('upload-status');
-  status.innerHTML = '';
-  for (const file of selectedFiles) {
-    const fd = new FormData(); fd.append('file', file);
-    try {
-      const res = await fetch(`${API}/api/upload-boq`, { method: 'POST', body: fd });
-      const data = await res.json();
-      status.innerHTML += `<div class="alert alert-${res.ok ? 'success' : 'error'}">${data.message || data.detail}</div>`;
-    } catch (e) {
-      status.innerHTML += `<div class="alert alert-error">Upload failed: ${e.message}</div>`;
-    }
-  }
-  btn.disabled = false; btn.textContent = '📤 Upload to Catalog';
-  loadCatalog();
-}
-
-async function handleFiles(files) { setFiles(files); }
-
-async function loadUploadedFiles() {
-  const res = await fetch(`${API}/api/boq-files`);
-  const files = await res.json();
-  const el = document.getElementById('uploaded-files');
-  if (!files.length) { el.innerHTML = '<p style="color:var(--muted);font-size:.9rem;">No files uploaded yet.</p>'; return; }
-  el.innerHTML = files.map(f => `
-    <div class="repo-item">
-      <div>
-        <strong>📄 ${f.file_name}</strong>
-        <div class="meta">${f.count} products &nbsp;·&nbsp; uploaded ${new Date(f.uploaded_at).toLocaleDateString('en-IN')}</div>
-      </div>
-      <button class="btn btn-sm btn-danger" onclick="deleteFile('${f.file_name}')">🗑 Delete</button>
-    </div>`).join('');
-}
-
-async function deleteFile(filename) {
-  if (!confirm(`Remove '${filename}' from catalog?`)) return;
-  const res = await fetch(`${API}/api/boq-files/${encodeURIComponent(filename)}`, { method: 'DELETE' });
-  const d = await res.json();
-  alert(d.message);
-  loadUploadedFiles();
-  loadCatalog();
-}
-
-async function loadCatalog() {
-  const res = await fetch(`${API}/api/boq-items`);
-  const items = await res.json();
-  document.getElementById('catalog-count').textContent = items.length;
-  const el = document.getElementById('catalog-table');
-  if (!items.length) { el.innerHTML = '<p style="color:var(--muted);font-size:.9rem;">No products yet.</p>'; return; }
-
-  // Group by file
-  const groups = {};
-  items.forEach(i => {
-    const key = i.file_name || 'Unknown';
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(i);
-  });
-
-  el.innerHTML = Object.entries(groups).map(([fname, prods], gIdx) => `
-    <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden;">
-      <div onclick="toggleFolder(${gIdx})" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#f8faff;cursor:pointer;user-select:none;">
-        <div>
-          <span style="font-size:1rem;">📁</span>
-          <strong style="margin-left:8px;font-size:.95rem;">${fname}</strong>
-          <span style="margin-left:10px;background:var(--accent);color:#fff;font-size:.72rem;padding:2px 8px;border-radius:10px;">${prods.length} products</span>
-        </div>
-        <span id="arrow-${gIdx}" style="font-size:1.1rem;transition:transform .2s;">▶</span>
-      </div>
-      <div id="folder-${gIdx}" style="display:none;">
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Image</th><th>Product</th><th>Sheet</th><th>Brand</th><th>Model No</th><th>Price (₹)</th><th>GST%</th><th>HSN</th></tr></thead>
-            <tbody>${prods.map(i => `<tr>
-              <td style="text-align:center">${i.has_image
-                ? `<img src="${API}/api/product-image/${i.id}" style="width:56px;height:44px;object-fit:contain;border-radius:4px;border:1px solid #ddd;" onerror="this.style.display='none'">`
-                : `<span style="color:#ccc;font-size:.75rem;">—</span>`}</td>
-              <td><strong>${i.product}</strong></td>
-              <td style="font-size:.78rem;color:var(--muted)">${i.sheet_name||'—'}</td>
-              <td>${i.brand||'—'}</td>
-              <td style="font-size:.8rem">${i.model_no||'—'}</td>
-              <td>₹${(i.price||0).toLocaleString('en-IN')}</td>
-              <td>${i.gst_pct||18}%</td>
-              <td>${i.hsn_code||'—'}</td>
-            </tr>`).join('')}</tbody>
-          </table>
-        </div>
-      </div>
-    </div>`).join('');
-}
-
-function toggleFolder(idx) {
-  const content = document.getElementById(`folder-${idx}`);
-  const arrow = document.getElementById(`arrow-${idx}`);
-  const open = content.style.display === 'block';
-  content.style.display = open ? 'none' : 'block';
-  arrow.style.transform = open ? '' : 'rotate(90deg)';
-}
-
-// ── Catalog Selector ─────────────────────────────────────────────────────────
-async function loadCatalogSelector() {
-  const res = await fetch(`${API}/api/boq-files`);
-  const files = await res.json();
-  const el = document.getElementById('catalog-selector');
-  if (!files.length) {
-    el.innerHTML = '<span style="color:var(--muted);font-size:.85rem;">No catalogs uploaded yet.</span>';
-    return;
-  }
-  el.innerHTML = files.map(f => `
-    <label style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:#fff;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:.88rem;user-select:none;" id="lbl-${CSS.escape(f.file_name)}">
-      <input type="checkbox" class="catalog-check" value="${f.file_name}" onchange="highlightCatalogLabel(this)" style="width:16px;height:16px;cursor:pointer;">
-      <span>📁 ${f.file_name}</span>
-      <span style="background:var(--accent);color:#fff;font-size:.72rem;padding:1px 7px;border-radius:10px;">${f.count}</span>
-    </label>`).join('');
-}
-
-function highlightCatalogLabel(cb) {
-  const lbl = cb.closest('label');
-  if (cb.checked) {
-    lbl.style.borderColor = 'var(--primary)';
-    lbl.style.background = '#eaf4fb';
-  } else {
-    lbl.style.borderColor = 'var(--border)';
-    lbl.style.background = '#fff';
-  }
-}
-
-function getSelectedCatalogs() {
-  return Array.from(document.querySelectorAll('.catalog-check:checked')).map(c => c.value);
-}
-
-// ── Variant Picker ───────────────────────────────────────────────────────────
-let vpGroups = [];   // holds last /api/variants response
-let vpClient = '';
-
-function renderVariantPicker(data) {
-  vpGroups  = data.groups || [];
-  vpClient  = data.client_name || '';
-
-  const found    = vpGroups.filter(g => g.found);
-  const notFound = vpGroups.filter(g => !g.found);
-
-  // Not-found banner
-  const nfBox = document.getElementById('vp-notfound-box');
-  if (notFound.length) {
-    nfBox.style.display = 'block';
-    document.getElementById('vp-notfound-items').textContent =
-      notFound.map(g => g.requested).join(', ');
-  } else {
-    nfBox.style.display = 'none';
-  }
-
-  document.getElementById('vp-summary').textContent =
-    `${found.length} product type(s) found — pick your preferred variant for each`;
-
-  const container = document.getElementById('vp-groups');
-  container.innerHTML = found.map((g, gi) => {
-    const multi = g.variants.length > 1;
-    const inputType = 'checkbox';   // allow picking multiple variants
-
-    const variantRows = g.variants.map((v, vi) => {
-      const priceINR = v.price_currency === 'USD'
-        ? `$${(v.price||0).toFixed(2)} USD`
-        : `₹${fmt(v.price||0, 2)}`;
-      const priceClass = v.price_currency === 'USD' ? 'usd' : '';
-      const fileShort  = (v.file_name||'').replace(/QUOTATION FOR /i,'').substring(0,30);
-      const checked    = vi === 0 && (v.price||0) > 0 ? 'checked' : '';
-      const rowId      = `vp-${gi}-${vi}`;
-      return `
-        <label class="vp-variant-row ${checked ? 'selected' : ''}" id="row-${rowId}" onclick="vpToggle(this)">
-          <input type="${inputType}" name="vp-group-${gi}" id="${rowId}"
-            data-gi="${gi}" data-vi="${vi}" ${checked} onchange="vpToggle(this.closest('label'))">
-          <span class="vp-prod-name">${v.product||''}</span>
-          <span class="vp-price ${priceClass}">${priceINR}</span>
-          <span class="vp-file-tag">📁 ${fileShort}</span>
-        </label>`;
-    }).join('');
-
-    return `
-      <div class="vp-group">
-        <div class="vp-group-header">
-          <span class="vp-group-icon">📦</span>
-          <span class="vp-group-name">${g.requested}</span>
-          <span class="vp-group-badge vp-badge-found">${g.variants.length} variant${g.variants.length>1?'s':''}</span>
-        </div>
-        <div class="vp-variants">${variantRows}</div>
-        <div class="vp-qty-row">
-          <label>Qty requested:</label>
-          <input type="number" id="vp-qty-${gi}" value="${g.qty}" min="1">
-        </div>
-      </div>`;
-  }).join('');
-
-  show('variants');
-}
-
-function vpToggle(label) {
-  label.classList.toggle('selected', label.querySelector('input').checked);
-}
-
-function vpBestPrice() {
-  // For each group, check only the first variant (already sorted best price first)
-  vpGroups.forEach((g, gi) => {
-    g.variants.forEach((v, vi) => {
-      const inp = document.getElementById(`vp-${gi}-${vi}`);
-      const row = document.getElementById(`row-vp-${gi}-${vi}`);
-      if (!inp) return;
-      inp.checked = vi === 0 && (v.price||0) > 0;
-      row?.classList.toggle('selected', inp.checked);
-    });
-  });
-}
-
-async function buildQuotation() {
-  const selectedItems = [];
-  vpGroups.forEach((g, gi) => {
-    const qty = parseInt(document.getElementById(`vp-qty-${gi}`)?.value) || g.qty || 1;
-    g.variants.forEach((v, vi) => {
-      const inp = document.getElementById(`vp-${gi}-${vi}`);
-      if (inp && inp.checked) {
-        selectedItems.push({ ...v, qty, price_per_pc: v.price, sl_no: selectedItems.length + 1 });
-      }
-    });
-  });
-
-  if (!selectedItems.length) { alert('Please select at least one variant.'); return; }
-
-  const btn = document.querySelector('#sec-variants .btn-primary');
-  btn.disabled = true; btn.textContent = '⏳ Building...';
-
-  try {
-    const res = await fetch(`${API}/api/build-quotation`, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ client_name: vpClient, items: selectedItems })
-    });
-    const q = await res.json();
-    if (!res.ok) { alert(q.detail || 'Build failed'); return; }
-    currentQuotation = q;
-    renderResult(q);
-    show('result');
-  } catch(e) {
-    alert('Error: ' + e.message);
-  } finally {
-    btn.disabled = false; btn.textContent = '📋 Build Quotation →';
-  }
-}
-
-// ── Generate ─────────────────────────────────────────────────────────────────
-async function generateQuote() {
-  const prompt = document.getElementById('req-prompt').value.trim();
-  const client = document.getElementById('client-name').value.trim();
-  if (!prompt) { alert('Please enter customer requirements.'); return; }
-
-  const btn = document.getElementById('gen-btn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="loader"></span> Generating...';
-  document.getElementById('gen-status').innerHTML = '<div class="alert alert-info">AI is analyzing requirements and matching products...</div>';
-
-  try {
-    const selectedCatalogs = getSelectedCatalogs();
-    document.getElementById('gen-status').innerHTML = '<div class="alert alert-info">🤖 AI is matching your requirements to the catalog...</div>';
-    const res = await fetch(`${API}/api/smart-generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, client_name: client, api_key: getApiKey(), catalogs: selectedCatalogs })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || 'Generation failed');
-    currentQuotation = data;
-    renderResult(data);
-    show('result');
-    const nf = (data.not_found||[]).length;
-    document.getElementById('gen-status').innerHTML =
-      `<div class="alert alert-success">✅ Quotation ready — ${(data.items||[]).length} item(s) matched.${nf ? ` ⚠️ ${nf} not found.` : ''}</div>`;
-  } catch (e) {
-    document.getElementById('gen-status').innerHTML = `<div class="alert alert-error">${e.message}</div>`;
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '<span>✨</span> Generate Quotation';
-  }
-}
-
-// ── Result ───────────────────────────────────────────────────────────────────
-function fmt(n, dec=0) { return n.toLocaleString('en-IN', {maximumFractionDigits: dec}); }
-
-function renderItemRow(item, idx) {
-  const isINR   = (item.price_currency || 'INR') === 'INR';
-  const qty     = item.qty || 0;
-  const price   = item.price_per_pc || 0;
-  const gst     = item.gst_pct || 18;
-
-  // Always convert to INR
-  const priceInr = isINR ? price : price * usdToInr;
-  const amtInr   = qty * priceInr;
-  const gstVal   = amtInr * gst / 100;
-
-  item._priceInr = priceInr;
-  item._amtInr   = amtInr;
-  item._gstVal   = gstVal;
-
-  const hasVariants = item._variants && item._variants.length > 1;
-  const switchBtn   = hasVariants
-    ? `<button class="btn-switch" onclick="switchVariant(${idx})">🔄 Switch</button>`
-    : '';
-
-  // Image cell — catalog image first, then manually uploaded, else upload button
-  const imgSrc = item.local_image || item.image_data || '';
-  const imgCell = imgSrc
-    ? `<img src="${imgSrc}" style="width:60px;height:48px;object-fit:contain;border-radius:4px;border:1px solid #ddd;display:block;margin:0 auto;cursor:pointer;" onclick="reAddImage(${idx})" title="Click to change">`
-    : `<label style="cursor:pointer;font-size:.72rem;color:var(--primary);display:block;text-align:center;padding:4px;">
-         📷 Add<br>Image
-         <input type="file" accept="image/*" style="display:none" onchange="handleRowImage(${idx},this)">
-       </label>`;
-
-  return `<tr data-idx="${idx}">
-    <td style="text-align:center;">${item.sl_no||idx+1}</td>
-    <td style="width:70px;text-align:center;">${imgCell}</td>
-    <td><strong>${item.product||''}</strong>${switchBtn}</td>
-    <td><input type="number" class="qty-input" value="${qty}" onchange="recalcRow(${idx})" style="width:60px"></td>
-    <td style="font-size:.82rem">${item.description||''}</td>
-    <td style="font-size:.8rem">${item.model_no||''}</td>
-    <td>${item.brand||''}</td>
-    <td><div class="spec-text">${(item.specification||'').replace(/\\n/g,'\n')}</div></td>
-    <td>${item.hsn_code||''}</td>
-    <td><input type="number" step="0.01" class="price-input" value="${(Math.round(priceInr*100)/100)}" onchange="recalcRow(${idx})" style="width:100px"></td>
-    <td class="amount-cell">₹${fmt(amtInr)}</td>
-    <td><input type="number" class="gst-input" value="${gst}" onchange="recalcRow(${idx})" style="width:50px"></td>
-    <td class="gst-val-cell">₹${fmt(gstVal)}</td>
-    <td><button class="btn btn-sm btn-danger" onclick="removeRow(${idx})">✕</button></td>
-  </tr>`;
-}
-
-// ── Switch Variant ───────────────────────────────────────────────────────────
-function switchVariant(idx) {
-  // Close any open panel first
-  document.querySelectorAll('.switch-panel').forEach(p => p.remove());
-
-  const item = currentQuotation && currentQuotation.items[idx];
-  if (!item || !item._variants || item._variants.length <= 1) return;
-
-  const row = document.querySelector(`#items-body tr[data-idx="${idx}"]`);
-  if (!row) return;
-  const colCount = row.cells.length;
-
-  const cards = item._variants.map((v, vi) => {
-    const isCur    = v.product === item.product && String(v.price) === String(item.price_per_pc);
-    const priceInr = v.price_currency === 'USD' ? (v.price||0) * usdToInr : (v.price||0);
-    const origStr  = v.price_currency === 'USD' ? ` ($${(v.price||0).toFixed(2)} USD)` : '';
-    const priceStr = `₹${priceInr.toLocaleString('en-IN', {maximumFractionDigits:2})}${origStr}`;
-    const fileShort = (v.file_name||'').replace(/QUOTATION FOR /i,'').substring(0,28);
-    return `
-      <div class="switch-card ${isCur?'active':''}" onclick="applySwitch(${idx},${vi})">
-        <div class="sc-name">${v.product||''}</div>
-        <div class="sc-price" style="color:var(--success);">${priceStr}</div>
-        <div class="sc-file">📁 ${fileShort}</div>
-        ${isCur ? '<div class="sc-tick">✓ Currently selected</div>' : ''}
-      </div>`;
-  }).join('');
-
-  const panel = document.createElement('tr');
-  panel.className = 'switch-panel';
-  panel.innerHTML = `<td colspan="${colCount}">
-    <div class="switch-panel-inner">
-      <div class="switch-panel-title">🔄 Switch Variant — "${item._requested || item.product}"</div>
-      <div class="switch-cards">${cards}</div>
-      <button onclick="document.querySelectorAll('.switch-panel').forEach(p=>p.remove())"
-        style="margin-top:10px;background:none;border:none;cursor:pointer;font-size:.78rem;color:var(--muted);">
-        ✕ Close
-      </button>
-    </div>
-  </td>`;
-  row.insertAdjacentElement('afterend', panel);
-}
-
-function applySwitch(idx, vi) {
-  const item = currentQuotation && currentQuotation.items[idx];
-  if (!item || !item._variants) return;
-  const v = item._variants[vi];
-  if (!v) return;
-  // Apply selected variant to item
-  item.product       = v.product      || item.product;
-  item.price_per_pc  = v.price        || 0;
-  item.price_currency= v.price_currency || 'INR';
-  item.brand         = v.brand        || '';
-  item.model_no      = v.model_no     || '';
-  item.description   = v.description  || '';
-  item.specification = v.specification|| '';
-  item.hsn_code      = v.hsn_code     || '';
-  item.image_data    = v.image_data   || '';
-  item.local_image   = '';            // use the variant's catalog image
-  document.querySelectorAll('.switch-panel').forEach(p => p.remove());
-  renderResult(currentQuotation);
-}
-
-function amtWords(n) {
-  const a=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
-  const b=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
-  function w(n){if(n===0)return '';if(n<20)return a[n];if(n<100)return b[Math.floor(n/10)]+(n%10?' '+a[n%10]:'');if(n<1e3)return a[Math.floor(n/100)]+' Hundred'+(n%100?' '+w(n%100):'');if(n<1e5)return w(Math.floor(n/1e3))+' Thousand'+(n%1e3?' '+w(n%1e3):'');if(n<1e7)return w(Math.floor(n/1e5))+' Lakh'+(n%1e5?' '+w(n%1e5):'');return w(Math.floor(n/1e7))+' Crore'+(n%1e7?' '+w(n%1e7):'');}
-  return (w(Math.round(n))||'Zero')+' Rupees Only';
-}
-
-function renderResult(q) {
-  document.getElementById('result-empty').style.display = 'none';
-  document.getElementById('result-content').style.display = 'block';
-
-  // Fill document header
-  const refNo = q.ref_no || '—';
-  document.getElementById('stat-ref').textContent  = '📄 ' + refNo;
-  document.getElementById('doc-ref').textContent   = refNo;
-  document.getElementById('doc-client').textContent = q.client_name || '—';
-  const now = new Date();
-  const fd  = d => d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
-  document.getElementById('doc-date').textContent  = fd(now);
-  const vd = new Date(now); vd.setDate(vd.getDate()+30);
-  document.getElementById('doc-valid').textContent = fd(vd);
-
-  // Not-found banner
-  const nfBanner = document.getElementById('not-found-banner');
-  const nfList   = q.not_found || [];
-  if (nfList.length && nfBanner) {
-    nfBanner.style.display = 'block';
-    document.getElementById('not-found-items').textContent = nfList.join(', ');
-  } else if (nfBanner) {
-    nfBanner.style.display = 'none';
-  }
-
-  const items = q.items || [];
-
-  // Single unified header — all in INR
-  const thead = document.querySelector('#items-table thead tr');
-  thead.innerHTML = `<th>SL</th><th style="width:70px">Image</th><th>Product</th><th>QTY</th>
-    <th>Description</th><th>Model No</th><th>Brand</th><th>Specification</th>
-    <th>HSN</th><th>Price/Pc (₹)</th><th>Amount (₹)</th><th>GST%</th><th>GST Val (₹)</th><th></th>`;
-
-  const colSpan = 14;
-  let html = '';
-
-  items.forEach(item => { html += renderItemRow(item, items.indexOf(item)); });
-
-  // Totals
-  const subTotal = items.reduce((s,i) => s+(i._amtInr||0), 0);
-  const gstTotal = items.reduce((s,i) => s+(i._gstVal||0), 0);
-  const grandTotal = subTotal + gstTotal;
-  const tdR = `style="text-align:right;padding-right:16px;font-weight:700;"`;
-
-  html += `<tr style="background:#eaf4fb;font-weight:700;">
-    <td colspan="${colSpan-3}" ${tdR}>SUB TOTAL</td>
-    <td>₹${fmt(subTotal)}</td><td></td><td>₹${fmt(gstTotal)}</td><td></td>
-  </tr>`;
-  html += `<tr style="background:#1a3a6b;color:#fff;font-weight:700;">
-    <td colspan="${colSpan-3}" ${tdR} style="text-align:right;padding-right:16px;font-weight:700;color:#fff;">GRAND TOTAL (incl. GST)</td>
-    <td colspan="4" style="font-size:1.05rem;">₹${fmt(grandTotal)}</td>
-  </tr>`;
-
-  document.getElementById('items-body').innerHTML = html;
-  document.getElementById('items-foot').innerHTML = '';
-
-  // Update grand total
-  const allInrGrand = items.reduce((s,i) => s+(i._amtInr||0)+(i._gstVal||0), 0);
-  document.getElementById('stat-total').textContent = '₹ ' + fmt(allInrGrand);
-  const wEl = document.getElementById('doc-words');
-  if (wEl) wEl.textContent = amtWords(allInrGrand);
-
-  selectedRating = null;
-  document.getElementById('btn-good').classList.remove('selected');
-  document.getElementById('btn-bad').classList.remove('selected');
-  document.getElementById('feedback-details').style.display = 'none';
-  document.getElementById('feedback-status').innerHTML = '';
-}
-
-function recalcRow(idx) {
-  if (!currentQuotation) return;
-  const item = currentQuotation.items[idx];
-  if (!item) return;
-  const row = document.querySelector('#items-body tr[data-idx="' + idx + '"]');
-  if (!row) return;
-  const isINR  = (item.price_currency||'INR') === 'INR';
-  const qty    = parseFloat(row.querySelector('.qty-input').value) || 0;
-  const priceInr = parseFloat(row.querySelector('.price-input').value) || 0;
-  const gst    = parseFloat(row.querySelector('.gst-input').value) || 0;
-  const amtInr = qty * priceInr;
-  const gstVal = amtInr * gst / 100;
-
-  row.querySelector('.amount-cell').textContent  = '₹' + fmt(amtInr);
-  row.querySelector('.gst-val-cell').textContent = '₹' + fmt(gstVal);
-
-  item.qty = qty; item.price_per_pc = isINR ? priceInr : priceInr / usdToInr;
-  item.gst_pct = gst; item._amtInr = amtInr; item._gstVal = gstVal;
-  updateGrandTotal();
-}
-
-function renderFoot(items) {}
-
-function updateGrandTotal() {
-  if (!currentQuotation) return;
-  const items = currentQuotation.items || [];
-  const grand = items.reduce((s,i) => s+(i._amtInr||0)+(i._gstVal||0), 0);
-  document.getElementById('stat-total').textContent = '₹ ' + fmt(grand);
-  const wEl = document.getElementById('doc-words');
-  if (wEl) wEl.textContent = amtWords(grand);
-}
-
-function handleRowImage(idx, input) {
-  const file = input.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    if (currentQuotation && currentQuotation.items[idx]) {
-      currentQuotation.items[idx].local_image = e.target.result;
-    }
-    // Re-render just that row's image cell
-    const row = document.querySelector(`#items-body tr[data-idx="${idx}"]`);
-    if (row && row.cells[1]) {
-      row.cells[1].innerHTML = `<img src="${e.target.result}" style="width:56px;height:44px;object-fit:contain;border-radius:4px;border:1px solid #ddd;display:block;margin:0 auto;cursor:pointer;" onclick="reAddImage(${idx})" title="Click to change">`;
-    }
-  };
-  reader.readAsDataURL(file);
-}
-
-function reAddImage(idx) {
-  const inp = document.createElement('input');
-  inp.type = 'file'; inp.accept = 'image/*';
-  inp.onchange = () => handleRowImage(idx, inp);
-  inp.click();
-}
-
-function removeRow(idx) {
-  if (!currentQuotation) return;
-  currentQuotation.items.splice(idx, 1);
-  renderResult(currentQuotation);
-}
-
-async function saveEdits() {
-  if (!currentQuotation) return;
-  const res = await fetch(`${API}/api/quotations/${currentQuotation.id}`, {
-    method: 'PUT',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({items: currentQuotation.items, client_name: currentQuotation.client_name})
-  });
-  if (res.ok) alert('Changes saved!');
-  else alert('Save failed.');
-}
-
-function downloadXLS() {
-  if (!currentQuotation) return;
-  window.open(`${API}/api/download/${currentQuotation.id}`);
-}
-
-// ── Feedback ─────────────────────────────────────────────────────────────────
-function setRating(val) {
-  selectedRating = val;
-  document.getElementById('btn-good').classList.toggle('selected', val === 'good');
-  document.getElementById('btn-bad').classList.toggle('selected', val === 'not_good');
-  document.getElementById('feedback-details').style.display = val === 'not_good' ? 'block' : 'none';
-  if (val === 'good') submitFeedback();
-}
-
-async function submitFeedback() {
-  if (!currentQuotation || !selectedRating) return;
-  const missing = document.getElementById('feedback-missing').value;
-  const res = await fetch(`${API}/api/feedback`, {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({quotation_id: currentQuotation.id, rating: selectedRating, missing_items: missing})
-  });
-  const data = await res.json();
-  document.getElementById('feedback-status').innerHTML = `<div class="alert alert-${res.ok?'success':'error'}">${data.message||data.detail}</div>`;
-  if (selectedRating === 'good') loadRepository();
-}
-
-// ── Repository ────────────────────────────────────────────────────────────────
-async function loadRepository() {
-  const [approved, all] = await Promise.all([
-    fetch(`${API}/api/quotations?status=approved`).then(r=>r.json()),
-    fetch(`${API}/api/quotations`).then(r=>r.json())
-  ]);
-  const drafts = all.filter(q => q.status === 'draft');
-
-  document.getElementById('repo-list').innerHTML = approved.length
-    ? approved.map(q => repoCard(q, 'approved')).join('')
-    : '<p style="color:var(--muted);">No approved quotations yet.</p>';
-
-  document.getElementById('drafts-list').innerHTML = drafts.length
-    ? drafts.map(q => repoCard(q, 'draft')).join('')
-    : '<p style="color:var(--muted);">No drafts.</p>';
-}
-
-function repoCard(q, status) {
-  const d = q.items_json;
-  const items = d.items || [];
-  const inrItems = items.filter(i => (i.price_currency||'INR') === 'INR');
-  const usdItems = items.filter(i => (i.price_currency||'INR') === 'USD');
-  const grand = inrItems.reduce((s,i) => s+(i.amount||0)+(i.gst_value||0), 0);
-  const usdTotal = usdItems.reduce((s,i) => s+((i.qty||0)*(i.price_per_pc||0)), 0);
-  return `<div class="repo-item">
-    <div>
-      <strong>${d.ref_no || q.ref_no}</strong> &nbsp; <span class="badge badge-${status}">${status}</span>
-      <div class="meta">${d.client_name || q.client_name} &nbsp;·&nbsp; ${items.length} items &nbsp;·&nbsp; ₹${grand.toLocaleString('en-IN',{maximumFractionDigits:0})}${usdTotal > 0 ? ' &nbsp;+&nbsp; $'+usdTotal.toLocaleString('en-IN',{maximumFractionDigits:2})+' USD' : ''}</div>
-      <div class="meta">${q.created_at ? new Date(q.created_at).toLocaleDateString('en-IN') : ''}</div>
-    </div>
-    <div style="display:flex;gap:8px;align-items:center;">
-      <button class="btn btn-sm btn-outline" onclick="viewQuote(${q.id})">👁 View</button>
-      <button class="btn btn-sm btn-accent" onclick="window.open(API+'/api/download/${q.id}')">⬇ XLS</button>
-      ${status==='draft' ? `<button class="btn btn-sm btn-success" onclick="approveQuote(${q.id})">✓ Approve</button>` : ''}
-      <button class="btn btn-sm btn-danger" onclick="deleteQuote(${q.id})" title="Delete" style="padding:6px 10px;">✕</button>
-    </div>
-  </div>`;
-}
-
-async function deleteQuote(id) {
-  if (!confirm('Delete this quotation?')) return;
-  const res = await fetch(`${API}/api/quotations/${id}`, { method: 'DELETE' });
-  if (res.ok) loadRepository();
-  else alert('Delete failed.');
-}
-
-async function clearAllQuotations() {
-  if (!confirm('Delete ALL quotations (approved + drafts)? This cannot be undone.')) return;
-  const res = await fetch(`${API}/api/quotations/clear-all`, { method: 'DELETE' });
-  if (res.ok) {
-    loadRepository();
-    alert('All quotations cleared.');
-  } else {
-    alert('Failed to clear.');
-  }
-}
-
-async function approveQuote(id) {
-  await fetch(`${API}/api/approve/${id}`, {method:'POST'});
-  loadRepository();
-}
-
-async function viewQuote(id) {
-  const res = await fetch(`${API}/api/quotations`);
-  const all = await res.json();
-  const q = all.find(x => x.id === id);
-  if (!q) return;
-  currentQuotation = { ...q.items_json, id: q.id };
-  renderResult(currentQuotation);
-  show('result');
-}
-
-// Init
-fetchUsdRate();
-loadCatalog();
-loadUploadedFiles();
-loadCatalogSelector();
-</script>
+<script src="/static/js/app.js?v=9"></script>
 </body>
 </html>

@@ -206,9 +206,37 @@ def _read_client_anchor(data, off, end):
 
 
 def extract_images(path):
-    """Main entry: return list of {sheet_index, row, col, ext, data}."""
+    """Main entry: return list of {sheet_index, row, col, ext, data}.
+    Each result also carries match="exact" — these have a real Escher anchor.
+    Kept as a plain list (no fallback) for backward compatibility; callers
+    that want the best-effort fallback should use extract_images_with_fallback."""
+    results, _ = extract_images_with_fallback(path)
+    return results
+
+
+def extract_images_with_fallback(path):
+    """Like extract_images, but also returns leftover_by_sheet: the raw
+    (ext, bytes) blips left unclaimed after real Escher anchors are matched,
+    per sheet — ONLY for sheets that had at least one confirmed anchor (so
+    there's a validated starting point to continue from).
+
+    Why this exists: some .xls "quotation" exports (seen from non-Excel
+    generating tools) write a sheet's picture-anchor data as a single BIFF
+    record capped at the 8228-byte record limit instead of splitting it with
+    CONTINUE records — every anchor past that byte budget is silently
+    dropped, even though the photo bytes themselves are still embedded fine.
+    Within a sheet that has confirmed anchors, blip index order reliably
+    (if imperfectly) tracks row order, so leftover blips — in index order,
+    continuing past the last confirmed index — are a reasonable best-effort
+    guess for the rows that lost their anchor. Sheets with ZERO confirmed
+    anchors have no calibration point, so they get no fallback pool at all.
+
+    Returns: (results, leftover_by_sheet) where results is the exact-match
+    list (each entry tagged match="exact") and leftover_by_sheet is
+    {sheet_index: [(ext, bytes), ...]} in blip-store order.
+    """
     if not olefile.isOleFile(path):
-        return []
+        return [], {}
     ole = olefile.OleFileIO(path)
     try:
         wb = ole.openstream("Workbook").read()
@@ -217,7 +245,7 @@ def extract_images(path):
             wb = ole.openstream("Book").read()
         except Exception:
             ole.close()
-            return []
+            return [], {}
     ole.close()
 
     records = _biff_records(wb)
@@ -228,11 +256,13 @@ def extract_images(path):
     blips = _parse_blip_store(combined) if combined else []
 
     if not blips:
-        return []
+        return [], {}
 
-    # 2. Walk sheets: track sheet index, collect MSODRAWING per sheet
+    # 2. Walk sheets: track sheet index, collect MSODRAWING per sheet, and
+    #    track the max blip index actually anchored on each sheet.
     results = []
     sheet_index = -1
+    max_used_idx_by_sheet = {}
     for rectype, recdata in records:
         if rectype == BOF:
             # BOF dt field: 0x0010 = worksheet
@@ -249,9 +279,24 @@ def extract_images(path):
                         results.append({
                             "sheet_index": sheet_index,
                             "row": row, "col": col,
-                            "ext": ext, "data": img,
+                            "ext": ext, "data": img, "match": "exact",
                         })
-    return results
+                        prev = max_used_idx_by_sheet.get(sheet_index, 0)
+                        max_used_idx_by_sheet[sheet_index] = max(prev, blip_idx)
+
+    # 3. Leftover pool per calibrated sheet: blips after that sheet's last
+    #    confirmed index, up to the next calibrated sheet's own last used
+    #    index (a conservative, non-overlapping split) — or end of the blip
+    #    list if it's the last calibrated sheet.
+    calibrated = sorted(max_used_idx_by_sheet.items())  # [(sheet_index, max_idx), ...]
+    leftover_by_sheet = {}
+    for i, (si, max_idx) in enumerate(calibrated):
+        end = calibrated[i + 1][1] if i + 1 < len(calibrated) else len(blips)
+        pool = [b for b in blips[max_idx:end] if b]
+        if pool:
+            leftover_by_sheet[si] = pool
+
+    return results, leftover_by_sheet
 
 
 if __name__ == "__main__":

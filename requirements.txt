@@ -7,3 +7,11 @@ xlrd==2.0.1
 python-multipart==0.0.9
 Pillow==10.4.0
 olefile==0.47
+bcrypt==4.2.0
+itsdangerous==2.2.0
+slowapi==0.1.9
+pywin32==306; platform_system=="Windows"
+# Local dev only — powers uvicorn --reload in run_local.ps1. Production runs
+# without --reload and never imports this; uvicorn falls back to stat-polling
+# if it's absent, so a deploy that skips it still works.
+watchfiles==1.2.0
