@@ -344,9 +344,36 @@ function renderDashboard(d) {
       </div>
     </div>`;
 
+  const smartImport = `
+    <div class="dcard">
+      <h3>Smart Import</h3>
+      <div class="ddrop" id="dash-drop"
+           ondragover="event.preventDefault();this.classList.add('drag')"
+           ondragleave="this.classList.remove('drag')"
+           ondrop="event.preventDefault();this.classList.remove('drag');dashFileChosen(event.dataTransfer.files[0])"
+           onclick="document.getElementById('dash-file-input').click()">
+        <div class="ddoc">📄</div>
+        <b>Drop your BOQ, Price List or Quotation</b>
+        <small>The file type is detected and routed to the right flow</small><br>
+        <button class="btn btn-primary" style="margin-top:12px"
+                onclick="event.stopPropagation();document.getElementById('dash-file-input').click()">⇪ Upload File</button>
+        <input type="file" id="dash-file-input" accept=".xls,.xlsx" style="display:none"
+               onchange="dashFileChosen(this.files[0]);this.value=''">
+      </div>
+      <div class="dsteps" id="dash-steps">
+        <div class="dstep" data-s="detect"><span class="ddot">1</span>Detect</div>
+        <div class="dstep" data-s="route"><span class="ddot">2</span>Route</div>
+        <div class="dstep" data-s="map"><span class="ddot">3</span>Map</div>
+        <div class="dstep" data-s="approve"><span class="ddot">4</span>Approve</div>
+        <div class="dstep" data-s="import"><span class="ddot">5</span>Import</div>
+      </div>
+      <div id="dash-si-status" style="margin-top:10px;"></div>
+    </div>`;
+
   view.innerHTML = `
     <div class="dstats">${stats}</div>
     <div class="dgrid">
+      ${smartImport}
       <div class="dcard">
         <h3>Recent Quotations <a href="#" onclick="show('repository');return false">View all</a></h3>
         ${recent}
@@ -354,6 +381,64 @@ function renderDashboard(d) {
       ${qa}
       ${activity}
     </div>`;
+}
+
+// Smart Import (dashboard): detect what a workbook is, then hand it to the
+// flow that owns that kind of file. Detection is Phase E server-side; the
+// routing here only ever passes the File object into the existing, tested
+// entry points — no second upload path to keep in sync.
+function dashStep(name, state) {
+  const el = document.querySelector(`#dash-steps .dstep[data-s="${name}"]`);
+  if (el) { el.classList.remove('now', 'done'); if (state) el.classList.add(state); }
+}
+
+async function dashFileChosen(file) {
+  if (!file) return;
+  const st = document.getElementById('dash-si-status');
+  ['detect', 'route', 'map', 'approve', 'import'].forEach(x => dashStep(x, null));
+  dashStep('detect', 'now');
+  st.innerHTML = `<div class="loading-state">Detecting what '${file.name}' is...</div>`;
+  try {
+    const fd = new FormData(); fd.append('file', file);
+    const res = await fetch(`${API}/api/detect-file`, { method: 'POST', body: fd });
+    const d = await res.json();
+    if (!res.ok) { st.innerHTML = `<div class="alert alert-error">${apiErr(d)}</div>`; dashStep('detect', null); return; }
+    dashStep('detect', 'done');
+    dashRouteFile(d, file, st);
+  } catch (e) {
+    st.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+    dashStep('detect', null);
+  }
+}
+
+function dashRouteFile(d, file, st) {
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  dashStep('route', 'done');
+  if (d.type === 'price_list') {
+    if (!isAdmin) {
+      st.innerHTML = `<div class="alert alert-error">This looks like a <b>supplier price list</b> — only an admin can import those into the Master Table.</div>`;
+      return;
+    }
+    st.innerHTML = `<div class="alert alert-success">Detected: <b>${d.label}</b> — opening the Master Table import and scanning it.</div>`;
+    setMasterFiles([file]);
+    show('master');
+    setTimeout(() => { document.getElementById('master-scan-btn')?.scrollIntoView({behavior: 'smooth', block: 'center'}); scanMasterFiles(); }, 150);
+  } else if (d.type === 'client_boq' || d.type === 'quotation') {
+    const extra = d.type === 'quotation'
+      ? ' It looks like a quotation rather than a requirement sheet — the coverage screen will show the same warning.'
+      : '';
+    st.innerHTML = `<div class="alert alert-success">Detected: <b>${d.label}</b> — opening the BOQ check with the file loaded.${extra}</div>`;
+    setBoqReqFile(file);
+    showBoqCoverage();
+  } else {
+    st.innerHTML = `
+      <div class="alert alert-info">Couldn't tell what this file is. Where should it go?</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+        ${isAdmin ? `<button class="btn btn-sm btn-primary" onclick="setMasterFiles([window._dashPendingFile]);show('master');setTimeout(scanMasterFiles,150)">Master Table import</button>` : ''}
+        <button class="btn btn-sm btn-accent" onclick="setBoqReqFile(window._dashPendingFile);showBoqCoverage()">BOQ coverage check</button>
+      </div>`;
+    window._dashPendingFile = file;
+  }
 }
 
 // Sidebar shortcuts to features that live inside other screens

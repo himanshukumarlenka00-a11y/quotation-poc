@@ -414,6 +414,27 @@ def bulk_set_tier_pricing(filename: str, req: BulkTierPricingRequest,
     return {"message": msg, "updated": updated, "skipped": skipped}
 
 
+@router.post("/api/detect-file")
+async def detect_file(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    """What kind of workbook is this? Powers the dashboard's Smart Import
+    card: the answer decides which flow the file is routed into (master
+    import, BOQ coverage, generate-from-BOQ). Read-only — nothing is stored."""
+    if not file.filename.endswith((".xls", ".xlsx")):
+        raise HTTPException(400, "Only .xls/.xlsx files allowed")
+    suffix = ".xlsx" if file.filename.endswith(".xlsx") else ".xls"
+    fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+    os.close(fd)
+    tmp_path = Path(tmp_path)
+    try:
+        _save_upload_validated(file, tmp_path)
+        return detect_file_type(str(tmp_path))
+    finally:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 class ConfirmMappingRequest(BaseModel):
     header: str          # header text exactly as it appears in the sheet
     field: str           # internal field it means, or "" to ignore the column

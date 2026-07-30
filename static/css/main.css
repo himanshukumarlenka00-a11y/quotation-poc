@@ -1240,3 +1240,30 @@
      expands in place without claiming the whole row. */
   .topbar .topbar-pill { flex: 0 1 auto; }
   .topbar .topbar-pill.active { flex: 1 1 auto; max-width: 460px; }
+
+
+  /* Smart Import card on the dashboard */
+  .ddrop {
+    border: 1.8px dashed #c9cede; border-radius: 12px; text-align: center;
+    padding: 22px 14px; cursor: pointer; background: var(--bg);
+    transition: border-color .2s ease, background .2s ease;
+  }
+  .ddrop:hover, .ddrop.drag { border-color: var(--primary); background: var(--accent-soft2); }
+  .ddoc { width: 54px; height: 54px; margin: 0 auto 8px; border-radius: 14px;
+          background: var(--accent-soft2); display: flex; align-items: center;
+          justify-content: center; font-size: var(--fs-2xl); }
+  .ddrop b { display: block; font-size: var(--fs-base); }
+  .ddrop small { color: var(--muted); }
+  .dsteps { display: flex; margin-top: 14px; }
+  .dstep { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1;
+           position: relative; font-size: var(--fs-xs); color: var(--muted); }
+  .dstep::before { content: ''; position: absolute; top: 9px; left: -50%; width: 100%;
+                   height: 2px; background: var(--border); }
+  .dstep:first-child::before { display: none; }
+  .ddot { width: 19px; height: 19px; border-radius: 50%; background: var(--border);
+          z-index: 1; display: flex; align-items: center; justify-content: center;
+          color: #fff; font-size: var(--fs-xs); font-weight: 700; }
+  .dstep.done .ddot { background: var(--success); }
+  .dstep.done .ddot::after { content: '✓'; position: absolute; }
+  .dstep.now .ddot { background: var(--primary); box-shadow: 0 0 0 4px var(--accent-soft2); }
+  .dstep.done, .dstep.now { color: var(--text); font-weight: 700; }
