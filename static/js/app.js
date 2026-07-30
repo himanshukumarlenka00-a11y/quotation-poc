@@ -1554,6 +1554,44 @@ async function generateFromBoqFile() {
 }
 
 // Add forgotten items to the CURRENT quote (from the result screen)
+// ── "Frequently quoted together" suggestions ─────────────────────────────────
+// Mined from past quotations — the history is the training set. Refreshed
+// whenever the quote's items change, so adding a suggestion can surface the
+// next one.
+async function loadSuggestions() {
+  const strip = document.getElementById('suggest-strip');
+  if (!strip || !currentQuotation || !(currentQuotation.items || []).length) {
+    if (strip) strip.style.display = 'none';
+    return;
+  }
+  try {
+    const res = await fetch(`${API}/api/suggestions`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ products: currentQuotation.items.map(i => i.product) })
+    });
+    if (!res.ok) { strip.style.display = 'none'; return; }
+    const sugg = await res.json();
+    if (!sugg.length) { strip.style.display = 'none'; return; }
+    strip.innerHTML = `<span class="sugg-label">Frequently quoted together:</span>` +
+      sugg.map(s => `
+        <button class="sugg-chip" onclick="addSuggestion('${String(s.product).replace(/'/g, "\\'")}')"
+                title="${s.brand || ''} ${s.model_no || ''} — quoted together ${s.times_together}×">
+          ➕ ${s.product.length > 38 ? s.product.slice(0, 37) + '…' : s.product}
+          <span class="sugg-count">${s.times_together}×</span>
+        </button>`).join('');
+    strip.style.display = 'flex';
+  } catch (e) {
+    strip.style.display = 'none';   // suggestions must never break the page
+  }
+}
+
+function addSuggestion(product) {
+  // Reuse the existing add flow end to end — same matching, same learning.
+  const input = document.getElementById('add-item-input');
+  input.value = product;
+  addToQuote();
+}
+
 async function addToQuote() {
   if (!currentQuotation) return;
   const inp = document.getElementById('add-item-input');
@@ -1762,6 +1800,7 @@ function amtWords(n) {
 function renderResult(q) {
   document.getElementById('result-empty').style.display = 'none';
   document.getElementById('result-content').style.display = 'block';
+  loadSuggestions();   // async, fire-and-forget — the strip fills in when ready
 
   // Fill document header
   const refNo = q.ref_no || '—';

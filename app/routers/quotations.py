@@ -932,6 +932,65 @@ def download_quotation(qid: int, user: dict = Depends(get_current_user)):
     )
 
 
+class SuggestRequest(BaseModel):
+    products: list = []      # product names currently on the quote
+
+
+@router.post("/api/suggestions")
+def get_suggestions(req: SuggestRequest, user: dict = Depends(get_current_user)):
+    """Products frequently quoted together with what's on this quote.
+
+    Mined live from quotations already in the repository — no new data is
+    collected, the history IS the training set. Computed per request rather
+    than precomputed: it runs only when an item lands on a quote, and a live
+    scan of the recent 500 quotes is milliseconds at this scale while never
+    serving stale counts.
+    """
+    base = {str(p or "").strip().lower() for p in (req.products or []) if str(p or "").strip()}
+    if not base:
+        return []
+    from collections import Counter
+    conn = get_db()
+    try:
+        cnt = Counter()
+        for (ij,) in conn.execute(
+                "SELECT items_json FROM quotations ORDER BY id DESC LIMIT 500"):
+            try:
+                items = json.loads(ij).get("items", [])
+            except Exception:
+                continue
+            # A 700-line bulk BOQ pairs everything with everything — diffuse
+            # noise, not preference. Classic market-basket practice: cap the
+            # basket size so co-occurrence keeps meaning "chosen together".
+            if not items or len(items) > 60:
+                continue
+            names = {str(i.get("product") or "").strip() for i in items
+                     if str(i.get("product") or "").strip()}
+            if {n.lower() for n in names} & base:
+                for n in names:
+                    if n.lower() not in base:
+                        cnt[n] += 1
+
+        # Resolve against the live master table — a suggestion for a product
+        # no longer in the catalogue would be un-addable.
+        out = []
+        for name, together in cnt.most_common(24):
+            r = conn.execute(
+                "SELECT product, original_model, brand, price_3star, image_path "
+                "FROM master_products WHERE LOWER(TRIM(product))=LOWER(TRIM(?)) LIMIT 1",
+                (name,)).fetchone()
+            if not r:
+                continue
+            out.append({"product": r["product"], "model_no": r["original_model"] or "",
+                        "brand": r["brand"] or "", "price_3star": r["price_3star"] or 0,
+                        "image_path": r["image_path"] or "", "times_together": together})
+            if len(out) >= 6:
+                break
+        return out
+    finally:
+        conn.close()
+
+
 @router.get("/api/corrections")
 def list_corrections(admin: dict = Depends(require_role("admin"))):
     """Everything matching has learned from human edits — admin-only, the
