@@ -115,6 +115,38 @@ def _finish_smart_generate(req, user, extracted, groq_client):
     return data
 
 
+def _norm_phrase(s):
+    """Normalize a requested phrase for correction lookup: lowercase, strip
+    punctuation edges, collapse whitespace. Exact-match only by design — a
+    fuzzy learned match firing on the wrong phrase would be precisely the bug
+    this table exists to prevent."""
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", str(s or "").lower())).strip()
+
+
+def _lookup_correction(conn, phrase):
+    """A master-table row a human previously said this phrase means, or None.
+
+    Resolves the stored (product, original_model) TEXT identity against the
+    live master table — if the product has since been removed, this misses and
+    matching falls through to the normal path rather than serving something
+    stale."""
+    pn = _norm_phrase(phrase)
+    if not pn:
+        return None
+    try:
+        r = conn.execute("SELECT product, original_model FROM match_corrections "
+                         "WHERE phrase_norm=?", (pn,)).fetchone()
+        if not r:
+            return None
+        row = conn.execute(
+            "SELECT * FROM master_products WHERE LOWER(TRIM(product))=LOWER(TRIM(?)) "
+            "AND LOWER(TRIM(COALESCE(original_model,'')))=LOWER(TRIM(COALESCE(?,''))) LIMIT 1",
+            (r["product"], r["original_model"])).fetchone()
+        return dict(row) if row else None
+    except Exception:
+        return None       # a missing table must never break matching
+
+
 # Words that mean the prompt is prose rather than a list. Their presence sends
 # the request to the LLM, because a parser that guesses at sentence structure
 # would quietly produce a wrong quotation.
@@ -505,6 +537,20 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         # Search across NAME + MODEL NO + SPECIFICATION; returns all candidates.
         variants = search_catalog(search_term)
 
+        # A human correction outranks everything below. If someone previously
+        # fixed what this exact phrase resolves to, put their pick first —
+        # the matcher's candidates stay behind it as switchable variants.
+        corr_row = _lookup_correction(conn, original_kw)
+        matched_by = "ai"
+        if corr_row:
+            matched_by = "learned"
+            ck = ((corr_row.get("product") or "").strip().lower(),
+                  (corr_row.get("original_model") or "").strip().lower())
+            variants = [corr_row] + [
+                v for v in variants
+                if ((v.get("product") or "").strip().lower(),
+                    (v.get("original_model") or "").strip().lower()) != ck]
+
         # Synonym fallback: if nothing matched directly (e.g. "dustbin"→"bin"),
         # use the LLM's suggested product name and search again.
         if not variants:
@@ -603,6 +649,12 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             "price_4star_usd":  best.get("price_4star_usd", 0),
             "_variants":    variants_sorted,
             "_requested":   item.get("product", ""),
+            # Persisted (no underscore) — the learning loop needs to know, at
+            # edit time, which phrase produced this line and who matched it.
+            # Without `requested` a correction cannot be attributed; without
+            # `matched_by` a re-save would re-learn lines a human already set.
+            "requested":    item.get("product", ""),
+            "matched_by":   matched_by,
             "boq_price":    float(item.get("boq_price") or 0),
         })
 
@@ -774,6 +826,49 @@ def update_quotation(qid: int, req: UpdateItemsRequest, user: dict = Depends(get
         raise HTTPException(404, "Not found")
     _check_quote_access(row, user)
     data = json.loads(row["items_json"])
+
+    # Learn from what the human changed, BEFORE the old state is overwritten.
+    # Diffing server-side (rather than trusting the frontend to report edits)
+    # catches every way a product can change and cannot be skipped by a buggy
+    # client. Lines pair up on their `requested` phrase; a line whose product
+    # identity changed is a correction. Qty/price edits are not — the product
+    # is the same, the human just tuned the numbers.
+    learned = []      # audit-logged AFTER commit — log_action opens its own
+                      # connection, and calling it while this write transaction
+                      # is still open deadlocks against ourselves ("database is
+                      # locked") and silently loses the audit entry.
+    try:
+        old_by_phrase = {_norm_phrase(i.get("requested")): i
+                         for i in data.get("items", []) if i.get("requested")}
+        for item in (req.items or []):
+            ph = _norm_phrase(item.get("requested") or "")
+            old = old_by_phrase.get(ph)
+            if not old or old.get("matched_by") == "human":
+                continue        # nothing to compare, or already human-settled
+            ident = lambda x: ((str(x.get("product") or "")).strip().lower(),
+                               (str(x.get("model_no") or "")).strip().lower())
+            if ident(old) != ident(item):
+                conn.execute("""
+                    INSERT INTO match_corrections
+                        (phrase_norm, product, original_model, corrected_from,
+                         corrected_by, created_at)
+                    VALUES (?,?,?,?,?,?)
+                    ON CONFLICT(phrase_norm) DO UPDATE SET
+                        product=excluded.product,
+                        original_model=excluded.original_model,
+                        corrected_from=excluded.corrected_from,
+                        corrected_by=excluded.corrected_by,
+                        created_at=excluded.created_at,
+                        times_confirmed=match_corrections.times_confirmed+1
+                """, (ph, item.get("product") or "", item.get("model_no") or "",
+                      old.get("product") or "", user["id"],
+                      datetime.now().isoformat()))
+                item["matched_by"] = "human"
+                learned.append((item.get("requested") or ph,
+                                old.get("product"), item.get("product")))
+    except Exception as e:
+        print(f"Correction learning skipped (non-fatal): {e}")
+
     data["items"] = req.items
     if req.client_name:
         data["client_name"] = req.client_name
@@ -789,6 +884,9 @@ def update_quotation(qid: int, req: UpdateItemsRequest, user: dict = Depends(get
     conn.close()
     data["id"] = qid
     log_action(user, "edit_quotation", target=str(qid))
+    for phrase, was, now in learned:
+        log_action(user, "learned_correction", target=phrase,
+                   after={"from": was, "to": now})
     return data
 
 
@@ -812,6 +910,36 @@ def download_quotation(qid: int, user: dict = Depends(get_current_user)):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         filename=f"Quote_{data.get('ref_no', qid)}.xlsx"
     )
+
+
+@router.get("/api/corrections")
+def list_corrections(admin: dict = Depends(require_role("admin"))):
+    """Everything matching has learned from human edits — admin-only, the
+    review surface for unlearning a wrong lesson."""
+    conn = get_db()
+    try:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT c.*, u.name AS corrected_by_name FROM match_corrections c "
+            "LEFT JOIN users u ON u.id = c.corrected_by "
+            "ORDER BY c.created_at DESC LIMIT 500")]
+    finally:
+        conn.close()
+    return rows
+
+
+@router.delete("/api/corrections/{correction_id}")
+def delete_correction(correction_id: int, admin: dict = Depends(require_role("admin"))):
+    """Forget a learned correction — the undo for a wrong human edit."""
+    conn = get_db()
+    try:
+        cur = conn.execute("DELETE FROM match_corrections WHERE id=?", (correction_id,))
+        conn.commit()
+        if not cur.rowcount:
+            raise HTTPException(404, "No such correction.")
+    finally:
+        conn.close()
+    log_action(admin, "delete_correction", target=str(correction_id))
+    return {"message": "Correction removed — matching returns to its own judgement for that phrase."}
 
 
 class FeedbackRequest(BaseModel):

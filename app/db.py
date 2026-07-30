@@ -173,6 +173,26 @@ def migrate_db():
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_colmap_header ON column_mappings(header_norm)")
 
+    # Human corrections to product matching. When someone edits a saved
+    # quotation and changes WHICH product a line resolved to, that is the
+    # strongest signal the system can get: the matcher was wrong and a person
+    # fixed it. Stored by phrase so the same request never repeats the mistake.
+    # Product identity is text (product + original_model), NOT a row id —
+    # catalogue re-imports delete and reinsert rows, so ids do not survive
+    # but the text identity does.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS match_corrections (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            phrase_norm     TEXT NOT NULL UNIQUE,  -- normalized requested phrase
+            product         TEXT NOT NULL,         -- the human's choice
+            original_model  TEXT DEFAULT '',
+            corrected_from  TEXT DEFAULT '',       -- what the AI had picked
+            corrected_by    INTEGER,
+            created_at      TEXT,
+            times_confirmed INTEGER DEFAULT 1
+        )
+    """)
+
     # Full-text index over the searchable product fields.
     #
     # Matching previously loaded EVERY master_products row into Python on every

@@ -271,7 +271,8 @@ const AUDIT_LABELS = {
   upload_catalog: 'Uploaded a BOQ catalog', delete_catalog_file: 'Deleted a BOQ catalog',
   upload_matched_boq: 'Imported a matched BOQ',
   smart_generate_quotation: 'Generated a quotation', smart_generate_from_boq: 'Generated from a BOQ',
-  edit_quotation: 'Edited a quotation', delete_quotation: 'Deleted a quotation',
+  edit_quotation: 'Edited a quotation', learned_correction: 'Learned a correction',
+  delete_correction: 'Removed a learned correction', delete_quotation: 'Deleted a quotation',
   clear_all_quotations: 'Cleared all quotations', self_register: 'Signed up',
 };
 // Destructive actions get called out — they're the ones worth spotting fast.
