@@ -997,6 +997,69 @@ def get_suggestions(req: SuggestRequest, user: dict = Depends(get_current_user))
         conn.close()
 
 
+@router.get("/api/dashboard")
+def dashboard(user: dict = Depends(get_current_user)):
+    """Live numbers for the landing dashboard. Role-aware by construction:
+    margin, learning counts, coverage and the activity feed involve cost or
+    other people's actions, so they are computed only for admins and simply
+    absent from an employee's payload — the UI can't leak what it never gets."""
+    is_admin = user.get("role") == "admin"
+    conn = get_db()
+    try:
+        out = {
+            "is_admin": is_admin,
+            "products": conn.execute("SELECT COUNT(*) FROM master_products").fetchone()[0],
+            "images": conn.execute(
+                "SELECT COUNT(*) FROM master_products WHERE image_path<>''").fetchone()[0],
+            "catalogues": conn.execute(
+                "SELECT COUNT(DISTINCT file_name) FROM master_products").fetchone()[0],
+        }
+        if is_admin:
+            out["quotes"] = conn.execute("SELECT COUNT(*) FROM quotations").fetchone()[0]
+            recent_rows = conn.execute(
+                "SELECT id, ref_no, client_name, status, created_at, items_json "
+                "FROM quotations ORDER BY id DESC LIMIT 5").fetchall()
+        else:
+            out["quotes"] = conn.execute(
+                "SELECT COUNT(*) FROM quotations WHERE created_by=?", (user["id"],)).fetchone()[0]
+            recent_rows = conn.execute(
+                "SELECT id, ref_no, client_name, status, created_at, items_json "
+                "FROM quotations WHERE created_by=? ORDER BY id DESC LIMIT 5",
+                (user["id"],)).fetchall()
+
+        recent = []
+        for r in recent_rows:
+            try:
+                items = json.loads(r["items_json"]).get("items", [])
+            except Exception:
+                items = []
+            recent.append({
+                "id": r["id"], "ref_no": r["ref_no"], "client_name": r["client_name"] or "",
+                "status": r["status"], "created_at": r["created_at"], "n": len(items),
+                "total": sum((i.get("qty") or 0) * (i.get("price_per_pc") or 0) for i in items),
+            })
+        out["recent"] = recent
+
+        if is_admin:
+            m = conn.execute(
+                "SELECT AVG((price_3star-cost)*100.0/price_3star) FROM master_products "
+                "WHERE cost>0 AND price_3star>cost").fetchone()[0]
+            out["avg_margin"] = round(m, 1) if m else None
+            out["learned"] = conn.execute("SELECT COUNT(*) FROM match_corrections").fetchone()[0]
+            out["mappings"] = conn.execute("SELECT COUNT(*) FROM column_mappings").fetchone()[0]
+            cov = conn.execute(
+                "SELECT after_json FROM audit_log WHERE action='check_boq_coverage' "
+                "ORDER BY id DESC LIMIT 1").fetchone()
+            out["coverage"] = json.loads(cov[0]) if cov and cov[0] else None
+            out["activity"] = [dict(r) for r in conn.execute(
+                "SELECT a.action, a.target, a.created_at, u.name AS user_name "
+                "FROM audit_log a LEFT JOIN users u ON u.id=a.user_id "
+                "ORDER BY a.id DESC LIMIT 6")]
+        return out
+    finally:
+        conn.close()
+
+
 @router.get("/api/quotations/{qid}/margin")
 def quotation_margin(qid: int, admin: dict = Depends(require_role("admin"))):
     """What did we actually make on this quotation? Admin-only — it exposes

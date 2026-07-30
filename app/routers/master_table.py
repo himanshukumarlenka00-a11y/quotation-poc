@@ -588,6 +588,10 @@ async def check_boq_coverage(file: UploadFile = File(...),
             })
 
     total = len(src)
+    # Recorded so the dashboard can show the latest coverage figure — and so
+    # there is a history of what was checked, by whom, with what result.
+    log_action(user, "check_boq_coverage", target=file.filename,
+               after={"total": total, "found": len(found), "missing": len(missing)})
     return {
         "filename": file.filename,
         "file_type": file_type,

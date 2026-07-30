@@ -59,6 +59,10 @@ function onAuthed() {
   // avoids showing a tab that would 403.
   document.getElementById('tab-audit').style.display = currentUser.role === 'admin' ? '' : 'none';
   document.getElementById('tab-users').style.display = currentUser.role === 'admin' ? '' : 'none';
+  const su = document.getElementById('side-user');
+  if (su) su.innerHTML = `<div class="savatar">${(currentUser.name || '?')[0].toUpperCase()}</div>
+    <div><b>${(currentUser.name || '').split(' ')[0]}</b><small>${currentUser.role}</small></div>`;
+  show('dashboard');
 }
 
 async function doLogin(evt) {
@@ -245,10 +249,8 @@ function useExample(btn) {
 // ── Navigation ──────────────────────────────────────────────────────────────
 function show(tab) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('nav .tabs button').forEach(b => {
-    const t = b.getAttribute('onclick').match(/show\('(\w+)'\)/)?.[1];
-    b.classList.toggle('active', t === tab);
-  });
+  document.querySelectorAll('.snav').forEach(b =>
+    b.classList.toggle('active', b.dataset.tab === tab));
   document.getElementById('sec-' + tab).classList.add('active');
   window.scrollTo({ top: 0, behavior: 'instant' in document.documentElement.style ? 'instant' : 'auto' });
   if (tab === 'upload')    { loadCatalog(); loadUploadedFiles(); }
@@ -257,7 +259,145 @@ function show(tab) {
   if (tab === 'repository') loadRepository();
   if (tab === 'audit')     loadAuditLog();
   if (tab === 'users')     loadUsers();
+  if (tab === 'dashboard') loadDashboard();
 }
+
+// ── Dashboard ────────────────────────────────────────────────────────────────
+function fmtINR(n) { return '₹' + (n || 0).toLocaleString('en-IN', {maximumFractionDigits: 0}); }
+
+async function loadDashboard() {
+  const hello = document.getElementById('dash-hello');
+  if (hello && currentUser) {
+    const h = new Date().getHours();
+    const part = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
+    hello.textContent = `Good ${part}, ${(currentUser.name || '').split(' ')[0]} 👋`;
+  }
+  const view = document.getElementById('dash-view');
+  try {
+    const res = await fetch(`${API}/api/dashboard`);
+    const d = await res.json();
+    if (!res.ok) { view.innerHTML = `<div class="alert alert-error">${apiErr(d)}</div>`; return; }
+    renderDashboard(d);
+  } catch (e) {
+    view.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+  }
+}
+
+function renderDashboard(d) {
+  const view = document.getElementById('dash-view');
+  const stat = (chipBg, icon, label, value, sub) => `
+    <div class="dstat">
+      <div class="dhead"><span class="dchip" style="background:${chipBg}">${icon}</span>
+        <span class="dlbl">${label}</span></div>
+      <div class="dval">${value}</div><div class="dsub">${sub || ''}</div>
+    </div>`;
+
+  let stats = stat('var(--accent-soft2)', '📄', d.is_admin ? 'Quotations' : 'My Quotations',
+                   d.quotes, 'in the repository')
+            + stat('var(--blue-soft)', '📦', 'Products in Master', d.products.toLocaleString('en-IN'),
+                   `${d.catalogues} catalogues`)
+            + stat('var(--blue-soft)', '🖼', 'Product Images',
+                   d.images.toLocaleString('en-IN'),
+                   `${Math.round(d.images * 100 / Math.max(d.products, 1))}% of catalogue`);
+  if (d.is_admin) {
+    stats += stat('var(--green-soft2)', '₹', 'Avg. Margin',
+                  d.avg_margin != null ? d.avg_margin + '%' : '—', 'on priced products');
+    if (d.coverage)
+      stats += stat('var(--amber-soft2)', '☑', 'BOQ Coverage',
+                    Math.round(d.coverage.found * 100 / Math.max(d.coverage.total, 1)) + '%',
+                    `last check: ${d.coverage.found}/${d.coverage.total} stocked`);
+    stats += stat('var(--pink-soft2)', '🧠', 'Learning',
+                  d.learned + d.mappings,
+                  `${d.learned} corrections · ${d.mappings} mappings`);
+  }
+
+  const recent = (d.recent || []).map(q => `
+    <div class="drow" onclick="viewQuote(${q.id})" title="Open this quotation">
+      <span class="dico">📋</span>
+      <span><b>${q.ref_no}</b><small>${q.n} item${q.n === 1 ? '' : 's'}${q.client_name ? ' · ' + q.client_name : ''}</small></span>
+      <span class="dright"><b>${fmtINR(q.total)}</b><br>
+        <span class="badge badge-${q.status}">${q.status}</span></span>
+    </div>`).join('') ||
+    '<div class="empty-state"><span class="es-icon">📝</span><div class="es-title">No quotations yet</div><div class="es-hint">Generate your first one.</div></div>';
+
+  const activity = d.is_admin ? `
+    <div class="dcard">
+      <h3>Activity <a href="#" onclick="show('audit');return false">View all</a></h3>
+      ${(d.activity || []).map(a => `
+        <div class="drow" style="cursor:default">
+          <span class="dico">◷</span>
+          <span><b>${(typeof AUDIT_LABELS !== 'undefined' && AUDIT_LABELS[a.action]) || a.action}</b>
+            <small>${a.user_name || 'system'} · ${String(a.target || '').slice(0, 34)}</small></span>
+        </div>`).join('')}
+    </div>` : '';
+
+  const qa = `
+    <div class="dcard">
+      <h3>Quick Actions</h3>
+      <div class="dqa">
+        <button onclick="showBoqCoverage()">☑ Check What We Stock<small>BOQ coverage</small></button>
+        <button onclick="show('generate')">⚡ Generate a Quotation<small>plain English or BOQ</small></button>
+        ${d.is_admin ? `<button onclick="showMargins()">◔ Margin Analysis<small>cost & profit</small></button>
+        <button onclick="show('audit')">◷ Activity Log<small>audit & history</small></button>` : `
+        <button onclick="show('master')">📦 Browse Master Catalogue<small>${d.products.toLocaleString('en-IN')} products</small></button>
+        <button onclick="show('repository')">🗂 My Quotations<small>drafts & approved</small></button>`}
+      </div>
+    </div>`;
+
+  view.innerHTML = `
+    <div class="dstats">${stats}</div>
+    <div class="dgrid">
+      <div class="dcard">
+        <h3>Recent Quotations <a href="#" onclick="show('repository');return false">View all</a></h3>
+        ${recent}
+      </div>
+      ${qa}
+      ${activity}
+    </div>`;
+}
+
+// Sidebar shortcuts to features that live inside other screens
+function showBoqCoverage() {
+  document.querySelectorAll('.snav').forEach(b => b.classList.toggle('active', b.dataset.tab === 'coverage'));
+  document.querySelectorAll('.section').forEach(x => x.classList.remove('active'));
+  document.getElementById('sec-generate').classList.add('active');
+  loadCatalogSelector();
+  setTimeout(() => document.querySelector('.card-alt')?.scrollIntoView({behavior: 'smooth', block: 'start'}), 60);
+}
+function showMargins() {
+  document.querySelectorAll('.snav').forEach(b => b.classList.toggle('active', b.dataset.tab === 'margin'));
+  document.querySelectorAll('.section').forEach(x => x.classList.remove('active'));
+  document.getElementById('sec-repository').classList.add('active');
+  loadRepository();
+}
+
+// Topbar search: jump to the master catalogue with the term applied
+function topbarSearch(e) {
+  if (e.key !== 'Enter') return;
+  const term = e.target.value.trim();
+  show('master');
+  setTimeout(() => {
+    const box = document.getElementById('master-search');
+    if (box) {
+      box.value = term;
+      document.getElementById('master-search-box')?.classList.add('active');
+      filterMasterTable();
+    }
+  }, 120);
+}
+
+// Theme: light is the default; the choice sticks per browser
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  const b = document.getElementById('theme-btn');
+  if (b) b.textContent = t === 'dark' ? '☀️' : '🌙';
+}
+function toggleTheme() {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  localStorage.setItem('theme', next);
+  applyTheme(next);
+}
+applyTheme(localStorage.getItem('theme') || 'light');
 
 // ── Users (admin only) ───────────────────────────────────────────────────────
 async function loadUsers() {
@@ -342,7 +482,7 @@ const AUDIT_LABELS = {
   smart_generate_quotation: 'Generated a quotation', smart_generate_from_boq: 'Generated from a BOQ',
   edit_quotation: 'Edited a quotation', learned_correction: 'Learned a correction',
   delete_correction: 'Removed a learned correction',
-  update_user_role: 'Changed a role', deactivate_user: 'Deactivated a user',
+  update_user_role: 'Changed a role', check_boq_coverage: 'Checked BOQ coverage', deactivate_user: 'Deactivated a user',
   reactivate_user: 'Reactivated a user', create_user: 'Created a user', delete_quotation: 'Deleted a quotation',
   clear_all_quotations: 'Cleared all quotations', self_register: 'Signed up',
 };

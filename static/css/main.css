@@ -1,38 +1,47 @@
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
-    --primary: #2c5da8;       /* lighter navy for readable headings on dark */
-    --primary-deep: #1a3a6b;  /* original navy for the nav bar / buttons */
+    /* Light theme (default). The previous dark palette lives under
+       html[data-theme="dark"] below — same token names, so every component
+       styled with tokens follows the toggle automatically. */
+    --primary: #6a4cf0;
+    --primary-deep: #5539d6;
+    --accent: #e08a00;
+    --success: #18a04c;
+    --danger: #dc3545;
+    --bg: #f6f7fb;
+    --card: #ffffff;
+    --card-soft: #f1f3f9;
+    --border: #e6e8f0;
+    --text: #1b2130;
+    --muted: #7c8499;
+    --input-bg: #ffffff;
+    --row-zebra: rgba(27,33,48,.025);
+    --row-hover: rgba(106,76,240,.06);
+    --shadow-card: 0 1px 2px rgba(23,28,44,.03), 0 10px 30px -22px rgba(23,28,44,.22);
+    --radius: 10px;
+
+    /* soft chip tints for the dashboard */
+    --accent-soft2: #efeafe; --green-soft2: #e7f8ee; --amber-soft2: #fdf3e0;
+    --blue-soft: #e8f1fd;    --pink-soft2: #fdeaf4;
+  }
+  html[data-theme="dark"] {
+    --primary: #2c5da8;
+    --primary-deep: #1a3a6b;
     --accent: #e8a020;
     --success: #2ecc71;
     --danger: #e74c3c;
-    --bg: #14181f;            /* dark page background */
-    --card: #1e2430;          /* dark card surface */
-    --card-soft: #262d3b;     /* slightly lighter inset (steps, stats) */
+    --bg: #14181f;
+    --card: #1e2430;
+    --card-soft: #262d3b;
     --border: #343c4c;
     --text: #e7ecf3;
     --muted: #9aa7b8;
-    --radius: 10px;
-
-    /* Type scale. The stylesheet previously carried 40 different font sizes
-       (.73rem, .77rem, .81rem, .84rem…), which is why the UI read as
-       inconsistent — sizes were picked per-element rather than from a system.
-       Every size now comes from one of these eight steps. */
-    --fs-xs:   0.72rem;   /* badges, hints, table meta */
-    --fs-sm:   0.8rem;    /* secondary text */
-    --fs-base: 0.875rem;  /* body, tables */
-    --fs-md:   1rem;      /* inputs, emphasis */
-    --fs-lg:   1.125rem;  /* card titles */
-    --fs-xl:   1.375rem;  /* page titles */
-    --fs-2xl:  1.75rem;   /* section headings */
-    --fs-3xl:  2.25rem;   /* hero */
-
-    /* Spacing scale — same reasoning as type. */
-    --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
-    --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px;
-
-    /* One height for every interactive control, so a button, an input and a
-       select sitting side by side actually align. */
-    --ctl-h-sm: 32px; --ctl-h: 40px; --ctl-h-lg: 48px;
+    --input-bg: #0f131a;
+    --row-zebra: rgba(255,255,255,.018);
+    --row-hover: rgba(91,155,255,.09);
+    --shadow-card: 0 4px 18px -10px rgba(0,0,0,.4);
+    --accent-soft2: #2b2542; --green-soft2: #16301f; --amber-soft2: #33270f;
+    --blue-soft: #16273b;    --pink-soft2: #331726;
   }
   /* A system stack rather than Segoe UI, which only exists on Windows — the
      app fell back to Arial on Mac, iOS and Android and looked different there. */
@@ -65,7 +74,7 @@
   .section.active { display: block; }
 
   /* CARDS */
-  .card { background: var(--card); border-radius: 14px; border: 1px solid var(--border); padding: 26px; margin-bottom: 20px; box-shadow: 0 4px 18px -10px rgba(26,58,107,.25); transition: box-shadow .25s; }
+  .card { background: var(--card); border-radius: 14px; border: 1px solid var(--border); padding: 26px; margin-bottom: 20px; box-shadow: var(--shadow-card); transition: box-shadow .25s; }
   .card:hover { box-shadow: 0 10px 30px -14px rgba(26,58,107,.3); }
   .card h2 { font-size: var(--fs-lg); color: var(--primary); margin-bottom: 16px; display: flex; align-items: center; gap: 10px; font-weight: 700; }
   .card h2::before { content: attr(data-icon); font-size: var(--fs-lg); width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; background: linear-gradient(135deg, rgba(26,58,107,.1), rgba(232,160,32,.16)); border-radius: 9px; }
@@ -113,7 +122,7 @@
   input[type=text], input[type=password], input[type=email], input[type=number], textarea, select {
     width: 100%; padding: 0 var(--sp-4); font-family: inherit; font-size: var(--fs-md);
     border: 1.5px solid var(--border); border-radius: 8px; outline: none;
-    transition: border .2s; background: #0f131a; color: var(--text);
+    transition: border .2s; background: var(--input-bg); color: var(--text);
   }
   /* Textareas size by rows, not by --ctl-h, so they need their own padding. */
   textarea { padding: var(--sp-3) var(--sp-4); line-height: 1.5; }
@@ -207,11 +216,11 @@
   }
   /* Zebra striping does more for scan-ability on wide tables than hover alone,
      which only helps once you've already found the row. */
-  tbody tr:nth-child(even) td { background: rgba(255,255,255,.018); }
-  tbody tr:hover td { background: rgba(91,155,255,.09); }
+  tbody tr:nth-child(even) td { background: var(--row-zebra); }
+  tbody tr:hover td { background: var(--row-hover); }
   /* Numbers line up on the decimal and read as figures, not text. */
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-  td input { width: 100%; border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: var(--fs-base); background:#0f131a; color:var(--text); }
+  td input { width: 100%; border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: var(--fs-base); background:var(--input-bg); color:var(--text); }
   td input:focus { outline: none; border-color: var(--primary); }
 
   /* QUOTE RESULT */
@@ -918,7 +927,7 @@
   .colmap-select {
     width:auto; min-width:180px; padding:5px 8px; font-size: var(--fs-sm);
     border:1.5px solid var(--border); border-radius:6px;
-    background:#0f131a; color:var(--text);
+    background:var(--input-bg); color:var(--text);
   }
   .colmap-select:focus { border-color:var(--primary); }
   .colmap-why { font-size: var(--fs-xs); color:var(--muted); font-style:italic; }
@@ -1113,3 +1122,115 @@
 .tech-icon { font-size: var(--fs-2xl);margin-bottom:6px; }
 .tech-box b { display:block;margin-bottom:4px;color:var(--primary); }
 .tech-desc { font-size: var(--fs-sm);color:var(--muted);line-height:1.4; }
+
+  /* ═══ App shell: sidebar + topbar (light-first redesign) ═══ */
+  .shell { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: 240px; flex-shrink: 0; background: var(--card);
+    border-right: 1px solid var(--border);
+    padding: 20px 14px; display: flex; flex-direction: column; gap: 3px;
+    position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  }
+  .slogo { display: flex; align-items: center; gap: 10px; padding: 2px 8px 18px; }
+  .smark {
+    width: 40px; height: 40px; border-radius: 12px; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: var(--fs-lg);
+    background: linear-gradient(135deg, #8b6bff, #5539d6);
+  }
+  .slogo b { font-size: var(--fs-md); }
+  .slogo span { display: block; font-size: var(--fs-xs); color: var(--muted); }
+  .snav {
+    display: flex; align-items: center; gap: 11px; padding: 10px 12px;
+    border-radius: 10px; color: var(--muted); font-weight: 500;
+    cursor: pointer; font-size: var(--fs-base); user-select: none;
+  }
+  .snav:hover { background: var(--bg); color: var(--text); }
+  .snav.active { background: var(--accent-soft2); color: var(--primary); font-weight: 700; }
+  .sic { width: 20px; text-align: center; }
+  .side-user {
+    margin-top: auto; padding: 11px 12px; border: 1px solid var(--border);
+    border-radius: 12px; display: flex; align-items: center; gap: 10px;
+  }
+  .side-user small { color: var(--muted); display: block; font-size: var(--fs-xs); }
+  .savatar {
+    width: 34px; height: 34px; border-radius: 50%; color: #fff; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #8b6bff, #5539d6);
+  }
+  .main-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .topbar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 28px; background: var(--card);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 90;
+  }
+  .tsearch {
+    flex: 1; max-width: 460px; display: flex; align-items: center; gap: 8px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 8px 14px; color: var(--muted);
+  }
+  .tsearch input { border: none !important; background: transparent !important;
+                   padding: 0 !important; height: auto !important; font-size: var(--fs-base) !important; }
+  .theme-btn {
+    width: 38px; height: 38px; border-radius: 10px; cursor: pointer;
+    background: var(--bg); border: 1px solid var(--border); font-size: var(--fs-md);
+    margin-left: auto;
+  }
+  .topbar .nav-user { display: flex; align-items: center; gap: 10px; font-size: var(--fs-base); }
+  .topbar .nav-user .role-badge {
+    background: var(--accent-soft2); color: var(--primary);
+    font-size: var(--fs-xs); font-weight: 700; padding: 2px 9px; border-radius: 9px;
+    text-transform: uppercase;
+  }
+  .topbar .nav-user button {
+    background: none; border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 12px; cursor: pointer; color: var(--muted); font-size: var(--fs-sm);
+  }
+  .topbar .nav-user button:hover { color: var(--danger); border-color: var(--danger); }
+  main { flex: 1; }
+
+  /* dashboard */
+  .dash-hello { font-size: var(--fs-xl); font-weight: 800; letter-spacing: -.3px; }
+  .dash-sub { color: var(--muted); margin: 2px 0 18px; }
+  .dstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 14px; margin-bottom: 16px; }
+  .dstat { background: var(--card); border: 1px solid var(--border);
+           border-radius: 14px; padding: 14px 16px; box-shadow: var(--shadow-card); }
+  .dhead { display: flex; align-items: center; gap: 9px; margin-bottom: 7px; }
+  .dchip { width: 34px; height: 34px; border-radius: 10px; display: flex;
+           align-items: center; justify-content: center; font-size: var(--fs-md); }
+  .dlbl { color: var(--muted); font-size: var(--fs-sm); font-weight: 600; }
+  .dval { font-size: 24px; font-weight: 800; letter-spacing: -.4px; }
+  .dsub { color: var(--muted); font-size: var(--fs-xs); margin-top: 1px; }
+  .dgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+           gap: 14px; align-items: start; }
+  .dcard { background: var(--card); border: 1px solid var(--border);
+           border-radius: 14px; padding: 18px; box-shadow: var(--shadow-card); }
+  .dcard h3 { font-size: var(--fs-md); margin-bottom: 12px;
+              display: flex; justify-content: space-between; align-items: center; }
+  .dcard h3 a { font-size: var(--fs-xs); color: var(--primary); font-weight: 700; text-decoration: none; }
+  .drow { display: flex; align-items: center; gap: 11px; padding: 9px 0;
+          border-bottom: 1px solid var(--border); cursor: pointer; }
+  .drow:last-child { border-bottom: none; }
+  .drow:hover b { color: var(--primary); }
+  .dico { width: 34px; height: 34px; border-radius: 9px; background: var(--accent-soft2);
+          display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .drow b { font-size: var(--fs-base); }
+  .drow small { color: var(--muted); display: block; font-size: var(--fs-xs); }
+  .dright { margin-left: auto; text-align: right; flex-shrink: 0; }
+  .badge { font-size: var(--fs-xs); font-weight: 700; padding: 2px 9px; border-radius: 9px; }
+  .badge-draft { background: var(--amber-soft2); color: var(--accent); }
+  .badge-approved { background: var(--green-soft2); color: var(--success); }
+  .dqa { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .dqa button {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+    padding: 13px; text-align: left; cursor: pointer; font-family: inherit;
+    font-size: var(--fs-base); font-weight: 700; color: var(--text);
+  }
+  .dqa button:hover { border-color: var(--primary); background: var(--accent-soft2); }
+  .dqa small { display: block; color: var(--muted); font-weight: 500; font-size: var(--fs-xs); margin-top: 2px; }
+
+  .add-item-panel { background: var(--card-soft); border: 1px solid var(--border);
+                    border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+  @media (max-width: 900px) { .sidebar { display: none; } }

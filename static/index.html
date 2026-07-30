@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=21">
+<link rel="stylesheet" href="/static/css/main.css?v=22">
 </head>
 <body>
 
@@ -58,21 +58,38 @@
   </div>
 </div>
 
-<nav>
-  <div class="logo">Quote<span>Gen</span> AI</div>
-  <div class="tabs">
-    <button id="tab-upload" onclick="show('upload')">📤 Upload BOQ</button>
-    <button onclick="show('master')">🗄 Master Table</button>
-    <button class="active" onclick="show('generate')">✨ Generate Quote</button>
-    <button onclick="show('result')">📋 Result</button>
-    <button onclick="show('repository')">🗄 Repository</button>
-    <button id="tab-audit" onclick="show('audit')" style="display:none">📜 Activity</button>
-    <button id="tab-users" onclick="show('users')" style="display:none">👥 Users</button>
-  </div>
+<div class="shell">
+<aside class="sidebar">
+  <div class="slogo"><div class="smark">M</div><div><b>Melange</b><span>Quotation POC</span></div></div>
+  <div class="snav active" data-tab="dashboard" onclick="show('dashboard')"><span class="sic">▦</span> Dashboard</div>
+  <div class="snav" data-tab="generate" onclick="show('generate')"><span class="sic">⚡</span> Generate Quotation</div>
+  <div class="snav" data-tab="result" onclick="show('result')"><span class="sic">📋</span> Current Quote</div>
+  <div class="snav" data-tab="repository" onclick="show('repository')"><span class="sic">🗂</span> Quotations</div>
+  <div class="snav" data-tab="master" onclick="show('master')"><span class="sic">📦</span> Master Catalogue</div>
+  <div class="snav" data-tab="coverage" onclick="showBoqCoverage()"><span class="sic">☑</span> BOQ Coverage</div>
+  <div class="snav" data-tab="margin" onclick="showMargins()"><span class="sic">◔</span> Margin Analysis</div>
+  <div class="snav" id="tab-upload" data-tab="upload" onclick="show('upload')" style="display:none"><span class="sic">⇪</span> Upload BOQ</div>
+  <div class="snav" id="tab-audit" data-tab="audit" onclick="show('audit')" style="display:none"><span class="sic">◷</span> Activity</div>
+  <div class="snav" id="tab-users" data-tab="users" onclick="show('users')" style="display:none"><span class="sic">◉</span> Users &amp; Roles</div>
+  <div class="side-user" id="side-user"></div>
+</aside>
+<div class="main-col">
+<header class="topbar">
+  <div class="tsearch">🔍 <input type="text" id="global-search" placeholder="Search the master catalogue…"
+       onkeydown="topbarSearch(event)"></div>
+  <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" title="Light / dark">🌙</button>
   <div class="nav-user" id="nav-user"></div>
-</nav>
+  <button class="btn btn-primary" onclick="show('generate')">＋ New Quotation</button>
+</header>
 
 <main>
+
+<!-- ── SECTION: Dashboard ── -->
+<section id="sec-dashboard" class="section active">
+  <h1 class="dash-hello" id="dash-hello">Dashboard</h1>
+  <p class="dash-sub">Every number on this page is live from the database.</p>
+  <div id="dash-view"><div class="loading-state">Loading...</div></div>
+</section>
 
 <!-- ── SECTION 0: Home / Landing ── -->
 <section id="sec-home" class="section lp">
@@ -247,7 +264,7 @@
 </section>
 
 <!-- ── SECTION 2: Generate ── -->
-<section id="sec-generate" class="section active">
+<section id="sec-generate" class="section">
 
   <div class="page-head">
     <h1>Generate a Quotation</h1>
@@ -367,8 +384,8 @@
       </div>
 
       <!-- Add forgotten items to this quote -->
-      <div id="add-item-box" style="background:#11315f;border:1px solid #2c456a;border-radius:10px;padding:14px 16px;margin-bottom:14px;">
-        <div style="font-size:var(--fs-base);color:#bcd6ef;font-weight:600;margin-bottom:8px;">➕ Forgot something? Add it to this quote</div>
+      <div id="add-item-box" class="add-item-panel">
+        <div style="font-size:var(--fs-base);font-weight:600;margin-bottom:8px;">➕ Forgot something? Add it to this quote</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <input type="text" id="add-item-input" placeholder="e.g. 10 coffee machines and 5 ice buckets"
                  style="flex:1;min-width:220px;" onkeydown="if(event.key==='Enter')addToQuote()">
@@ -520,8 +537,10 @@
 </section>
 
 </main>
+</div><!--/main-col-->
+</div><!--/shell-->
 
 
-<script src="/static/js/app.js?v=21"></script>
+<script src="/static/js/app.js?v=22"></script>
 </body>
 </html>
