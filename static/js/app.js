@@ -2143,7 +2143,8 @@ function repoCard(q, status) {
     const amt = (i.qty||0) * (i.price_per_pc||0);
     return s + amt + amt*((i.gst_pct||0)/100);
   }, 0);
-  return `<div class="repo-item">
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  return `<div class="repo-item" id="repo-${q.id}">
     <div>
       <strong>${d.ref_no || q.ref_no}</strong> &nbsp; <span class="badge badge-${status}">${status}</span>
       <div class="meta">${d.client_name || q.client_name} &nbsp;·&nbsp; ${items.length} items &nbsp;·&nbsp; ₹${grand.toLocaleString('en-IN',{maximumFractionDigits:0})}</div>
@@ -2152,10 +2153,62 @@ function repoCard(q, status) {
     <div style="display:flex;gap:8px;align-items:center;">
       <button class="btn btn-sm btn-outline" onclick="viewQuote(${q.id})">👁 View</button>
       <button class="btn btn-sm btn-accent" onclick="window.open(API+'/api/download/${q.id}')">⬇ XLS</button>
+      ${isAdmin ? `<button class="btn btn-sm btn-outline" onclick="toggleMargin(${q.id})">📊 Margin</button>` : ''}
       ${status==='draft' ? `<button class="btn btn-sm btn-success" onclick="approveQuote(${q.id})">✓ Approve</button>` : ''}
       <button class="btn btn-sm btn-danger" onclick="deleteQuote(${q.id})" title="Delete" style="padding:6px 10px;">✕</button>
     </div>
-  </div>`;
+  </div><div class="margin-panel" id="margin-${q.id}" style="display:none;"></div>`;
+}
+
+// ── Motive 2: what did we make on this quotation? (admin only) ───────────────
+async function toggleMargin(qid) {
+  const panel = document.getElementById(`margin-${qid}`);
+  if (!panel) return;
+  if (panel.style.display !== 'none') { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+  panel.innerHTML = '<div class="loading-state">Comparing against the master table...</div>';
+  try {
+    const res = await fetch(`${API}/api/quotations/${qid}/margin`);
+    const d = await res.json();
+    if (!res.ok) { panel.innerHTML = `<div class="alert alert-error">${apiErr(d)}</div>`; return; }
+    renderMarginPanel(panel, d);
+  } catch (e) {
+    panel.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+  }
+}
+
+function renderMarginPanel(panel, d) {
+  const fmtIN = n => (n == null ? '—' : '₹' + n.toLocaleString('en-IN', {maximumFractionDigits: 2}));
+  const stateCell = l => l.state === 'ok'
+    ? `<td class="num" style="color:${l.profit >= 0 ? '#2ecc71' : '#e74c3c'};font-weight:600;">${fmtIN(l.profit)}</td>
+       <td class="num">${l.margin_pct}%</td>`
+    : `<td colspan="2" class="margin-flag">${l.state === 'no_cost' ? 'cost unknown' : 'not in master table'}</td>`;
+
+  const caveat = (d.counts.no_cost || d.counts.not_in_master)
+    ? `<span class="mbp-hint">· ${d.counts.no_cost ? d.counts.no_cost + ' line(s) without a known cost' : ''}
+       ${d.counts.not_in_master ? ' · ' + d.counts.not_in_master + ' no longer in master' : ''} — excluded from totals</span>`
+    : '';
+
+  panel.innerHTML = `
+    <div class="margin-summary">
+      <span><b>Revenue</b> ${fmtIN(d.revenue)}</span>
+      <span><b>Profit</b> <span style="color:${d.profit >= 0 ? '#2ecc71' : '#e74c3c'}">${fmtIN(d.profit)}</span></span>
+      <span><b>Margin</b> ${d.margin_pct == null ? '—' : d.margin_pct + '%'}</span>
+      ${caveat}
+    </div>
+    <div class="table-wrap" style="max-height:320px;overflow:auto;">
+      <table>
+        <thead><tr><th>Product</th><th class="num">Qty</th><th class="num">Sold @</th>
+                   <th class="num">Cost @</th><th class="num">Profit</th><th class="num">Margin</th></tr></thead>
+        <tbody>${d.lines.map(l => `<tr>
+          <td><strong>${l.product}</strong>${l.model_no ? ` <span class="meta">${l.model_no}</span>` : ''}</td>
+          <td class="num">${l.qty}</td>
+          <td class="num">${fmtIN(l.sold)}</td>
+          <td class="num">${fmtIN(l.cost)}</td>
+          ${stateCell(l)}
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`;
 }
 
 async function deleteQuote(id) {

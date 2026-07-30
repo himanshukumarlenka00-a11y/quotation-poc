@@ -856,6 +856,19 @@
   .sugg-chip:hover { background: rgba(232,160,32,.22); border-color: var(--accent); transform: translateY(-1px); }
   .sugg-count { color: var(--accent); font-weight:700; }
 
+  /* ── Quotation margin panel (motive 2) ── */
+  .margin-panel {
+    margin: -6px 0 12px; padding: 14px 16px;
+    border: 1px solid rgba(91,155,255,.3); border-radius: 10px;
+    background: rgba(44,93,168,.07);
+  }
+  .margin-summary {
+    display: flex; gap: 20px; flex-wrap: wrap; align-items: baseline;
+    margin-bottom: 12px; font-size: var(--fs-base);
+  }
+  .margin-summary b { color: var(--muted); font-weight: 600; margin-right: 6px; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; }
+  .margin-flag { color: var(--accent); font-size: var(--fs-xs); font-style: italic; text-align: right; }
+
   /* ── Users page ── */
   .user-you { font-size: var(--fs-xs); color: var(--accent); font-weight: 700; margin-left: 6px; }
   .user-badge { font-size: var(--fs-xs); padding: 2px 10px; border-radius: 10px; font-weight: 600; }

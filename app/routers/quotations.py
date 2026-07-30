@@ -991,6 +991,66 @@ def get_suggestions(req: SuggestRequest, user: dict = Depends(get_current_user))
         conn.close()
 
 
+@router.get("/api/quotations/{qid}/margin")
+def quotation_margin(qid: int, admin: dict = Depends(require_role("admin"))):
+    """What did we actually make on this quotation? Admin-only — it exposes
+    purchase cost, which employees never see.
+
+    Each line is resolved against the LIVE master table by text identity
+    (product + model), the same identity the learning layer uses, so a
+    catalogue re-import doesn't orphan the analysis. Three honest states per
+    line rather than fake numbers:
+      ok            — cost known, profit computed
+      no_cost       — product found but cost is 0/blank (the OPM catalogues)
+      not_in_master — product no longer exists in the master table
+    """
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM quotations WHERE id=?", (qid,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Not found")
+        data = json.loads(row["items_json"])
+
+        lines, revenue, known_rev, profit_total = [], 0.0, 0.0, 0.0
+        counts = {"ok": 0, "no_cost": 0, "not_in_master": 0}
+        for it in data.get("items", []):
+            qty = float(it.get("qty") or 0)
+            sold = float(it.get("price_per_pc") or 0)
+            amount = qty * sold
+            revenue += amount
+            m = conn.execute(
+                "SELECT cost FROM master_products WHERE LOWER(TRIM(product))=LOWER(TRIM(?)) "
+                "AND LOWER(TRIM(COALESCE(original_model,'')))=LOWER(TRIM(COALESCE(?,''))) LIMIT 1",
+                (it.get("product") or "", it.get("model_no") or "")).fetchone()
+            if m is None:
+                state, cost, profit, margin = "not_in_master", None, None, None
+            elif not m["cost"] or m["cost"] <= 0:
+                state, cost, profit, margin = "no_cost", None, None, None
+            else:
+                cost = float(m["cost"])
+                profit = qty * (sold - cost)
+                margin = round((sold - cost) * 100 / sold, 1) if sold else None
+                known_rev += amount
+                profit_total += profit
+                state = "ok"
+            counts[state] += 1
+            lines.append({"product": it.get("product") or "", "model_no": it.get("model_no") or "",
+                          "qty": qty, "sold": sold, "amount": amount,
+                          "cost": cost, "profit": profit, "margin_pct": margin, "state": state})
+
+        return {
+            "id": qid, "ref_no": data.get("ref_no") or row["ref_no"],
+            "client_name": data.get("client_name") or row["client_name"],
+            "lines": lines, "counts": counts,
+            "revenue": revenue,
+            "known_cost_revenue": known_rev,
+            "profit": profit_total,
+            "margin_pct": round(profit_total * 100 / known_rev, 1) if known_rev else None,
+        }
+    finally:
+        conn.close()
+
+
 @router.get("/api/corrections")
 def list_corrections(admin: dict = Depends(require_role("admin"))):
     """Everything matching has learned from human edits — admin-only, the
