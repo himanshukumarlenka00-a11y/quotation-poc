@@ -3,6 +3,16 @@ import openpyxl
 from app.config import IMAGES_DIR, IMAGES_THUMB_DIR
 
 
+def _shard_path(base_dir, image_hash: str):
+    """Sharded location for a hash: <base>/<first two hex chars>/<hash>.jpg.
+
+    A flat directory holds every image in one folder — fine at 10k files,
+    but the planned 300,000-product catalogue implies ~350k files, where
+    directory listing, backups and antivirus scans all degrade. Two hex
+    characters give 256 buckets, ~700 files each at full scale."""
+    return base_dir / image_hash[:2] / f"{image_hash}.jpg"
+
+
 def _save_image_to_disk(img_bytes: bytes) -> str:
     """Save a full-size + thumbnail JPEG to disk under a content-hash filename —
     identical images (common across supplier sheets) are auto-deduped since they
@@ -11,8 +21,8 @@ def _save_image_to_disk(img_bytes: bytes) -> str:
     if not img_bytes:
         return ""
     h = hashlib.sha256(img_bytes).hexdigest()
-    full_path = IMAGES_DIR / f"{h}.jpg"
-    thumb_path = IMAGES_DIR / "thumb" / f"{h}.jpg"
+    full_path = _shard_path(IMAGES_DIR, h)
+    thumb_path = _shard_path(IMAGES_THUMB_DIR, h)
     if full_path.exists() and thumb_path.exists():
         return h
     try:
@@ -20,6 +30,8 @@ def _save_image_to_disk(img_bytes: bytes) -> str:
         im = _PILImage.open(io.BytesIO(img_bytes))
         if im.mode in ("RGBA", "P", "LA"):
             im = im.convert("RGB")
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+        thumb_path.parent.mkdir(parents=True, exist_ok=True)
         full_im = im.copy()
         full_im.thumbnail((800, 800))
         full_im.save(str(full_path), format="JPEG", quality=85)
@@ -34,11 +46,19 @@ def _save_image_to_disk(img_bytes: bytes) -> str:
 def _image_file_path(image_hash: str, full: bool = False):
     """Resolve an image_path hash to its file on disk. Returns a Path if the
     file exists, else None. full=True for the export/lightbox-quality image,
-    False (default) for the small thumbnail."""
+    False (default) for the small thumbnail.
+
+    Checks the sharded location first, then the legacy flat one — so the
+    layout migration can never break an image: a file that hasn't been moved
+    yet still resolves."""
     if not image_hash:
         return None
-    p = (IMAGES_DIR if full else IMAGES_THUMB_DIR) / f"{image_hash}.jpg"
-    return p if p.exists() else None
+    base = IMAGES_DIR if full else IMAGES_THUMB_DIR
+    p = _shard_path(base, image_hash)
+    if p.exists():
+        return p
+    legacy = base / f"{image_hash}.jpg"
+    return legacy if legacy.exists() else None
 
 
 # ── Image Extraction ──────────────────────────────────────────────────────────
