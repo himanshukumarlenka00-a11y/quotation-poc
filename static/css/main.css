@@ -1234,3 +1234,9 @@
   .add-item-panel { background: var(--card-soft); border: 1px solid var(--border);
                     border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
   @media (max-width: 900px) { .sidebar { display: none; } }
+
+
+  /* Topbar variant of the pill search — collapsed circle in the header,
+     expands in place without claiming the whole row. */
+  .topbar .topbar-pill { flex: 0 1 auto; }
+  .topbar .topbar-pill.active { flex: 1 1 auto; max-width: 460px; }

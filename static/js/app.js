@@ -371,6 +371,15 @@ function showMargins() {
   loadRepository();
 }
 
+// Topbar pill search — same expanding mechanic as the master catalogue one
+function onGlobalSearchFocus() {
+  document.getElementById('global-search-box').classList.add('active');
+}
+function onGlobalSearchBlur() {
+  if (!document.getElementById('global-search').value.trim())
+    document.getElementById('global-search-box').classList.remove('active');
+}
+
 // Topbar search: jump to the master catalogue with the term applied
 function topbarSearch(e) {
   if (e.key !== 'Enter') return;

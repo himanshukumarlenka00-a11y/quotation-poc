@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=22">
+<link rel="stylesheet" href="/static/css/main.css?v=23">
 </head>
 <body>
 
@@ -75,8 +75,16 @@
 </aside>
 <div class="main-col">
 <header class="topbar">
-  <div class="tsearch">🔍 <input type="text" id="global-search" placeholder="Search the master catalogue…"
-       onkeydown="topbarSearch(event)"></div>
+  <div class="pill-search-box topbar-pill" id="global-search-box">
+    <input type="text" id="global-search" class="pill-search-input" placeholder="Search the master catalogue…"
+           onkeydown="topbarSearch(event)" onfocus="onGlobalSearchFocus()" onblur="onGlobalSearchBlur()">
+    <button type="button" class="pill-search-btn" onclick="document.getElementById('global-search').focus()" aria-label="Search">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/>
+        <line x1="16.4" y1="16.4" x2="21" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
   <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" title="Light / dark">🌙</button>
   <div class="nav-user" id="nav-user"></div>
   <button class="btn btn-primary" onclick="show('generate')">＋ New Quotation</button>
@@ -541,6 +549,6 @@
 </div><!--/shell-->
 
 
-<script src="/static/js/app.js?v=22"></script>
+<script src="/static/js/app.js?v=23"></script>
 </body>
 </html>
