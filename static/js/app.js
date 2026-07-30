@@ -281,7 +281,7 @@ const AUDIT_DANGER = new Set(['delete_master_table_file', 'delete_catalog_file',
 async function loadAuditLog() {
   const view = document.getElementById('audit-view');
   const uid = document.getElementById('audit-user').value;
-  view.innerHTML = '<p style="color:var(--muted);font-size:.9rem;">Loading...</p>';
+  view.innerHTML = '<p style="color:var(--muted);font-size:var(--fs-base);">Loading...</p>';
   try {
     const res = await fetch(`${API}/api/audit-log${uid ? '?user_id=' + uid : ''}`);
     const d = await res.json();
@@ -327,7 +327,7 @@ function renderAuditLog() {
     `${rows.length} of ${auditRows.length} entries`;
 
   if (!rows.length) {
-    view.innerHTML = '<p style="color:var(--muted);font-size:.9rem;">Nothing matches that filter.</p>';
+    view.innerHTML = '<p style="color:var(--muted);font-size:var(--fs-base);">Nothing matches that filter.</p>';
     return;
   }
 
@@ -400,9 +400,9 @@ async function scanFile() {
       if (!res.ok) { out.innerHTML += `<div class="alert alert-error">${apiErr(d)}</div>`; continue; }
       out.innerHTML += `
         <div class="card" style="margin-top:0;border-left:4px solid var(--primary);position:relative;">
-          <button onclick="this.closest('.card').remove()" style="position:absolute;top:10px;right:10px;background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--muted);" title="Close">✕</button>
+          <button onclick="this.closest('.card').remove()" style="position:absolute;top:10px;right:10px;background:none;border:none;font-size:var(--fs-lg);cursor:pointer;color:var(--muted);" title="Close">✕</button>
           <strong>📄 ${d.filename}</strong>
-          <div style="margin-top:8px;font-size:.85rem;color:var(--muted)">
+          <div style="margin-top:8px;font-size:var(--fs-base);color:var(--muted)">
             ✅ <b>${d.total_products}</b> products found &nbsp;·&nbsp;
             🖼 <b>${d.images_found}</b> images &nbsp;·&nbsp;
             📋 Columns: <code style="background:#f0f3f8;padding:2px 6px;border-radius:4px">${d.columns_detected.join(', ')}</code>
@@ -413,13 +413,13 @@ async function scanFile() {
               <tbody>${(d.preview||[]).map(i=>`<tr>
                 <td><strong>${i.product||'—'}</strong></td>
                 <td>${i.brand||'—'}</td>
-                <td style="font-size:.8rem">${i.model_no||'—'}</td>
+                <td style="font-size:var(--fs-sm)">${i.model_no||'—'}</td>
                 <td>₹${i.price||0}</td>
                 <td>${i.gst_pct??18}%</td>
               </tr>`).join('')}</tbody>
             </table>
           </div>
-          ${d.total_products > 8 ? `<p style="font-size:.8rem;color:var(--muted);margin-top:6px">...and ${d.total_products - 8} more products</p>` : ''}
+          ${d.total_products > 8 ? `<p style="font-size:var(--fs-sm);color:var(--muted);margin-top:6px">...and ${d.total_products - 8} more products</p>` : ''}
         </div>`;
     } catch(e) { out.innerHTML += `<div class="alert alert-error">Scan failed: ${e.message}</div>`; }
   }
@@ -452,7 +452,7 @@ async function loadUploadedFiles() {
   const res = await fetch(`${API}/api/boq-files`);
   const files = await res.json();
   const el = document.getElementById('uploaded-files');
-  if (!files.length) { el.innerHTML = '<p style="color:var(--muted);font-size:.9rem;">No files uploaded yet.</p>'; return; }
+  if (!files.length) { el.innerHTML = '<p style="color:var(--muted);font-size:var(--fs-base);">No files uploaded yet.</p>'; return; }
   el.innerHTML = files.map(f => `
     <div class="repo-item">
       <div>
@@ -477,7 +477,7 @@ async function loadCatalog() {
   const items = await res.json();
   document.getElementById('catalog-count').textContent = items.length;
   const el = document.getElementById('catalog-table');
-  if (!items.length) { el.innerHTML = '<p style="color:var(--muted);font-size:.9rem;">No products yet.</p>'; return; }
+  if (!items.length) { el.innerHTML = '<p style="color:var(--muted);font-size:var(--fs-base);">No products yet.</p>'; return; }
 
   // Group by file
   const groups = {};
@@ -491,11 +491,11 @@ async function loadCatalog() {
     <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden;">
       <div onclick="toggleFolder(${gIdx})" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--card-soft);cursor:pointer;user-select:none;">
         <div>
-          <span style="font-size:1rem;">📁</span>
-          <strong style="margin-left:8px;font-size:.95rem;">${fname}</strong>
-          <span style="margin-left:10px;background:var(--accent);color:#fff;font-size:.72rem;padding:2px 8px;border-radius:10px;">${prods.length} products</span>
+          <span style="font-size:var(--fs-md);">📁</span>
+          <strong style="margin-left:8px;font-size:var(--fs-md);">${fname}</strong>
+          <span style="margin-left:10px;background:var(--accent);color:#fff;font-size:var(--fs-xs);padding:2px 8px;border-radius:10px;">${prods.length} products</span>
         </div>
-        <span id="arrow-${gIdx}" style="font-size:1.1rem;transition:transform .2s;">▶</span>
+        <span id="arrow-${gIdx}" style="font-size:var(--fs-lg);transition:transform .2s;">▶</span>
       </div>
       <div id="folder-${gIdx}" style="display:none;">
         <div class="table-wrap">
@@ -504,12 +504,12 @@ async function loadCatalog() {
             <tbody>${prods.map(i => `<tr>
               <td style="text-align:center;position:relative;">${i.has_image
                 ? `<img src="${API}/api/product-image/${i.id}" style="width:76px;height:60px;object-fit:contain;border-radius:4px;border:1px solid ${i.image_match==='guess' ? '#e6a817' : '#ddd'};cursor:zoom-in;" onclick="showImageLightbox('${API}/api/product-image/${i.id}')" title="${i.image_match==='guess' ? 'Best-effort match — please verify this is the right photo' : 'Click to enlarge'}" onerror="this.style.display='none'">
-                   ${i.image_match==='guess' ? `<span style="position:absolute;top:2px;right:2px;background:#e6a817;color:#fff;font-size:.62rem;font-weight:600;padding:1px 4px;border-radius:6px;" title="Best-effort match — please verify">?</span>` : ''}`
-                : `<span style="color:#ccc;font-size:.75rem;">—</span>`}</td>
+                   ${i.image_match==='guess' ? `<span style="position:absolute;top:2px;right:2px;background:#e6a817;color:#fff;font-size:var(--fs-xs);font-weight:600;padding:1px 4px;border-radius:6px;" title="Best-effort match — please verify">?</span>` : ''}`
+                : `<span style="color:#ccc;font-size:var(--fs-xs);">—</span>`}</td>
               <td><strong>${i.product}</strong></td>
-              <td style="font-size:.78rem;color:var(--muted)">${i.sheet_name||'—'}</td>
+              <td style="font-size:var(--fs-sm);color:var(--muted)">${i.sheet_name||'—'}</td>
               <td>${i.brand||'—'}</td>
-              <td style="font-size:.8rem">${i.model_no||'—'}</td>
+              <td style="font-size:var(--fs-sm)">${i.model_no||'—'}</td>
               <td>₹${(i.price||0).toLocaleString('en-IN')}</td>
               <td>${i.gst_pct??18}%</td>
               <td>${i.hsn_code||'—'}</td>
@@ -580,7 +580,7 @@ async function scanMasterFiles() {
       resultEl.innerHTML += `
         <div class="card" style="margin-top:0;margin-bottom:12px;border-left:4px solid var(--primary);">
           <strong>📄 ${d.filename}</strong>
-          <div style="margin-top:8px;font-size:.85rem;color:var(--muted)">
+          <div style="margin-top:8px;font-size:var(--fs-base);color:var(--muted)">
             ✅ <b>${d.total_products}</b> products found &nbsp;·&nbsp;
             🖼 <b>${d.images_found}</b> with a confirmed image
             ${d.unmatched_columns.length ? `&nbsp;·&nbsp; ⚠️ columns not found: ${d.unmatched_columns.join(', ')}` : ''}
@@ -593,14 +593,14 @@ async function scanMasterFiles() {
               <tbody>${d.preview.map(i => `<tr>
                 <td><strong>${i.product||'—'}</strong></td>
                 <td>${i.brand||'—'}</td>
-                <td style="font-size:.8rem">${i.original_model||'—'}</td>
+                <td style="font-size:var(--fs-sm)">${i.original_model||'—'}</td>
                 <td>₹${i.price_3star||0}</td>
                 <td>₹${i.price_4star||0}</td>
                 <td>${i.gst_pct??0}%</td>
               </tr>`).join('')}</tbody>
             </table>
           </div>
-          ${d.total_products > 15 ? `<p style="font-size:.8rem;color:var(--muted);margin-top:6px">...and ${d.total_products - 15} more products</p>` : ''}
+          ${d.total_products > 15 ? `<p style="font-size:var(--fs-sm);color:var(--muted);margin-top:6px">...and ${d.total_products - 15} more products</p>` : ''}
         </div>`;
     } catch (e) {
       resultEl.innerHTML += `<div class="alert alert-error">'${file.name}' scan failed: ${e.message}</div>`;
@@ -645,7 +645,7 @@ async function loadMasterFiles() {
   const res = await fetch(`${API}/api/master-table/files`);
   const files = await res.json();
   const el = document.getElementById('master-files');
-  if (!files.length) { el.innerHTML = '<p style="color:var(--muted);font-size:.9rem;">No files imported yet.</p>'; return; }
+  if (!files.length) { el.innerHTML = '<p style="color:var(--muted);font-size:var(--fs-base);">No files imported yet.</p>'; return; }
   const isAdmin = currentUser && currentUser.role === 'admin';
   el.innerHTML = files.map(f => `
     <div class="repo-item">
@@ -717,7 +717,7 @@ function pulseMasterSearchBox() {
 function renderMasterProducts(items, forceExpanded, searchTerm) {
   const el = document.getElementById('master-table-view');
   if (!items.length) {
-    el.innerHTML = `<p style="color:var(--muted);font-size:.9rem;">${searchTerm ? 'No products match your search.' : 'No products yet.'}</p>`;
+    el.innerHTML = `<p style="color:var(--muted);font-size:var(--fs-base);">${searchTerm ? 'No products match your search.' : 'No products yet.'}</p>`;
     return;
   }
 
@@ -822,10 +822,10 @@ function renderMasterProducts(items, forceExpanded, searchTerm) {
             <tbody>${prods.map(i => `<tr>
               <td style="text-align:center;">${i.has_image
                 ? `<img src="${API}/api/image/${i.image_path}" style="width:64px;height:52px;object-fit:contain;border-radius:4px;border:1px solid #ddd;cursor:zoom-in;" onclick="showImageLightbox('${API}/api/image/${i.image_path}')" title="Click to enlarge" onerror="this.style.display='none'">`
-                : `<span style="color:#ccc;font-size:.75rem;">—</span>`}</td>
+                : `<span style="color:#ccc;font-size:var(--fs-xs);">—</span>`}</td>
               <td><strong>${i.product}</strong></td>
               <td>${i.brand||'—'}</td>
-              <td style="font-size:.8rem">${i.original_model||'—'}</td>
+              <td style="font-size:var(--fs-sm)">${i.original_model||'—'}</td>
               ${priceCells(i)}
               <td>${i.gst_pct||0}%</td>
               <td>${i.hsn_code||'—'}</td>
@@ -942,14 +942,14 @@ async function loadCatalogSelector() {
   const files = await res.json();
   const el = document.getElementById('catalog-selector');
   if (!files.length) {
-    el.innerHTML = '<span style="color:var(--muted);font-size:.85rem;">No catalogs uploaded yet.</span>';
+    el.innerHTML = '<span style="color:var(--muted);font-size:var(--fs-base);">No catalogs uploaded yet.</span>';
     return;
   }
   el.innerHTML = files.map(f => `
-    <label style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:#fff;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:.88rem;user-select:none;" id="lbl-${CSS.escape(f.file_name)}">
+    <label style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:#fff;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:var(--fs-base);user-select:none;" id="lbl-${CSS.escape(f.file_name)}">
       <input type="checkbox" class="catalog-check" value="${f.file_name}" onchange="highlightCatalogLabel(this)" style="width:16px;height:16px;cursor:pointer;">
       <span>📁 ${f.file_name}</span>
-      <span style="background:var(--accent);color:#fff;font-size:.72rem;padding:1px 7px;border-radius:10px;">${f.count}</span>
+      <span style="background:var(--accent);color:#fff;font-size:var(--fs-xs);padding:1px 7px;border-radius:10px;">${f.count}</span>
     </label>`).join('');
 }
 
@@ -1476,7 +1476,7 @@ function renderBoqCoverage(d) {
           <table><thead><tr><th>Product</th><th>Model</th><th>Brand</th><th>Specification</th><th>Qty</th></tr></thead>
           <tbody>${d.missing.map(m => `<tr>
             <td><strong>${m.product}</strong></td><td>${m.original_model || '—'}</td>
-            <td>${m.brand || '—'}</td><td style="font-size:.8rem">${m.specification || '—'}</td>
+            <td>${m.brand || '—'}</td><td style="font-size:var(--fs-sm)">${m.specification || '—'}</td>
             <td>${m.qty}</td></tr>`).join('')}</tbody></table>
         </div>
         ${isAdmin ? '' : '<p class="mbp-hint">Only an admin can add products to the Master Table.</p>'}
@@ -1630,8 +1630,8 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing) {
   const imgSrc = item.local_image || (item.image_path ? `${API}/api/image/${item.image_path}` : '');
   const imgCell = imgSrc
     ? `<img src="${imgSrc}" style="width:84px;height:66px;object-fit:contain;border-radius:4px;border:1px solid #ddd;display:block;margin:0 auto;cursor:zoom-in;" onclick="showImageLightbox('${imgSrc.replace(/'/g,"\\'")}')" title="Click to enlarge">
-       <span onclick="reAddImage(${idx})" style="cursor:pointer;font-size:.65rem;color:var(--primary);display:block;text-align:center;margin-top:2px;">✎ change</span>`
-    : `<label style="cursor:pointer;font-size:.72rem;color:var(--primary);display:block;text-align:center;padding:4px;">
+       <span onclick="reAddImage(${idx})" style="cursor:pointer;font-size:var(--fs-xs);color:var(--primary);display:block;text-align:center;margin-top:2px;">✎ change</span>`
+    : `<label style="cursor:pointer;font-size:var(--fs-xs);color:var(--primary);display:block;text-align:center;padding:4px;">
          📷 Add<br>Image
          <input type="file" accept="image/*" style="display:none" onchange="handleRowImage(${idx},this)">
        </label>`;
@@ -1641,7 +1641,7 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing) {
     <td style="width:96px;text-align:center;">${imgCell}</td>
     <td><strong>${item.product||''}</strong>${switchBtn}</td>
     <td><input type="number" class="qty-input" value="${qty}" onchange="recalcRow(${idx})" style="width:60px"></td>
-    <td style="font-size:.8rem">${item.model_no||''}</td>
+    <td style="font-size:var(--fs-sm)">${item.model_no||''}</td>
     <td>${item.brand||''}</td>
     <td><div class="spec-text">${(item.specification||'').replace(/\\n/g,'\n')}</div></td>
     <td>${item.hsn_code||''}</td>
@@ -1710,7 +1710,7 @@ function switchVariant(idx) {
       <div class="switch-panel-title">🔄 Switch Variant — "${item._requested || item.product}"</div>
       <div class="switch-cards">${cards}</div>
       <button onclick="document.querySelectorAll('.switch-panel').forEach(p=>p.remove())"
-        style="margin-top:10px;background:none;border:none;cursor:pointer;font-size:.78rem;color:var(--muted);">
+        style="margin-top:10px;background:none;border:none;cursor:pointer;font-size:var(--fs-sm);color:var(--muted);">
         ✕ Close
       </button>
     </div>
@@ -1834,7 +1834,7 @@ function renderResult(q) {
   </tr>`;
   html += `<tr class="quot-grandrow" style="background:#1a3a6b;color:#fff;font-weight:700;">
     <td colspan="${labelColspan}" ${tdR} style="text-align:right;padding-right:16px;font-weight:700;color:#fff;">GRAND TOTAL (incl. GST)</td>
-    <td colspan="${trailingCols}" id="foot-grand" style="font-size:1.05rem;color:#fff;">₹${fmt(grandTotal)}</td>
+    <td colspan="${trailingCols}" id="foot-grand" style="font-size:var(--fs-md);color:#fff;">₹${fmt(grandTotal)}</td>
   </tr>`;
 
   document.getElementById('items-body').innerHTML = html;
@@ -1948,7 +1948,7 @@ function handleRowImage(idx, input) {
     const row = document.querySelector(`#items-body tr[data-idx="${idx}"]`);
     if (row && row.cells[1]) {
       row.cells[1].innerHTML = `<img src="${e.target.result}" style="width:84px;height:66px;object-fit:contain;border-radius:4px;border:1px solid #ddd;display:block;margin:0 auto;cursor:zoom-in;" onclick="showImageLightbox('${e.target.result.replace(/'/g,"\\'")}')" title="Click to enlarge">
-         <span onclick="reAddImage(${idx})" style="cursor:pointer;font-size:.65rem;color:var(--primary);display:block;text-align:center;margin-top:2px;">✎ change</span>`;
+         <span onclick="reAddImage(${idx})" style="cursor:pointer;font-size:var(--fs-xs);color:var(--primary);display:block;text-align:center;margin-top:2px;">✎ change</span>`;
     }
   };
   reader.readAsDataURL(file);

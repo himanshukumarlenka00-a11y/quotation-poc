@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=11">
+<link rel="stylesheet" href="/static/css/main.css?v=13">
 </head>
 <body>
 
@@ -171,11 +171,11 @@
   </div>
   <div class="card">
     <h2 data-icon="📤">Upload BOQ / Quotation Files</h2>
-    <p style="color:var(--muted);font-size:.9rem;margin-bottom:16px;">Upload your existing quotation Excel files (.xls / .xlsx). The AI will learn from these to generate future quotes.</p>
+    <p style="color:var(--muted);font-size:var(--fs-base);margin-bottom:16px;">Upload your existing quotation Excel files (.xls / .xlsx). The AI will learn from these to generate future quotes.</p>
     <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
       <div class="icon">📂</div>
       <p><strong>Click or drag &amp; drop</strong> your Excel files here</p>
-      <p style="margin-top:4px;font-size:.8rem;">.xls and .xlsx supported</p>
+      <p style="margin-top:4px;font-size:var(--fs-sm);">.xls and .xlsx supported</p>
       <input type="file" id="file-input" accept=".xls,.xlsx" multiple>
     </div>
     <div style="margin-top:12px;display:flex;gap:10px;">
@@ -187,12 +187,12 @@
   </div>
   <div class="card">
     <h2 data-icon="📁">Uploaded Files</h2>
-    <div id="uploaded-files"><p style="color:var(--muted);font-size:.9rem;">No files uploaded yet.</p></div>
+    <div id="uploaded-files"><p style="color:var(--muted);font-size:var(--fs-base);">No files uploaded yet.</p></div>
   </div>
 
   <div class="card">
     <h2 data-icon="📦">Product Catalog <span id="catalog-count">0</span></h2>
-    <div id="catalog-table"><p style="color:var(--muted);font-size:.9rem;">No products yet. Upload BOQ files above.</p></div>
+    <div id="catalog-table"><p style="color:var(--muted);font-size:var(--fs-base);">No products yet. Upload BOQ files above.</p></div>
   </div>
 </section>
 
@@ -205,11 +205,11 @@
 
   <div class="card" id="master-admin-upload">
     <h2 data-icon="📤">Import Master Table</h2>
-    <p style="color:var(--muted);font-size:.9rem;margin-bottom:16px;">Admin only. Uploading a file with the same name replaces its existing data. You can select multiple files at once — each imports as its own separate catalog.</p>
+    <p style="color:var(--muted);font-size:var(--fs-base);margin-bottom:16px;">Admin only. Uploading a file with the same name replaces its existing data. You can select multiple files at once — each imports as its own separate catalog.</p>
     <div class="drop-zone" id="master-drop-zone" onclick="document.getElementById('master-file-input').click()">
       <div class="icon">📂</div>
       <p><strong>Click or drag &amp; drop</strong> your Excel file(s) here</p>
-      <p style="margin-top:4px;font-size:.8rem;">.xls and .xlsx supported — multiple files allowed</p>
+      <p style="margin-top:4px;font-size:var(--fs-sm);">.xls and .xlsx supported — multiple files allowed</p>
       <input type="file" id="master-file-input" accept=".xls,.xlsx" multiple>
     </div>
     <div style="margin-top:12px;display:flex;gap:10px;">
@@ -222,7 +222,7 @@
 
   <div class="card">
     <h2 data-icon="📁">Imported Files</h2>
-    <div id="master-files"><p style="color:var(--muted);font-size:.9rem;">No files imported yet.</p></div>
+    <div id="master-files"><p style="color:var(--muted);font-size:var(--fs-base);">No files imported yet.</p></div>
   </div>
 
   <div class="card">
@@ -241,7 +241,7 @@
         </div>
       </div>
     </div>
-    <div id="master-table-view" style="margin-top:16px;"><p style="color:var(--muted);font-size:.9rem;">No products yet.</p></div>
+    <div id="master-table-view" style="margin-top:16px;"><p style="color:var(--muted);font-size:var(--fs-base);">No products yet.</p></div>
   </div>
 </section>
 
@@ -264,26 +264,26 @@
   <div class="card">
     <h2 data-icon="✨">Create a Quotation</h2>
 
-    <label>Customer / Hotel Name <span style="font-weight:400;color:var(--muted);font-size:.8rem;">(optional)</span></label>
+    <label>Customer / Hotel Name <span style="font-weight:400;color:var(--muted);font-size:var(--fs-sm);">(optional)</span></label>
     <input type="text" id="client-name" placeholder="e.g. Taj Hotel, Mumbai">
 
     <!-- catalog selector kept but hidden — defaults to searching everything -->
     <div id="catalog-selector" style="display:none;"></div>
 
-    <label style="margin-top:18px;">Price tier <span style="font-weight:400;color:var(--muted);font-size:.8rem;">— select one or both</span></label>
+    <label style="margin-top:18px;">Price tier <span style="font-weight:400;color:var(--muted);font-size:var(--fs-sm);">— select one or both</span></label>
     <div style="display:flex;gap:8px;">
       <div class="tier-toggle" id="tier-3star" onclick="toggleTier('3star')">⭐ 3 Star</div>
       <div class="tier-toggle" id="tier-4star" onclick="toggleTier('4star')">⭐⭐ 4 Star</div>
     </div>
 
-    <label style="margin-top:18px;font-size:1rem;">What do you need? <span style="font-weight:400;color:var(--muted);font-size:.85rem;">Just type it in plain English.</span></label>
+    <label style="margin-top:18px;font-size:var(--fs-md);">What do you need? <span style="font-weight:400;color:var(--muted);font-size:var(--fs-base);">Just type it in plain English.</span></label>
     <div style="position:relative;">
-      <textarea id="req-prompt" placeholder="e.g. 30 electric kettles, 20 hair dryers and 50 coat hangers" style="min-height:110px;font-size:1rem;"></textarea>
+      <textarea id="req-prompt" placeholder="e.g. 30 electric kettles, 20 hair dryers and 50 coat hangers" style="min-height:110px;font-size:var(--fs-md);"></textarea>
       <div id="suggest-dropdown" class="suggest-dropdown" style="display:none;"></div>
     </div>
 
     <div style="margin-top:20px;">
-      <button class="btn btn-primary" id="gen-btn" onclick="generateQuote()" style="font-size:1.05rem;padding:14px 30px;border-radius:10px;">
+      <button class="btn btn-primary" id="gen-btn" onclick="generateQuote()" style="font-size:var(--fs-md);padding:14px 30px;border-radius:10px;">
         <span id="gen-icon">✨</span> Generate Quotation
       </button>
     </div>
@@ -302,7 +302,7 @@
     <div class="drop-zone" id="boq-req-drop-zone" onclick="document.getElementById('boq-req-file-input').click()">
       <div class="icon">📂</div>
       <p><strong>Click or drag &amp; drop</strong> the requirement file here</p>
-      <p style="margin-top:4px;font-size:.8rem;">.xls and .xlsx supported</p>
+      <p style="margin-top:4px;font-size:var(--fs-sm);">.xls and .xlsx supported</p>
       <input type="file" id="boq-req-file-input" accept=".xls,.xlsx">
     </div>
     <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">
@@ -343,7 +343,7 @@
 <section id="sec-result" class="section">
   <div id="result-empty" class="card">
     <p style="color:var(--muted);text-align:center;padding:36px;">
-      <span style="font-size:2.2rem;display:block;margin-bottom:10px;">📋</span>
+      <span style="font-size:var(--fs-3xl);display:block;margin-bottom:10px;">📋</span>
       No quotation yet — go to <strong>✨ Generate Quote</strong> and describe your requirements.
     </p>
   </div>
@@ -367,13 +367,13 @@
 
       <!-- Add forgotten items to this quote -->
       <div id="add-item-box" style="background:#11315f;border:1px solid #2c456a;border-radius:10px;padding:14px 16px;margin-bottom:14px;">
-        <div style="font-size:.9rem;color:#bcd6ef;font-weight:600;margin-bottom:8px;">➕ Forgot something? Add it to this quote</div>
+        <div style="font-size:var(--fs-base);color:#bcd6ef;font-weight:600;margin-bottom:8px;">➕ Forgot something? Add it to this quote</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <input type="text" id="add-item-input" placeholder="e.g. 10 coffee machines and 5 ice buckets"
                  style="flex:1;min-width:220px;" onkeydown="if(event.key==='Enter')addToQuote()">
           <button class="btn btn-accent" id="add-item-btn" onclick="addToQuote()">➕ Add</button>
         </div>
-        <div id="add-item-status" style="font-size:.82rem;color:var(--muted);margin-top:8px;">Type any product in plain English — it searches all catalogues and adds new rows. Totals update automatically.</div>
+        <div id="add-item-status" style="font-size:var(--fs-sm);color:var(--muted);margin-top:8px;">Type any product in plain English — it searches all catalogues and adds new rows. Totals update automatically.</div>
       </div>
 
       <!-- Not-found warning -->
@@ -392,7 +392,7 @@
           <div class="quot-meta-l">
             <div class="quot-sec-lbl">Bill &amp; Ship To</div>
             <div class="quot-client" id="doc-client">—</div>
-            <div style="font-size:.8rem;color:#666;margin-top:4px;">Attn: Purchase Manager</div>
+            <div style="font-size:var(--fs-sm);color:#666;margin-top:4px;">Attn: Purchase Manager</div>
           </div>
           <div class="quot-meta-r">
             <table class="quot-mt">
@@ -425,7 +425,7 @@
             <tfoot id="items-foot"></tfoot>
           </table>
         </div>
-        <div style="padding:5px 14px;font-size:.73rem;color:var(--muted);background:#fafbfd;border-top:1px solid var(--border);">
+        <div style="padding:5px 14px;font-size:var(--fs-xs);color:var(--muted);background:#fafbfd;border-top:1px solid var(--border);">
           ✏️ Click any Price/Pc, QTY or GST% field to edit inline.
         </div>
 
@@ -448,7 +448,7 @@
     <!-- Feedback -->
     <div class="card feedback-box" style="max-width:100%;margin:0 auto 20px;">
       <h2 data-icon="💬">Feedback</h2>
-      <p style="font-size:.9rem;color:var(--muted);margin-bottom:12px;">How was this response? Your feedback trains the AI.</p>
+      <p style="font-size:var(--fs-base);color:var(--muted);margin-bottom:12px;">How was this response? Your feedback trains the AI.</p>
       <div class="rating-btns">
         <button class="rating-btn good" id="btn-good" onclick="setRating('good')">👍 Good</button>
         <button class="rating-btn bad" id="btn-bad" onclick="setRating('not_good')">👎 Not Good</button>
@@ -469,7 +469,7 @@
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
       <div>
         <h2 data-icon="🗄" style="margin-bottom:4px;">Approved Quotations Repository</h2>
-        <p style="color:var(--muted);font-size:.9rem;">All approved quotations are stored here.</p>
+        <p style="color:var(--muted);font-size:var(--fs-base);">All approved quotations are stored here.</p>
       </div>
       <button class="btn btn-danger btn-sm" onclick="clearAllQuotations()">🗑 Clear All</button>
     </div>
@@ -501,7 +501,7 @@
       <span id="audit-count" class="mbp-hint"></span>
     </div>
     <div id="audit-view" style="margin-top:14px;">
-      <p style="color:var(--muted);font-size:.9rem;">Loading...</p>
+      <p style="color:var(--muted);font-size:var(--fs-base);">Loading...</p>
     </div>
   </div>
 </section>
@@ -509,6 +509,6 @@
 </main>
 
 
-<script src="/static/js/app.js?v=11"></script>
+<script src="/static/js/app.js?v=13"></script>
 </body>
 </html>
