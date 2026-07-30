@@ -700,7 +700,16 @@ async function uploadMasterFile() {
     try {
       const res = await fetch(`${API}/api/master-table/upload`, { method: 'POST', body: fd });
       const data = await res.json();
-      results.push(`<div class="alert alert-${res.ok ? 'success' : 'error'}">${res.ok ? data.message : apiErr(data)}</div>`);
+      if (res.status === 409) {
+        // Phase D gate: the import would land every product without a price.
+        // Not an error to hide behind — show why, and let the admin either
+        // teach the price column (re-scan) or knowingly force it through.
+        results.push(`<div class="alert alert-error">⛔ '${file.name}': ${apiErr(data)}
+          <div style="margin-top:8px;"><button class="btn btn-sm btn-danger"
+            onclick="forceImportMaster(${i})">Import anyway (no prices)</button></div></div>`);
+      } else {
+        results.push(`<div class="alert alert-${res.ok ? 'success' : 'error'}">${res.ok ? data.message : apiErr(data)}</div>`);
+      }
     } catch (e) {
       results.push(`<div class="alert alert-error">'${file.name}' failed: ${e.message}</div>`);
     }
@@ -711,6 +720,23 @@ async function uploadMasterFile() {
   document.getElementById('master-scan-result').innerHTML = '';
   loadMasterFiles();
   loadMasterTable();
+}
+
+// Deliberate override of the Phase D no-price gate — the server records the
+// import as forced in the audit log.
+async function forceImportMaster(idx) {
+  const file = masterSelectedFiles[idx];
+  if (!file) return;
+  const status = document.getElementById('master-upload-status');
+  const fd = new FormData(); fd.append('file', file); fd.append('force', '1');
+  try {
+    const res = await fetch(`${API}/api/master-table/upload`, { method: 'POST', body: fd });
+    const data = await res.json();
+    status.innerHTML += `<div class="alert alert-${res.ok ? 'success' : 'error'}">${res.ok ? data.message : apiErr(data)}</div>`;
+    if (res.ok) { loadMasterFiles(); loadMasterTable(); }
+  } catch (e) {
+    status.innerHTML += `<div class="alert alert-error">${e.message}</div>`;
+  }
 }
 
 async function loadMasterFiles() {
@@ -1382,12 +1408,14 @@ function setBoqReqFile(file) {
 // Importing a past quotation as a catalog is silent and expensive — it turned
 // 705 lines of a client's own BOQ wording into "products", loaded our old
 // selling price into the cost column, and left GST at 0% on every row.
-function renderFileTypeNotice(ft) {
-  if (!ft || ft.type === 'price_list' || ft.type === 'unknown') return '';
+function renderFileTypeNotice(ft, expected = 'price_list') {
+  if (!ft || ft.type === expected || ft.type === 'unknown') return '';
+  const heads = { price_list: "This doesn't look like a supplier price list",
+                  client_boq: "This doesn't look like a client requirement / BOQ" };
   const why = (ft.reasons || []).map(r => `<li>${r}</li>`).join('');
   return `
     <div class="ftype-warn">
-      <div class="ftype-head">⚠️ This doesn't look like a supplier price list</div>
+      <div class="ftype-head">⚠️ ${heads[expected] || heads.price_list}</div>
       <div class="ftype-body">
         It looks like <strong>${ft.label}</strong>.
         ${ft.type === 'quotation'
@@ -1524,6 +1552,7 @@ async function checkBoqCoverage() {
 
 function renderBoqCoverage(d) {
   const out = document.getElementById('boq-coverage');
+  const typeNotice = renderFileTypeNotice(d.file_type, 'client_boq');
   const isAdmin = currentUser && currentUser.role === 'admin';
   const pct = d.coverage_pct;
   const bar = `
@@ -1556,7 +1585,7 @@ function renderBoqCoverage(d) {
   } else {
     missing = `<div class="alert alert-success">Every line in this BOQ is already in the Master Table.</div>`;
   }
-  out.innerHTML = bar + missing;
+  out.innerHTML = typeNotice + bar + missing;
 }
 
 async function addMissingToMaster() {
@@ -1615,7 +1644,8 @@ async function generateFromBoqFile() {
     renderResult(data);
     show('result');
     const nf = (data.not_found || []).length;
-    status.innerHTML = `<div class="alert alert-success">✅ Quotation ready — ${(data.items||[]).length} item(s) matched.${nf ? ` ⚠️ ${nf} not found.` : ''}</div>`;
+    status.innerHTML = `<div class="alert alert-success">✅ Quotation ready — ${(data.items||[]).length} item(s) matched.${nf ? ` ⚠️ ${nf} not found.` : ''}</div>`
+      + renderFileTypeNotice(data.file_type, 'client_boq');
   } catch (e) {
     status.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
   } finally {

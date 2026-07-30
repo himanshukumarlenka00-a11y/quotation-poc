@@ -699,6 +699,11 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
     try:
         _save_upload_validated(file, tmp_path)
         rows, _structure = parse_boq_excel(str(tmp_path), file.filename)
+        try:
+            from app.master_table import detect_file_type
+            file_type = detect_file_type(str(tmp_path))
+        except Exception:
+            file_type = None
     finally:
         try:
             tmp_path.unlink(missing_ok=True)
@@ -740,6 +745,7 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
 
     ref_no = f"QT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     data = {"ref_no": ref_no, "client_name": client_name, "has_boq_pricing": has_boq_pricing,
+            "file_type": file_type,
             "items": result_items, "not_found": not_found}
 
     clean_items = [{k: v for k, v in i.items() if not k.startswith("_")} for i in result_items]

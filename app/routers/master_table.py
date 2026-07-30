@@ -2,7 +2,7 @@ import os, tempfile, traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from pydantic import BaseModel
 from app.config import MASTER_UPLOADS_DIR
 from app.db import get_db, rebuild_master_fts
@@ -95,7 +95,8 @@ async def scan_master_table(file: UploadFile = File(...), admin: dict = Depends(
 
 
 @router.post("/api/master-table/upload")
-async def upload_master_table(file: UploadFile = File(...), admin: dict = Depends(require_role("admin"))):
+async def upload_master_table(file: UploadFile = File(...), force: str = Form(""),
+                              admin: dict = Depends(require_role("admin"))):
     """Import a master-table file. Admin-only — see project memory
     'master-table-access-control': employees may only ever read this data."""
     if not file.filename.endswith((".xls", ".xlsx")):
@@ -104,6 +105,25 @@ async def upload_master_table(file: UploadFile = File(...), admin: dict = Depend
     try:
         _save_upload_validated(file, dest)
         items, unmatched = parse_master_excel(str(dest), file.filename)
+
+        # Phase D: block the imports that are certainly broken, instead of
+        # writing them and letting someone discover the damage later.
+        if not items:
+            raise HTTPException(400,
+                "No products could be read from this file — the header row was "
+                "not recognised. Scan it first to see how the columns map.")
+        priced = sum(1 for it in items
+                     if (it.get("price_3star") or 0) > 0 or (it.get("cost") or 0) > 0)
+        if priced == 0 and force != "1":
+            # Exactly how the Nilkamal import failed: 493 products landed with
+            # no price because "PRICES IN INR" wasn't a recognised heading.
+            # Blocking with the unmapped columns named lets the admin teach
+            # the right one and re-import; force=1 overrides deliberately.
+            raise HTTPException(409,
+                f"Blocked: all {len(items)} products would import with NO price and NO cost. "
+                f"A price column probably wasn't recognised — unmapped fields: "
+                f"{', '.join(unmatched) or 'none'}. Teach the price column in the scan "
+                f"report, or import anyway if this file genuinely has no prices.")
 
         conn = get_db()
         conn.execute("DELETE FROM master_products WHERE file_name=?", (file.filename,))
@@ -115,7 +135,8 @@ async def upload_master_table(file: UploadFile = File(...), admin: dict = Depend
         conn.close()
 
         images_exact = sum(1 for it in items if it["image_match"] == "exact")
-        log_action(admin, "upload_master_table", target=file.filename, after={"products": len(items)})
+        log_action(admin, "upload_master_table", target=file.filename,
+                   after={"products": len(items), "forced": force == "1"})
         return {
             "message": f"Imported '{file.filename}' — {len(items)} products, "
                        f"{images_exact} with a confirmed image. Master table total: {total} items.",
@@ -510,6 +531,12 @@ async def check_boq_coverage(file: UploadFile = File(...),
     try:
         _save_upload_validated(file, tmp_path)
         rows, _ = parse_boq_excel(str(tmp_path), file.filename)
+        # Phase F: the reverse of the master-import check — warn when what was
+        # uploaded as a client BOQ looks like a price list or a quotation.
+        try:
+            file_type = detect_file_type(str(tmp_path))
+        except Exception:
+            file_type = None
     finally:
         try:
             tmp_path.unlink(missing_ok=True)
@@ -563,6 +590,7 @@ async def check_boq_coverage(file: UploadFile = File(...),
     total = len(src)
     return {
         "filename": file.filename,
+        "file_type": file_type,
         "total": total,
         "found_count": len(found),
         "missing_count": len(missing),
