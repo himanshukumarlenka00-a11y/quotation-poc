@@ -5,7 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from pydantic import BaseModel
 from app.config import MASTER_UPLOADS_DIR
-from app.db import get_db
+from app.db import get_db, rebuild_master_fts
 from app.auth import get_current_user, require_role, log_action
 from app.images import _image_file_path
 from app.master_table import (parse_master_excel, parse_matched_boq_workbook,
@@ -109,6 +109,8 @@ async def upload_master_table(file: UploadFile = File(...), admin: dict = Depend
         conn.execute("DELETE FROM master_products WHERE file_name=?", (file.filename,))
         _insert_master_items(conn, items)
         conn.commit()
+        # keep the full-text index in step with the catalogue
+        rebuild_master_fts(conn)
         total = conn.execute("SELECT COUNT(*) FROM master_products").fetchone()[0]
         conn.close()
 
@@ -188,6 +190,7 @@ async def upload_matched_boq(
         conn.execute("DELETE FROM master_products WHERE file_name=?", (file.filename,))
         _insert_master_items(conn, items)
         conn.commit()
+        rebuild_master_fts(conn)   # keep the search index in step
         total = conn.execute("SELECT COUNT(*) FROM master_products").fetchone()[0]
         conn.close()
 
@@ -611,6 +614,7 @@ def add_products_from_boq(req: AddFromBoqRequest,
                   datetime.now().isoformat()))
             added += 1
         conn.commit()
+        rebuild_master_fts(conn)   # keep the search index in step
     finally:
         conn.close()
 
@@ -673,6 +677,7 @@ def delete_master_file(filename: str, admin: dict = Depends(require_role("admin"
     conn = get_db()
     conn.execute("DELETE FROM master_products WHERE file_name=?", (filename,))
     conn.commit()
+    rebuild_master_fts(conn)   # keep the search index in step
     conn.close()
     dest = MASTER_UPLOADS_DIR / filename
     if dest.exists():

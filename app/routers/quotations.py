@@ -140,18 +140,56 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
     except Exception:
         all_products = []
 
-    # Full master-table rows (name + model + spec + tiered price) for field-wide searching
+    # Candidate rows for field-wide searching.
+    #
+    # This used to load EVERY master_products row into Python on every request.
+    # Measured: 25-57ms and ~7MB at 3,000 products, which extrapolates to ~5.7s
+    # and ~0.7GB at the planned 300,000 — per request, per concurrent employee.
+    # SQLite's FTS5 index narrows it to the few dozen rows that share a word
+    # with what was asked, in well under a millisecond, and needs no extra
+    # service to run on the company's own server.
+    def _fts_query(terms):
+        """Build an FTS5 MATCH expression from the requested phrases."""
+        words = set()
+        for t in terms:
+            for w in re.findall(r"[A-Za-z0-9]{2,}", str(t or "")):
+                words.add(w.lower())
+        # Prefix-match each word so "knive"/"knives" still reach "knife"-ish
+        # rows, OR'd because any shared word makes a row worth scoring.
+        return " OR ".join(f'"{w}"*' for w in sorted(words)[:40])
+
+    search_terms = [it.get("search_term") or it.get("product") or "" for it in extracted]
+    rows_pool, used_fts = [], False
     try:
-        if catalogs:
-            ph = ",".join("?" * len(catalogs))
-            rows_pool = [dict(r) for r in conn.execute(
-                f"SELECT * FROM master_products WHERE file_name IN ({ph}) AND product IS NOT NULL",
-                catalogs).fetchall()]
-        else:
-            rows_pool = [dict(r) for r in conn.execute(
-                "SELECT * FROM master_products WHERE product IS NOT NULL").fetchall()]
+        match = _fts_query(search_terms)
+        if match:
+            if catalogs:
+                ph = ",".join("?" * len(catalogs))
+                sql = (f"SELECT m.* FROM master_fts f JOIN master_products m ON m.id = f.rowid "
+                       f"WHERE master_fts MATCH ? AND m.file_name IN ({ph}) LIMIT 4000")
+                rows_pool = [dict(r) for r in conn.execute(sql, [match, *catalogs]).fetchall()]
+            else:
+                rows_pool = [dict(r) for r in conn.execute(
+                    "SELECT m.* FROM master_fts f JOIN master_products m ON m.id = f.rowid "
+                    "WHERE master_fts MATCH ? LIMIT 4000", (match,)).fetchall()]
+            used_fts = True
     except Exception:
-        rows_pool = []
+        rows_pool = []          # FTS missing or query rejected — fall through
+
+    if not rows_pool:
+        # Fallback: the original full scan. Correctness over speed — a missing
+        # FTS index must never mean a failed quotation.
+        try:
+            if catalogs:
+                ph = ",".join("?" * len(catalogs))
+                rows_pool = [dict(r) for r in conn.execute(
+                    f"SELECT * FROM master_products WHERE file_name IN ({ph}) AND product IS NOT NULL",
+                    catalogs).fetchall()]
+            else:
+                rows_pool = [dict(r) for r in conn.execute(
+                    "SELECT * FROM master_products WHERE product IS NOT NULL").fetchall()]
+        except Exception:
+            rows_pool = []
 
     # Step 2c: deterministic name match — takes priority over the LLM semantic
     # guess, which sometimes maps a request to a similar-but-wrong product

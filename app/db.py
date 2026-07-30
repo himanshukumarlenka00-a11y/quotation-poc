@@ -173,7 +173,48 @@ def migrate_db():
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_colmap_header ON column_mappings(header_norm)")
 
+    # Full-text index over the searchable product fields.
+    #
+    # Matching previously loaded EVERY master_products row into Python on every
+    # request: 57ms and 7MB at 3,000 products, which extrapolates to ~5.7s and
+    # ~0.7GB at the planned 300,000 — per request, per concurrent employee.
+    # FTS5 lets SQLite return the few dozen plausible rows instead, in
+    # milliseconds, with no extra service to run. That matters specifically
+    # because this is destined for the company's own server.
+    try:
+        conn.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS master_fts USING fts5(
+                product, original_model, specification, brand,
+                content='master_products', content_rowid='id',
+                tokenize="unicode61 remove_diacritics 2"
+            )
+        """)
+        conn.commit()
+    except Exception:
+        pass   # an older SQLite without FTS5 falls back to the in-memory scan
+
     conn.commit()
     conn.close()
+
+
+def rebuild_master_fts(conn=None):
+    """Repopulate the full-text index from master_products.
+
+    Called after an import rather than maintained by triggers: imports are
+    occasional and wholesale (a catalogue is deleted and reinserted), so one
+    rebuild is simpler and cannot drift out of sync the way triggers can.
+    Returns the number of indexed rows, or None if FTS5 is unavailable.
+    """
+    own = conn is None
+    conn = conn or get_db()
+    try:
+        conn.execute("INSERT INTO master_fts(master_fts) VALUES('rebuild')")
+        conn.commit()
+        return conn.execute("SELECT COUNT(*) FROM master_fts").fetchone()[0]
+    except Exception:
+        return None
+    finally:
+        if own:
+            conn.close()
 
 migrate_db()
