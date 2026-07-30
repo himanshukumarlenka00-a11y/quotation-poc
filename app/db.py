@@ -193,6 +193,16 @@ def migrate_db():
         )
     """)
 
+    # How a lesson arrived: 'correction' (human changed the product — strong)
+    # or 'confirmed' (human saved the line untouched — weaker, but every
+    # accepted BOQ line becomes one, so it compounds). One table for both:
+    # they answer the same question, differing only in authority.
+    try:
+        conn.execute("ALTER TABLE match_corrections ADD COLUMN source TEXT DEFAULT 'correction'")
+        conn.commit()
+    except Exception:
+        pass
+
     # Full-text index over the searchable product fields.
     #
     # Matching previously loaded EVERY master_products row into Python on every

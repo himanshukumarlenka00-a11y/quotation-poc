@@ -859,6 +859,7 @@ def update_quotation(qid: int, req: UpdateItemsRequest, user: dict = Depends(get
                         corrected_from=excluded.corrected_from,
                         corrected_by=excluded.corrected_by,
                         created_at=excluded.created_at,
+                        source='correction',
                         times_confirmed=match_corrections.times_confirmed+1
                 """, (ph, item.get("product") or "", item.get("model_no") or "",
                       old.get("product") or "", user["id"],
@@ -866,6 +867,25 @@ def update_quotation(qid: int, req: UpdateItemsRequest, user: dict = Depends(get
                 item["matched_by"] = "human"
                 learned.append((item.get("requested") or ph,
                                 old.get("product"), item.get("product")))
+            else:
+                # Line saved untouched — a confirmation. Weaker than a
+                # correction, so the ON CONFLICT guard only bumps the counter
+                # when the stored row already points at this same product;
+                # it can never overwrite a human correction aimed elsewhere.
+                # No audit entry: every save confirms every untouched line,
+                # and logging each would drown the Activity page.
+                conn.execute("""
+                    INSERT INTO match_corrections
+                        (phrase_norm, product, original_model, corrected_by,
+                         created_at, source)
+                    VALUES (?,?,?,?,?,'confirmed')
+                    ON CONFLICT(phrase_norm) DO UPDATE SET
+                        times_confirmed = match_corrections.times_confirmed + 1
+                    WHERE LOWER(TRIM(match_corrections.product)) = LOWER(TRIM(excluded.product))
+                      AND LOWER(TRIM(COALESCE(match_corrections.original_model,''))) =
+                          LOWER(TRIM(COALESCE(excluded.original_model,'')))
+                """, (ph, item.get("product") or "", item.get("model_no") or "",
+                      user["id"], datetime.now().isoformat()))
     except Exception as e:
         print(f"Correction learning skipped (non-fatal): {e}")
 
