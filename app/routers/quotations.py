@@ -465,12 +465,53 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
     unresolved = [it for it in extracted if not det_map.get((it.get("product") or "").strip().lower())]
 
     # Step 2b: LLM semantic mapping — only for items deterministic match missed
+    def _shortlist(terms, pool, per_term=12, cap=70):
+        """Catalog names plausibly related to what was actually asked for.
+
+        This replaced sending `pool[:350]` — the first 350 products
+        alphabetically, chosen without reference to the request. That was the
+        worst of both worlds: it produced 5,000-token requests (which tripped
+        Groq's per-request limit and burned the daily quota) while often not
+        containing the right product at all. A request for "chef knife" was
+        sent 350 names that might include no knives.
+        """
+        picked, seen = [], set()
+        for t in terms:
+            words = {w for w in re.findall(r"[a-z]{3,}", (t or "").lower())}
+            if not words:
+                continue
+            scored = []
+            for p in pool:
+                pl = (p or "").lower()
+                hits = sum(1 for w in words if w in pl)
+                if hits:
+                    scored.append((hits, -len(pl), p))   # more words, then tighter name
+            scored.sort(reverse=True)
+            for _h, _l, p in scored[:per_term]:
+                if p not in seen:
+                    seen.add(p)
+                    picked.append(p)
+            if len(picked) >= cap:
+                break
+        return picked[:cap]
+
     semantic_map = {}  # requested_term → matched catalog product name (or None)
     if unresolved and all_products:
         try:
-            items_str    = ", ".join([f"{i['product']} (qty:{i.get('qty',1)})" for i in unresolved])
-            products_str = "\n".join(all_products[:350])  # cap at 350 products
-            sem_resp = groq_client.chat.completions.create(
+            # Only ask about a bounded number of items at once — a 700-row BOQ
+            # left hundreds unresolved and put them all in one request.
+            batch = unresolved[:40]
+            candidates = _shortlist([i.get("product", "") for i in batch], all_products)
+            if not candidates:
+                # Nothing in the catalog shares a word with the request (e.g.
+                # "laptop"). Asking the model to pick from an empty list wastes
+                # a call and invites a made-up answer. Not an error — a skip.
+                print(f"Semantic mapping skipped: nothing in the catalog resembles "
+                      f"{[i.get('product') for i in batch][:5]}")
+                candidates = []
+            items_str    = ", ".join([f"{i['product']} (qty:{i.get('qty',1)})" for i in batch])
+            products_str = "\n".join(candidates)
+            sem_resp = candidates and groq_client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[
                     {"role": "system", "content":
@@ -489,7 +530,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 ],
                 max_tokens=500, temperature=0.1
             )
-            sem_raw = sem_resp.choices[0].message.content.strip()
+            sem_raw = sem_resp.choices[0].message.content.strip() if sem_resp else "{}"
             sem_raw = re.sub(r"```[a-z]*\n?", "", sem_raw).strip().rstrip("```")
             sem_data = json.loads(sem_raw)
             for m in sem_data.get("mappings", []):
