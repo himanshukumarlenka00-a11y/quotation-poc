@@ -173,6 +173,16 @@ def migrate_db():
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_colmap_header ON column_mappings(header_norm)")
 
+    # Access can be switched off without deleting the account. Deletion would
+    # orphan the user's audit history and quotations; deactivation preserves
+    # both while ending access — checked on every request, not just at login,
+    # so it takes effect immediately.
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1")
+        conn.commit()
+    except Exception:
+        pass
+
     # Human corrections to product matching. When someone edits a saved
     # quotation and changes WHICH product a line resolved to, that is the
     # strongest signal the system can get: the matcher was wrong and a person

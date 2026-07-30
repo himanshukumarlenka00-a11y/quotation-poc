@@ -48,12 +48,20 @@ def get_current_user(request: Request) -> dict:
     if not user_id:
         raise HTTPException(401, "Not logged in")
     conn = get_db()
-    row = conn.execute("SELECT id, name, email, role FROM users WHERE id=?", (user_id,)).fetchone()
+    row = conn.execute("SELECT id, name, email, role, is_active FROM users WHERE id=?",
+                       (user_id,)).fetchone()
     conn.close()
     if not row:
         request.session.clear()
         raise HTTPException(401, "Session invalid")
-    return dict(row)
+    # Checked here, on EVERY request, not just at login — deactivating someone
+    # must end their access now, not whenever their session cookie expires.
+    if not row["is_active"]:
+        request.session.clear()
+        raise HTTPException(401, "This account has been deactivated")
+    u = dict(row)
+    u.pop("is_active", None)
+    return u
 
 
 def require_role(*roles):

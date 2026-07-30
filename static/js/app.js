@@ -58,6 +58,7 @@ function onAuthed() {
   // Activity log is admin-only — the endpoint enforces it too, this just
   // avoids showing a tab that would 403.
   document.getElementById('tab-audit').style.display = currentUser.role === 'admin' ? '' : 'none';
+  document.getElementById('tab-users').style.display = currentUser.role === 'admin' ? '' : 'none';
 }
 
 async function doLogin(evt) {
@@ -255,6 +256,74 @@ function show(tab) {
   if (tab === 'generate')  loadCatalogSelector();
   if (tab === 'repository') loadRepository();
   if (tab === 'audit')     loadAuditLog();
+  if (tab === 'users')     loadUsers();
+}
+
+// ── Users (admin only) ───────────────────────────────────────────────────────
+async function loadUsers() {
+  const view = document.getElementById('users-view');
+  view.innerHTML = '<div class="loading-state">Loading...</div>';
+  try {
+    const res = await fetch(`${API}/api/auth/users`);
+    const d = await res.json();
+    if (!res.ok) { view.innerHTML = `<div class="alert alert-error">${apiErr(d)}</div>`; return; }
+    view.innerHTML = `
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Name</th><th>Email</th><th style="width:160px">Role</th>
+                     <th style="width:110px">Status</th><th style="width:150px"></th></tr></thead>
+          <tbody>${d.map(u => {
+            const self = currentUser && u.id === currentUser.id;
+            const inactive = !u.is_active;
+            return `<tr class="${inactive ? 'user-inactive' : ''}">
+              <td><strong>${u.name || '—'}</strong>${self ? ' <span class="user-you">you</span>' : ''}</td>
+              <td>${u.email}</td>
+              <td>
+                <select class="user-role-sel" ${self ? 'disabled title="You cannot change your own role"' : ''}
+                        onchange="setUserRole(${u.id}, this.value, this)">
+                  <option value="employee"${u.role === 'employee' ? ' selected' : ''}>Employee</option>
+                  <option value="admin"${u.role === 'admin' ? ' selected' : ''}>Admin</option>
+                </select>
+              </td>
+              <td>${inactive ? '<span class="user-badge off">deactivated</span>'
+                             : '<span class="user-badge on">active</span>'}</td>
+              <td>${self ? '' : inactive
+                    ? `<button class="btn btn-sm btn-success" onclick="setUserActive(${u.id}, true)">Reactivate</button>`
+                    : `<button class="btn btn-sm btn-danger" onclick="setUserActive(${u.id}, false)">Deactivate</button>`}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+      </div>
+      <div id="users-status" style="margin-top:10px;"></div>`;
+  } catch (e) {
+    view.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+  }
+}
+
+async function _updateUser(id, body) {
+  const st = document.getElementById('users-status');
+  try {
+    const res = await fetch(`${API}/api/auth/users/${id}`, {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    const d = await res.json();
+    st.innerHTML = res.ok
+      ? `<div class="alert alert-success">${d.message}</div>`
+      : `<div class="alert alert-error">${apiErr(d)}</div>`;
+  } catch (e) {
+    st.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+  }
+  loadUsers();   // re-render from the server's truth either way
+}
+
+function setUserRole(id, role, sel) { _updateUser(id, { role }); }
+function setUserActive(id, active) {
+  if (!active && !confirm('End this person\'s access now? Their account and history stay, and you can reactivate later.')) {
+    loadUsers();
+    return;
+  }
+  _updateUser(id, { is_active: active });
 }
 
 // ── Activity / audit log ─────────────────────────────────────────────────────
@@ -272,7 +341,9 @@ const AUDIT_LABELS = {
   upload_matched_boq: 'Imported a matched BOQ',
   smart_generate_quotation: 'Generated a quotation', smart_generate_from_boq: 'Generated from a BOQ',
   edit_quotation: 'Edited a quotation', learned_correction: 'Learned a correction',
-  delete_correction: 'Removed a learned correction', delete_quotation: 'Deleted a quotation',
+  delete_correction: 'Removed a learned correction',
+  update_user_role: 'Changed a role', deactivate_user: 'Deactivated a user',
+  reactivate_user: 'Reactivated a user', create_user: 'Created a user', delete_quotation: 'Deleted a quotation',
   clear_all_quotations: 'Cleared all quotations', self_register: 'Signed up',
 };
 // Destructive actions get called out — they're the ones worth spotting fast.

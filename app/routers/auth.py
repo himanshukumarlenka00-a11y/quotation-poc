@@ -43,6 +43,13 @@ def login(request: Request, req: LoginRequest):
     conn.close()
     if not row or not _verify_password(req.password, row["password_hash"]):
         raise HTTPException(401, "Invalid email or password")
+    # Explicit message, distinct from a wrong password — a deactivated
+    # colleague should know to talk to an admin, not retry their password.
+    try:
+        if not row["is_active"]:
+            raise HTTPException(403, "This account has been deactivated. Contact an administrator.")
+    except (KeyError, IndexError):
+        pass   # column predates migration on this DB — treat as active
     request.session["user_id"] = row["id"]
     return {"id": row["id"], "name": row["name"], "email": row["email"], "role": row["role"]}
 
@@ -160,11 +167,74 @@ def create_user(req: CreateUserRequest, admin: dict = Depends(require_role("admi
 
 @router.get("/api/auth/users")
 def list_users(admin: dict = Depends(require_role("admin"))):
-    """Admin-only — populates the employee picker for the activity log view."""
+    """Admin-only — the Users page and the activity log picker."""
     conn = get_db()
-    rows = conn.execute("SELECT id, name, email, role, created_at FROM users ORDER BY name").fetchall()
+    rows = conn.execute(
+        "SELECT id, name, email, role, is_active, created_at FROM users ORDER BY name").fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+class UpdateUserRequest(BaseModel):
+    role: str = None            # "admin" | "employee", or None to leave as-is
+    is_active: bool = None      # False deactivates, True reactivates, None leaves
+
+
+@router.put("/api/auth/users/{user_id}")
+def update_user(user_id: int, req: UpdateUserRequest,
+                admin: dict = Depends(require_role("admin"))):
+    """Change a user's role or switch their access on/off. Admin-only.
+
+    Deactivation, never deletion — deleting a row would orphan the person's
+    audit history and quotations. Two lockout guards:
+    - you cannot demote or deactivate YOURSELF (one misclick would otherwise
+      end the session you're doing it from), and
+    - the last active admin cannot be demoted or deactivated, because a system
+      with no admin cannot create one.
+    """
+    if req.role is not None and req.role not in ("admin", "employee"):
+        raise HTTPException(400, "role must be admin or employee")
+
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT id, name, email, role, is_active FROM users WHERE id=?",
+                           (user_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "No such user")
+
+        losing_admin = (row["role"] == "admin" and
+                        ((req.role is not None and req.role != "admin") or
+                         req.is_active is False))
+        if losing_admin and user_id == admin["id"]:
+            raise HTTPException(400, "You can't demote or deactivate your own account.")
+        if losing_admin:
+            others = conn.execute(
+                "SELECT COUNT(*) FROM users WHERE role='admin' AND is_active=1 AND id<>?",
+                (user_id,)).fetchone()[0]
+            if others == 0:
+                raise HTTPException(400, "That is the last active admin — promote someone else first.")
+
+        changes, before, after = [], {}, {}
+        if req.role is not None and req.role != row["role"]:
+            changes.append(("role", req.role))
+            before["role"], after["role"] = row["role"], req.role
+        if req.is_active is not None and bool(req.is_active) != bool(row["is_active"]):
+            changes.append(("is_active", 1 if req.is_active else 0))
+            before["is_active"], after["is_active"] = bool(row["is_active"]), bool(req.is_active)
+        if not changes:
+            return {"message": "Nothing to change.", "id": user_id}
+
+        conn.execute(f"UPDATE users SET {', '.join(f'{c}=?' for c, _ in changes)} WHERE id=?",
+                     [v for _, v in changes] + [user_id])
+        conn.commit()
+    finally:
+        conn.close()
+
+    action = ("deactivate_user" if after.get("is_active") is False
+              else "reactivate_user" if after.get("is_active") is True
+              else "update_user_role")
+    log_action(admin, action, target=row["email"], before=before, after=after)
+    return {"message": f"Updated {row['name'] or row['email']}.", "id": user_id, **after}
 
 
 @router.get("/api/audit-log")
