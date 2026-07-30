@@ -281,7 +281,7 @@ const AUDIT_DANGER = new Set(['delete_master_table_file', 'delete_catalog_file',
 async function loadAuditLog() {
   const view = document.getElementById('audit-view');
   const uid = document.getElementById('audit-user').value;
-  view.innerHTML = '<p style="color:var(--muted);font-size:var(--fs-base);">Loading...</p>';
+  view.innerHTML = '<div class="loading-state">Loading...</div>';
   try {
     const res = await fetch(`${API}/api/audit-log${uid ? '?user_id=' + uid : ''}`);
     const d = await res.json();
@@ -327,7 +327,7 @@ function renderAuditLog() {
     `${rows.length} of ${auditRows.length} entries`;
 
   if (!rows.length) {
-    view.innerHTML = '<p style="color:var(--muted);font-size:var(--fs-base);">Nothing matches that filter.</p>';
+    view.innerHTML = '<div class="empty-state"><span class="es-icon">🔍</span><div class="es-title">Nothing matches</div><div class="es-hint">Try a different filter or search term.</div></div>';
     return;
   }
 
@@ -452,7 +452,7 @@ async function loadUploadedFiles() {
   const res = await fetch(`${API}/api/boq-files`);
   const files = await res.json();
   const el = document.getElementById('uploaded-files');
-  if (!files.length) { el.innerHTML = '<p style="color:var(--muted);font-size:var(--fs-base);">No files uploaded yet.</p>'; return; }
+  if (!files.length) { el.innerHTML = '<div class="empty-state"><span class="es-icon">📁</span><div class="es-title">No files uploaded yet</div><div class="es-hint">Uploaded BOQ files will be listed here.</div></div>'; return; }
   el.innerHTML = files.map(f => `
     <div class="repo-item">
       <div>
@@ -477,7 +477,7 @@ async function loadCatalog() {
   const items = await res.json();
   document.getElementById('catalog-count').textContent = items.length;
   const el = document.getElementById('catalog-table');
-  if (!items.length) { el.innerHTML = '<p style="color:var(--muted);font-size:var(--fs-base);">No products yet.</p>'; return; }
+  if (!items.length) { el.innerHTML = '<div class="empty-state"><span class="es-icon">📦</span><div class="es-title">No products yet</div><div class="es-hint">Import a master table to get started.</div></div>'; return; }
 
   // Group by file
   const groups = {};
@@ -645,7 +645,7 @@ async function loadMasterFiles() {
   const res = await fetch(`${API}/api/master-table/files`);
   const files = await res.json();
   const el = document.getElementById('master-files');
-  if (!files.length) { el.innerHTML = '<p style="color:var(--muted);font-size:var(--fs-base);">No files imported yet.</p>'; return; }
+  if (!files.length) { el.innerHTML = '<div class="empty-state"><span class="es-icon">📁</span><div class="es-title">No files imported yet</div><div class="es-hint">Imported catalogues will be listed here.</div></div>'; return; }
   const isAdmin = currentUser && currentUser.role === 'admin';
   el.innerHTML = files.map(f => `
     <div class="repo-item">
@@ -749,7 +749,7 @@ function renderMasterProducts(items, forceExpanded, searchTerm) {
   const isAdminView = currentUser && currentUser.role === 'admin';
 
   el.innerHTML = Object.entries(groups).map(([fname, prods], gIdx) => {
-    const headerCells = `<th>3★ Price (₹)</th><th>3★ Price ($)</th><th>4★ Price (₹)</th><th>4★ Price ($)</th>`;
+    const headerCells = `<th class="num">3★ Price (₹)</th><th class="num">3★ Price ($)</th><th class="num">4★ Price (₹)</th><th class="num">4★ Price ($)</th>`;
 
     // Every catalog gets independent 3★/4★ fields now — a catalog that
     // started as single-price (e.g. a matched-BOQ import, where both tiers
@@ -759,10 +759,10 @@ function renderMasterProducts(items, forceExpanded, searchTerm) {
     // so editing it isn't part of this.
     const priceCells = i => {
       if (!isAdminView) {
-        return `<td>₹${(i.price_3star||0).toLocaleString('en-IN')}</td>
-                 <td>$${(i.price_3star_usd||0).toFixed(2)}</td>
-                 <td>₹${(i.price_4star||0).toLocaleString('en-IN')}</td>
-                 <td>$${(i.price_4star_usd||0).toFixed(2)}</td>`;
+        return `<td class="num">₹${(i.price_3star||0).toLocaleString('en-IN')}</td>
+                 <td class="num">$${(i.price_3star_usd||0).toFixed(2)}</td>
+                 <td class="num">₹${(i.price_4star||0).toLocaleString('en-IN')}</td>
+                 <td class="num">$${(i.price_4star_usd||0).toFixed(2)}</td>`;
       }
       return `<td><input id="mt-3star-${i.id}" type="number" step="0.01" class="mt-price-input" value="${i.price_3star||0}"
                  onchange="updateMasterPrice(${i.id}, this.value, document.getElementById('mt-4star-${i.id}').value)"
@@ -1658,11 +1658,11 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing) {
       </div>
     </td>` : ''}
     <td><input type="number" step="0.01" class="price-input" value="${(Math.round(priceInr*100)/100)}" onchange="recalcRow(${idx})" style="width:100px"></td>
-    ${hasBoqPricing ? `<td class="boq-price-cell">₹${fmt(boqPrice, 2)}</td>
-    <td class="profit-cell" style="color:${profit >= 0 ? '#1e9e56' : '#d64545'};font-weight:600;">₹${fmt(profit)}</td>` : ''}
-    <td class="amount-cell">₹${fmt(amtInr)}</td>
+    ${hasBoqPricing ? `<td class="boq-price-cell num">₹${fmt(boqPrice, 2)}</td>
+    <td class="profit-cell num" style="color:${profit >= 0 ? '#1e9e56' : '#d64545'};font-weight:600;">₹${fmt(profit)}</td>` : ''}
+    <td class="amount-cell num">₹${fmt(amtInr)}</td>
     <td><input type="number" class="gst-input" value="${gst}" onchange="recalcRow(${idx})" style="width:50px"></td>
-    <td class="gst-val-cell">₹${fmt(gstVal)}</td>
+    <td class="gst-val-cell num">₹${fmt(gstVal)}</td>
     <td><button class="btn btn-sm btn-danger" onclick="removeRow(${idx})">✕</button></td>
   </tr>`;
 }
@@ -1803,7 +1803,7 @@ function renderResult(q) {
   thead.innerHTML = `<th style="width:40px">SL</th><th style="width:96px">Image</th><th>Product</th><th style="width:56px">QTY</th>
     <th>Model No</th><th>Brand</th><th>Specification</th>
     <th>HSN</th>${show3 ? '<th class="col-3star" style="width:110px">⭐ 3★ Price</th>' : ''}${show4 ? '<th class="col-4star" style="width:110px">⭐⭐ 4★ Price</th>' : ''}
-    <th style="width:90px">Price/Pc (₹)</th>${hasBoqPricing ? '<th style="width:100px">BOQ Price (₹)</th><th style="width:90px">Profit (₹)</th>' : ''}<th style="width:100px">Amount (₹)</th><th style="width:56px">GST%</th><th style="width:100px">GST Val (₹)</th><th style="width:40px"></th>`;
+    <th class="num" style="width:90px">Price/Pc (₹)</th>${hasBoqPricing ? '<th class="num" style="width:100px">BOQ Price (₹)</th><th class="num" style="width:90px">Profit (₹)</th>' : ''}<th class="num" style="width:100px">Amount (₹)</th><th style="width:56px">GST%</th><th class="num" style="width:100px">GST Val (₹)</th><th style="width:40px"></th>`;
 
   // Cost/Profit are deliberately NOT shown on a typed quotation — that view is
   // for checking what we stock, not for margin analysis. They appear only on a
@@ -2017,11 +2017,11 @@ async function loadRepository() {
 
   document.getElementById('repo-list').innerHTML = approved.length
     ? approved.map(q => repoCard(q, 'approved')).join('')
-    : '<p style="color:var(--muted);">No approved quotations yet.</p>';
+    : '<div class="empty-state"><span class="es-icon">✅</span><div class="es-title">No approved quotations yet</div><div class="es-hint">Approved quotes will appear here.</div></div>';
 
   document.getElementById('drafts-list').innerHTML = drafts.length
     ? drafts.map(q => repoCard(q, 'draft')).join('')
-    : '<p style="color:var(--muted);">No drafts.</p>';
+    : '<div class="empty-state"><span class="es-icon">📝</span><div class="es-title">No drafts</div><div class="es-hint">Quotations you generate are saved here as drafts.</div></div>';
 }
 
 function repoCard(q, status) {

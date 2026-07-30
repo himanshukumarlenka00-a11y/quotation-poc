@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=14">
+<link rel="stylesheet" href="/static/css/main.css?v=15">
 </head>
 <body>
 
@@ -187,12 +187,12 @@
   </div>
   <div class="card">
     <h2 data-icon="📁">Uploaded Files</h2>
-    <div id="uploaded-files"><p style="color:var(--muted);font-size:var(--fs-base);">No files uploaded yet.</p></div>
+    <div id="uploaded-files"><div class="empty-state"><span class="es-icon">📁</span><div class="es-title">No files uploaded yet</div><div class="es-hint">Uploaded BOQ files will be listed here.</div></div></div>
   </div>
 
   <div class="card">
     <h2 data-icon="📦">Product Catalog <span id="catalog-count">0</span></h2>
-    <div id="catalog-table"><p style="color:var(--muted);font-size:var(--fs-base);">No products yet. Upload BOQ files above.</p></div>
+    <div id="catalog-table"><div class="empty-state"><span class="es-icon">📦</span><div class="es-title">No products yet</div><div class="es-hint">Upload BOQ files above to build your catalogue.</div></div></div>
   </div>
 </section>
 
@@ -222,7 +222,7 @@
 
   <div class="card">
     <h2 data-icon="📁">Imported Files</h2>
-    <div id="master-files"><p style="color:var(--muted);font-size:var(--fs-base);">No files imported yet.</p></div>
+    <div id="master-files"><div class="empty-state"><span class="es-icon">📁</span><div class="es-title">No files imported yet</div><div class="es-hint">Imported catalogues will be listed here.</div></div></div>
   </div>
 
   <div class="card">
@@ -241,7 +241,7 @@
         </div>
       </div>
     </div>
-    <div id="master-table-view" style="margin-top:16px;"><p style="color:var(--muted);font-size:var(--fs-base);">No products yet.</p></div>
+    <div id="master-table-view" style="margin-top:16px;"><div class="empty-state"><span class="es-icon">📦</span><div class="es-title">No products yet</div><div class="es-hint">Import a master table to get started.</div></div></div>
   </div>
 </section>
 
@@ -473,14 +473,14 @@
       </div>
       <button class="btn btn-danger btn-sm" onclick="clearAllQuotations()">🗑 Clear All</button>
     </div>
-    <div id="repo-list"><p style="color:var(--muted);">No approved quotations yet.</p></div>
+    <div id="repo-list"><div class="empty-state"><span class="es-icon">✅</span><div class="es-title">No approved quotations yet</div><div class="es-hint">Approved quotes will appear here.</div></div></div>
   </div>
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
       <h2 data-icon="📝" style="margin-bottom:0;">All Drafts</h2>
       <button class="btn btn-danger btn-sm" onclick="clearAllQuotations()">🗑 Clear All Quotations</button>
     </div>
-    <div id="drafts-list"><p style="color:var(--muted);">No drafts.</p></div>
+    <div id="drafts-list"><div class="empty-state"><span class="es-icon">📝</span><div class="es-title">No drafts</div><div class="es-hint">Quotations you generate are saved here as drafts.</div></div></div>
   </div>
 </section>
 
@@ -501,7 +501,7 @@
       <span id="audit-count" class="mbp-hint"></span>
     </div>
     <div id="audit-view" style="margin-top:14px;">
-      <p style="color:var(--muted);font-size:var(--fs-base);">Loading...</p>
+      <div class="loading-state">Loading...</div>
     </div>
   </div>
 </section>
@@ -509,6 +509,6 @@
 </main>
 
 
-<script src="/static/js/app.js?v=14"></script>
+<script src="/static/js/app.js?v=15"></script>
 </body>
 </html>
