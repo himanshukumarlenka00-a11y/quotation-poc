@@ -47,9 +47,17 @@ def _smart_generate(req: GenerateRequest, user: dict):
     if not api_key:
         raise HTTPException(400, "Groq API key required")
 
-    # Step 1: LLM extracts product names + qty (tiny prompt, fast)
+    groq_client = Groq(api_key=api_key)
+
+    # Step 1: read the request. A plainly list-shaped prompt is parsed here and
+    # never reaches the LLM — no tokens, no latency, no rate limit. Anything
+    # that reads like prose falls through to the model below.
+    extracted = _parse_items_deterministically(req.prompt)
+    if extracted:
+        print(f"Extraction: parsed {len(extracted)} item(s) without the LLM")
+        return _finish_smart_generate(req, user, extracted, groq_client)
+
     try:
-        groq_client = Groq(api_key=api_key)
         resp = groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
@@ -77,6 +85,15 @@ def _smart_generate(req: GenerateRequest, user: dict):
             raise HTTPException(429, "Server is busy right now (rate limit). Please wait a few seconds and try again.")
         raise HTTPException(500, f"Extraction error: {e}")
 
+    return _finish_smart_generate(req, user, extracted, groq_client)
+
+
+def _finish_smart_generate(req, user, extracted, groq_client):
+    """Match, price and save — shared by both extraction paths.
+
+    Kept as one function so a deterministically parsed prompt and an
+    LLM-extracted one cannot diverge in how they resolve or store a quotation.
+    """
     conn = get_db()
     result_items, not_found = _resolve_master_matches(conn, extracted, req.catalogs, req.tiers, groq_client, prompt=req.prompt)
 
@@ -96,6 +113,54 @@ def _smart_generate(req: GenerateRequest, user: dict):
     conn.close()
     log_action(user, "smart_generate_quotation", target=ref_no)
     return data
+
+
+# Words that mean the prompt is prose rather than a list. Their presence sends
+# the request to the LLM, because a parser that guesses at sentence structure
+# would quietly produce a wrong quotation.
+_PROSE_MARKERS = re.compile(
+    r"\b(we|i|need|needs|needed|require|requires|required|want|wants|please|"
+    r"looking|setup|set up|for the|opening|room|hotel|kitchen|section|"
+    r"department|also|plus|with|without|including|approx|around|about)\b",
+    re.I)
+
+
+def _parse_items_deterministically(prompt):
+    """Read a list-shaped prompt without calling the LLM.
+
+    "100 soup bowl, 60 ice box, 25 pizza tray" is a list, not language — a
+    strict pattern reads it exactly, instantly, and cannot be rate-limited.
+    On a sample of real prompts this handles about half of them, which is
+    half the extraction calls gone.
+
+    Deliberately conservative: it returns None at the first sign of doubt, so
+    anything ambiguous still goes to the model. A false parse here would put
+    wrong quantities on a customer quotation, which is far worse than the cost
+    of an API call.
+    """
+    p = (prompt or "").strip()
+    if not p or len(p) > 400:
+        return None
+    if _PROSE_MARKERS.search(p):
+        return None
+
+    segments = [s.strip() for s in re.split(r",|;|\band\b", p, flags=re.I) if s.strip()]
+    if not segments or len(segments) > 30:
+        return None
+
+    items = []
+    for seg in segments:
+        # "<qty> <product>" — quantity first, which is how every real prompt
+        # in this app is written. Anything else is not a list.
+        m = re.match(r"^(\d{1,6})\s*(?:x|nos\.?|pcs\.?|pieces?)?\s+(.{2,70})$", seg, re.I)
+        if not m:
+            return None
+        qty, product = int(m.group(1)), m.group(2).strip(" .")
+        # A product must contain a letter; "50 200" is not a product.
+        if qty <= 0 or not re.search(r"[A-Za-z]", product):
+            return None
+        items.append({"product": product, "qty": qty})
+    return items or None
 
 
 def _strip_cost(data, user):
