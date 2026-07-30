@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Melange — Dashboard Demo</title>
+<style>
+  /* Design demo of the proposed light shell + dashboard.
+     Every number on this page is REAL, queried from quotations.db —
+     the sparkline shapes alone are decorative. */
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --accent:#6c5ce7; --accent-soft:#efecfd; --accent-deep:#5344c7;
+    --bg:#f6f7fb; --card:#ffffff; --border:#e8eaf1;
+    --text:#1c2333; --muted:#7a8299;
+    --green:#16a34a; --green-soft:#e9f9ef;
+    --amber:#d97706; --amber-soft:#fdf3e4;
+    --red:#dc2626;
+    --radius:14px;
+    --shadow:0 1px 2px rgba(28,35,51,.04), 0 8px 24px -18px rgba(28,35,51,.18);
+  }
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+       background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;
+       display:flex;min-height:100vh}
+
+  /* ── Sidebar ── */
+  aside{width:236px;background:var(--card);border-right:1px solid var(--border);
+        padding:20px 14px;display:flex;flex-direction:column;gap:4px;flex-shrink:0}
+  .logo{display:flex;align-items:center;gap:10px;padding:4px 10px 18px}
+  .logo .mark{width:38px;height:38px;border-radius:11px;background:var(--accent);
+              color:#fff;display:flex;align-items:center;justify-content:center;
+              font-weight:800;font-size:17px}
+  .logo b{font-size:16px} .logo span{display:block;font-size:11px;color:var(--muted);font-weight:400}
+  .nav{display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:10px;
+       color:var(--muted);font-weight:500;cursor:pointer;font-size:13.5px}
+  .nav:hover{background:var(--bg);color:var(--text)}
+  .nav.active{background:var(--accent-soft);color:var(--accent-deep);font-weight:600}
+  .nav .ic{width:18px;text-align:center;opacity:.85}
+  .side-foot{margin-top:auto;padding:12px;border:1px solid var(--border);border-radius:12px;
+             display:flex;align-items:center;gap:10px}
+  .avatar{width:34px;height:34px;border-radius:50%;background:var(--accent-soft);
+          color:var(--accent-deep);display:flex;align-items:center;justify-content:center;font-weight:700}
+  .side-foot small{color:var(--muted);display:block;font-size:11px}
+
+  /* ── Main ── */
+  main{flex:1;padding:26px 32px;max-width:1240px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;gap:16px}
+  .search{flex:1;max-width:420px;display:flex;align-items:center;gap:8px;background:var(--card);
+          border:1px solid var(--border);border-radius:10px;padding:9px 14px;color:var(--muted)}
+  .btn{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:11px 18px;
+       font-weight:600;font-size:13.5px;cursor:pointer;box-shadow:var(--shadow)}
+  .btn:hover{background:var(--accent-deep)}
+  h1{font-size:22px;margin-bottom:2px} .sub{color:var(--muted);margin-bottom:20px}
+
+  /* stat cards */
+  .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:20px}
+  .stat{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+        padding:14px 16px 8px;box-shadow:var(--shadow)}
+  .stat .lbl{color:var(--muted);font-size:12px;font-weight:500}
+  .stat .val{font-size:23px;font-weight:700;margin:2px 0}
+  .stat .delta{font-size:11.5px;color:var(--green);font-weight:600}
+  .stat svg{width:100%;height:26px;margin-top:4px}
+
+  .grid{display:grid;grid-template-columns:1.15fr 1fr 1fr;gap:14px;align-items:start}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+        padding:18px;box-shadow:var(--shadow)}
+  .card h3{font-size:14.5px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+  .card h3 a{font-size:12px;color:var(--accent);text-decoration:none;font-weight:600}
+
+  /* import stepper */
+  .drop{border:1.5px dashed #c9cede;border-radius:12px;text-align:center;padding:26px 16px;background:#fbfbfe}
+  .drop .big{font-size:30px}
+  .drop b{display:block;margin:6px 0 2px} .drop small{color:var(--muted)}
+  .steps{display:flex;justify-content:space-between;margin-top:14px;font-size:11px;color:var(--muted)}
+  .step{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;position:relative}
+  .step::before{content:'';position:absolute;top:9px;left:-50%;width:100%;height:2px;background:var(--border);z-index:0}
+  .step:first-child::before{display:none}
+  .dot{width:18px;height:18px;border-radius:50%;background:var(--border);z-index:1;
+       display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff}
+  .step.done .dot{background:var(--green)} .step.now .dot{background:var(--accent)}
+  .step.done,.step.now{color:var(--text);font-weight:600}
+
+  /* lists */
+  .row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+  .row:last-child{border-bottom:none}
+  .row .ico{width:32px;height:32px;border-radius:9px;background:var(--accent-soft);
+            display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .row b{font-size:13px} .row small{color:var(--muted);display:block;font-size:11.5px}
+  .row .right{margin-left:auto;text-align:right}
+  .badge{font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:9px}
+  .badge.draft{background:var(--amber-soft);color:var(--amber)}
+  .badge.approved{background:var(--green-soft);color:var(--green)}
+
+  /* donut */
+  .donut-wrap{display:flex;gap:18px;align-items:center}
+  .legend div{display:flex;align-items:center;gap:8px;font-size:12.5px;margin:5px 0;color:var(--muted)}
+  .swatch{width:10px;height:10px;border-radius:3px}
+  .qa{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .qa button{background:var(--bg);border:1px solid var(--border);border-radius:11px;padding:12px;
+             text-align:left;cursor:pointer;font-family:inherit;font-size:12.5px;font-weight:600;color:var(--text)}
+  .qa button:hover{border-color:var(--accent);background:var(--accent-soft)}
+  .qa small{display:block;color:var(--muted);font-weight:400;font-size:11px}
+  .note{margin-top:18px;font-size:12px;color:var(--muted);text-align:center}
+  @media(max-width:1000px){.stats{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}aside{display:none}}
+</style>
+</head>
+<body>
+
+<aside>
+  <div class="logo"><div class="mark">M</div><div><b>Melange</b><span>Quotation POC</span></div></div>
+  <div class="nav active"><span class="ic">▦</span> Dashboard</div>
+  <div class="nav"><span class="ic">⇪</span> Smart Import</div>
+  <div class="nav"><span class="ic">⚡</span> Generate Quotation</div>
+  <div class="nav"><span class="ic">▤</span> Quotations</div>
+  <div class="nav"><span class="ic">◳</span> Master Catalogue</div>
+  <div class="nav"><span class="ic">☑</span> BOQ Coverage</div>
+  <div class="nav"><span class="ic">◔</span> Margin Analysis</div>
+  <div class="nav"><span class="ic">◷</span> Activity Log</div>
+  <div class="nav"><span class="ic">◉</span> Users &amp; Roles</div>
+  <div class="side-foot"><div class="avatar">H</div>
+    <div><b style="font-size:13px">Himanshu</b><small>Administrator</small></div></div>
+</aside>
+
+<main>
+  <div class="topbar">
+    <div class="search">🔍 &nbsp;Search products, quotes, clients…</div>
+    <button class="btn">＋ &nbsp;New Quotation</button>
+  </div>
+
+  <h1>Good morning, Himanshu 👋</h1>
+  <div class="sub">Here's what's happening with your quotations — every number below is live from your database.</div>
+
+  <div class="stats">
+    <div class="stat"><div class="lbl">Quotations</div><div class="val">120</div>
+      <div class="delta">all-time</div>
+      <svg viewBox="0 0 100 26"><polyline points="0,20 15,18 30,21 45,14 60,15 75,9 90,11 100,5" fill="none" stroke="#6c5ce7" stroke-width="2"/></svg></div>
+    <div class="stat"><div class="lbl">Avg. Margin</div><div class="val">24.3%</div>
+      <div class="delta">on priced products</div>
+      <svg viewBox="0 0 100 26"><polyline points="0,18 20,19 35,13 50,15 65,10 80,12 100,6" fill="none" stroke="#16a34a" stroke-width="2"/></svg></div>
+    <div class="stat"><div class="lbl">BOQ Coverage</div><div class="val">60.2%</div>
+      <div class="delta">last OPM check</div>
+      <svg viewBox="0 0 100 26"><polyline points="0,22 20,17 40,18 60,12 80,13 100,8" fill="none" stroke="#d97706" stroke-width="2"/></svg></div>
+    <div class="stat"><div class="lbl">Products in Master</div><div class="val">3,005</div>
+      <div class="delta">4 catalogues</div>
+      <svg viewBox="0 0 100 26"><polyline points="0,23 25,20 50,14 75,10 100,4" fill="none" stroke="#e8890c" stroke-width="2"/></svg></div>
+    <div class="stat"><div class="lbl">Product Images</div><div class="val">2,718</div>
+      <div class="delta">90% of catalogue</div>
+      <svg viewBox="0 0 100 26"><polyline points="0,20 25,16 50,17 75,9 100,7" fill="none" stroke="#0ea5e9" stroke-width="2"/></svg></div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Smart Import <a href="#">View all</a></h3>
+      <div class="drop">
+        <div class="big">📄</div>
+        <b>Drop your BOQ, Price List or Quotation</b>
+        <small>Columns are detected, learned mappings applied, wrong file types flagged</small><br>
+        <button class="btn" style="margin-top:12px">⇪ &nbsp;Upload File</button>
+      </div>
+      <div class="steps">
+        <div class="step done"><div class="dot">✓</div>Detect</div>
+        <div class="step done"><div class="dot">✓</div>Read</div>
+        <div class="step now"><div class="dot">3</div>Map</div>
+        <div class="step"><div class="dot">4</div>Approve</div>
+        <div class="step"><div class="dot">5</div>Import</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Recent Quotations <a href="#">View all</a></h3>
+      <div class="row"><div class="ico">📋</div>
+        <div><b>QT-20260730-104435</b><small>1 item · today 10:44</small></div>
+        <div class="right"><b>₹20,750</b><br><span class="badge draft">draft</span></div></div>
+      <div class="row"><div class="ico">📋</div>
+        <div><b>QT-20260730-104433</b><small>3 items · today 10:44</small></div>
+        <div class="right"><b>₹1,26,050</b><br><span class="badge draft">draft</span></div></div>
+      <div class="row"><div class="ico">📋</div>
+        <div><b>QT-20260730-104430</b><small>2 items · today 10:44</small></div>
+        <div class="right"><b>₹12,490</b><br><span class="badge draft">draft</span></div></div>
+      <div class="row"><div class="ico">📋</div>
+        <div><b>QT-20260729-124744</b><small>2 items · yesterday</small></div>
+        <div class="right"><b>₹52,589</b><br><span class="badge approved">approved</span></div></div>
+    </div>
+
+    <div class="card">
+      <h3>Activity Feed <a href="#">View all</a></h3>
+      <div class="row"><div class="ico">⚡</div>
+        <div><b>Generated a quotation</b><small>EMPLOYEE · QT-20260730-110603 · 5m ago</small></div></div>
+      <div class="row"><div class="ico">⚡</div>
+        <div><b>Generated a quotation</b><small>Admin · QT-20260730-104435 · 27m ago</small></div></div>
+      <div class="row"><div class="ico">🎓</div>
+        <div><b>Taught a column mapping</b><small>Admin · STOCK · yesterday</small></div></div>
+      <div class="row"><div class="ico">📥</div>
+        <div><b>Imported master catalogue</b><small>Admin · KMW Products Price list · yesterday</small></div></div>
+      <div class="row"><div class="ico">🛡</div>
+        <div><b>Deactivated a user</b><small>guarded — audit-logged · yesterday</small></div></div>
+    </div>
+
+    <div class="card">
+      <h3>BOQ Coverage — last check</h3>
+      <div class="donut-wrap">
+        <svg width="120" height="120" viewBox="0 0 42 42">
+          <circle cx="21" cy="21" r="15.9" fill="none" stroke="#eceef4" stroke-width="6"/>
+          <circle cx="21" cy="21" r="15.9" fill="none" stroke="#16a34a" stroke-width="6"
+                  stroke-dasharray="60.2 39.8" stroke-dashoffset="25" stroke-linecap="round"/>
+          <text x="21" y="20" text-anchor="middle" font-size="7.5" font-weight="700" fill="#1c2333">60.2%</text>
+          <text x="21" y="27" text-anchor="middle" font-size="3.4" fill="#7a8299">covered</text>
+        </svg>
+        <div class="legend">
+          <div><span class="swatch" style="background:#16a34a"></span> 424 items we stock</div>
+          <div><span class="swatch" style="background:#dc2626"></span> 280 not in master</div>
+          <div><span class="swatch" style="background:#eceef4"></span> 704 lines checked</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Quick Actions</h3>
+      <div class="qa">
+        <button>☑ Check What We Stock<small>BOQ coverage</small></button>
+        <button>＋ Add Missing to Master<small>from a BOQ</small></button>
+        <button>◔ View Margin Report<small>cost &amp; profit</small></button>
+        <button>◷ Activity Log<small>audit &amp; history</small></button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Learning</h3>
+      <div class="row"><div class="ico">🎓</div>
+        <div><b>Corrections &amp; confirmations</b><small>ready — learns from every saved quote</small></div>
+        <div class="right"><b>0</b><small>so far</small></div></div>
+      <div class="row"><div class="ico">🧠</div>
+        <div><b>Column mappings taught</b><small>applies to every future import</small></div>
+        <div class="right"><b>0</b><small>so far</small></div></div>
+      <div class="row"><div class="ico">🤝</div>
+        <div><b>Frequently-quoted suggestions</b><small>mined from 120 quotations</small></div>
+        <div class="right"><b>live</b></div></div>
+    </div>
+  </div>
+
+  <div class="note">Design demo — static page, no React. All figures queried from quotations.db at build time; sparkline shapes are illustrative.</div>
+</main>
+</body>
+</html>
