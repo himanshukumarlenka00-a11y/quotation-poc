@@ -891,6 +891,13 @@ async function scanMasterFiles() {
             🖼 <b>${d.images_found}</b> with a confirmed image
             ${d.unmatched_columns.length ? `&nbsp;·&nbsp; ⚠️ columns not found: ${d.unmatched_columns.join(', ')}` : ''}
           </div>
+          ${d.total_products > 0 && d.priced_products === 0 ? `
+            <div class="alert alert-error" style="margin-top:10px">
+              ⚠️ <b>No price column was detected</b> — every product would import at ₹0.
+              This file probably names it something like AMOUNT or PRICES IN INR.
+              In the column report below, pick the price field for the right column,
+              press <b>Teach</b>, then <b>re-scan</b> this file.
+            </div>` : ''}
           ${renderFileTypeNotice(d.file_type)}
           ${renderColumnReport(d.columns)}
           <div class="table-wrap" style="margin-top:12px">
@@ -1016,7 +1023,10 @@ async function loadMasterTable() {
   const res = await fetch(`${API}/api/master-table`);
   masterAllItems = await res.json();
   document.getElementById('master-count').textContent = masterAllItems.length;
-  renderMasterProducts(masterAllItems);
+  // Respect a search term typed before the fetch resolved (topbar search races
+  // this load) — rendering unfiltered here would clobber the filtered view.
+  const term = document.getElementById('master-search')?.value.trim();
+  if (term) filterMasterTable(); else renderMasterProducts(masterAllItems);
 }
 
 function filterMasterTable() {
@@ -1112,11 +1122,11 @@ function renderMasterProducts(items, forceExpanded, searchTerm) {
         <span class="mbp-icon">%</span>
         <span class="mbp-label">Set whole catalog</span>
         <div class="mbp-field">
-          <span class="mbp-caption"><span class="mbp-stars">⭐</span>3★ off cost</span>
+          <span class="mbp-caption"><span class="mbp-stars">⭐</span>3★ off price</span>
           <input type="number" id="bulk-pct3-${gIdx}" placeholder="%" step="0.1" min="0" onkeydown="stopEnterSubmit(event)">
         </div>
         <div class="mbp-field">
-          <span class="mbp-caption"><span class="mbp-stars">⭐⭐</span>4★ off cost</span>
+          <span class="mbp-caption"><span class="mbp-stars">⭐⭐</span>4★ off price</span>
           <input type="number" id="bulk-pct4-${gIdx}" placeholder="%" step="0.1" min="0" onkeydown="stopEnterSubmit(event)">
         </div>
         <div class="mbp-field">

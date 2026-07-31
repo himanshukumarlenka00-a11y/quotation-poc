@@ -79,9 +79,16 @@ async def scan_master_table(file: UploadFile = File(...), admin: dict = Depends(
             pass  # Windows may still hold a lock briefly — non-fatal
 
         images_exact = sum(1 for it in items if it["image_match"] == "exact")
+        # How many rows actually carry a price? 0 with products present means
+        # the price column wasn't recognised (AMOUNT, PRICES IN INR, ...) —
+        # the UI uses this to demand a column pick at scan time instead of
+        # letting the import hit the Phase D gate later.
+        priced = sum(1 for it in items
+                     if (it.get("price_3star") or 0) > 0 or (it.get("cost") or 0) > 0)
         return {
             "filename": file.filename,
             "total_products": len(items),
+            "priced_products": priced,
             "images_found": images_exact,
             "unmatched_columns": unmatched,
             "columns": columns,
@@ -321,10 +328,10 @@ def update_master_product_price(product_id: int, req: UpdateMasterPriceRequest,
 def bulk_set_tier_pricing(filename: str, req: BulkTierPricingRequest,
                            admin: dict = Depends(require_role("admin"))):
     """Set 3-star/4-star prices for an entire catalog at once from a discount
-    percentage off each product's cost price — admin-only. Products with no
-    cost recorded (cost=0, e.g. a file that never had that column filled
-    in) are left untouched rather than zeroed out, and counted separately
-    so the caller knows some rows didn't get updated. If usd_rate is given
+    percentage off each product's ORIGINAL price (pre-bulk snapshot, so
+    repeat applies don't compound) — admin-only. Products with no price
+    recorded are left untouched rather than zeroed out, and counted
+    separately so the caller knows some rows didn't get updated. If usd_rate is given
     (INR per $1), the USD 3-star/4-star prices are computed from it too;
     usd_rate=0 leaves the USD columns untouched."""
     # Both percentages blank = convert the existing INR tier prices to USD and
@@ -343,7 +350,8 @@ def bulk_set_tier_pricing(filename: str, req: BulkTierPricingRequest,
 
     conn = get_db()
     rows = conn.execute(
-        "SELECT id, cost, price_3star, price_4star FROM master_products WHERE file_name=?",
+        "SELECT id, cost, price_3star, price_4star, orig_price_3star, orig_price_4star "
+        "FROM master_products WHERE file_name=?",
         (filename,)).fetchall()
     if not rows:
         conn.close()
@@ -380,12 +388,16 @@ def bulk_set_tier_pricing(filename: str, req: BulkTierPricingRequest,
             updated += 1
             continue
 
-        cost = r["cost"] or 0
-        if cost <= 0:
+        # Discount off each product's PRICE, not its cost. Use the pre-bulk
+        # snapshot as the base when one exists so re-applying a percentage
+        # never compounds on an already-discounted number.
+        base3 = r["orig_price_3star"] if r["orig_price_3star"] is not None else (r["price_3star"] or 0)
+        base4 = r["orig_price_4star"] if r["orig_price_4star"] is not None else (r["price_4star"] or 0)
+        if base3 <= 0 and base4 <= 0:
             skipped += 1
             continue
-        p3 = round(cost * (1 - req.pct_3star / 100), 2)
-        p4 = round(cost * (1 - req.pct_4star / 100), 2)
+        p3 = round(base3 * (1 - req.pct_3star / 100), 2)
+        p4 = round(base4 * (1 - req.pct_4star / 100), 2)
         if req.usd_rate > 0:
             p3_usd = round(p3 / req.usd_rate, 2)
             p4_usd = round(p4 / req.usd_rate, 2)
@@ -407,10 +419,10 @@ def bulk_set_tier_pricing(filename: str, req: BulkTierPricingRequest,
         if skipped:
             msg += f" Skipped {skipped} product(s) with no ₹ tier price to convert."
     else:
-        msg = f"Updated {updated} product(s) — 3★ = cost -{req.pct_3star}%, 4★ = cost -{req.pct_4star}%"
+        msg = f"Updated {updated} product(s) — 3★ = price -{req.pct_3star}%, 4★ = price -{req.pct_4star}%"
         msg += f", USD @ ₹{req.usd_rate}/$." if req.usd_rate > 0 else "."
         if skipped:
-            msg += f" Skipped {skipped} product(s) with no cost price recorded (left unchanged)."
+            msg += f" Skipped {skipped} product(s) with no price recorded (left unchanged)."
     return {"message": msg, "updated": updated, "skipped": skipped}
 
 
