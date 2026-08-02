@@ -70,6 +70,8 @@ def _smart_generate(req: GenerateRequest, user: dict):
                  "ALWAYS keep spec qualifiers and model codes that follow a product, such as "
                  "wattage, capacity, voltage, size or a model number (e.g. 'kettle 1500W', "
                  "'iron 1600W', 'bucket 25L', 'IR-EK005') — these distinguish variants, never drop them. "
+                 "Keep price constraints written after a product ('under 1000', 'below 1k', "
+                 "'>= 500', 'above Rs 2000', 'between 200 and 2000') as part of that product's text — never drop them. "
                  "Keep each distinct requested item as its own entry; never merge two different items. "
                  "Default qty to 1 if not stated. Do not add any product not mentioned."},
                 {"role": "user", "content": req.prompt}
@@ -193,6 +195,42 @@ def _parse_items_deterministically(prompt):
             return None
         items.append({"product": product, "qty": qty})
     return items or None
+
+
+_PRICE_NUM = r"(?:rs\.?|inr|₹)?\s*(\d[\d,]*(?:\.\d+)?)\s*(k)?"
+_MAX_WORDS = r"(?:under|below|less\s+th[ae]n|cheaper\s+than|up\s?to|within|max(?:imum)?|budget|<=|<)"
+_MIN_WORDS = r"(?:above|over|more\s+than|greater\s+than|at\s+least|min(?:imum)?|>=|>)"
+
+
+def _strip_price_constraint(text):
+    """Pull a per-unit price constraint out of a requested phrase.
+
+    "cups under 1k" -> ("cups", None, 1000.0); "cups >= 500" -> ("cups", 500.0, None).
+    Constraints are per PIECE — master-table prices are per piece.
+    Returns (clean_text, min_price, max_price).
+    """
+    def _num(m, g=1):
+        v = float(m.group(g).replace(",", ""))
+        return v * 1000 if m.group(g + 1) else v
+    t, pmin, pmax = str(text or ""), None, None
+    # Ranges first: "between 200 and 2000", "range 200 to 2k", "200 - 2000".
+    # ponytail: bare "200-2000" (no spaces/₹/k) is left alone — it looks like a
+    # model code; loosen only if a real prompt needs it.
+    m = re.search(rf"\b(?:between|range|price)\s*{_PRICE_NUM}\s*(?:and|to|-)\s*{_PRICE_NUM}\b", t, re.I) or \
+        re.search(rf"{_PRICE_NUM}\s+(?:to|-)\s+{_PRICE_NUM}\b", t, re.I)
+    if m:
+        a, b = _num(m, 1), _num(m, 3)
+        pmin, pmax = min(a, b), max(a, b)
+        return re.sub(r"\s+", " ", t.replace(m.group(0), " ")).strip(" ,.-"), pmin, pmax
+    m = re.search(rf"\b{_MAX_WORDS}\s*{_PRICE_NUM}\b", t, re.I) or \
+        re.search(rf"{_MAX_WORDS}\s*{_PRICE_NUM}\b", t, re.I)
+    if m:
+        pmax = _num(m); t = t.replace(m.group(0), " ")
+    m = re.search(rf"\b{_MIN_WORDS}\s*{_PRICE_NUM}\b", t, re.I) or \
+        re.search(rf"{_MIN_WORDS}\s*{_PRICE_NUM}\b", t, re.I)
+    if m:
+        pmin = _num(m); t = t.replace(m.group(0), " ")
+    return re.sub(r"\s+", " ", t).strip(" ,.-"), pmin, pmax
 
 
 def _strip_cost(data, user):
@@ -529,6 +567,11 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         # specification) than the plain label — falls back to original_kw for
         # the free-text prompt flow, which has no such field.
         search_term = (item.get("search_term") or original_kw).strip()
+        # "cups under 1k" — the constraint filters candidates, it is not part
+        # of the product name (it would poison name matching and corrections).
+        original_kw, pmin, pmax = _strip_price_constraint(original_kw)
+        search_term, smin, smax = _strip_price_constraint(search_term)
+        pmin, pmax = pmin or smin, pmax or smax
         kw  = original_kw.upper()
         qty = int(item.get("qty") or 1)
         if not kw:
@@ -586,6 +629,24 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             continue
 
         tiers = [t for t in (tiers_req or ["3star"]) if t in ("3star", "4star")] or ["3star"]
+
+        if pmin is not None or pmax is not None:
+            pf = "price_4star" if tiers[0] == "4star" else "price_3star"
+            priced = [v for v in variants
+                      if (v.get(pf) or 0) > 0
+                      and (pmin is None or v[pf] >= pmin)
+                      and (pmax is None or v[pf] <= pmax)]
+            if not priced:
+                # Honest miss beats quoting outside the asked budget.
+                have = sorted(v[pf] for v in variants if (v.get(pf) or 0) > 0)
+                closest = (max(have) if pmin is None else min(have)) if have else None
+                cons = " & ".join(filter(None, [
+                    f"over ₹{pmin:g}" if pmin is not None else None,
+                    f"under ₹{pmax:g}" if pmax is not None else None]))
+                not_found.append(f"{original_kw} ({cons}"
+                                 + (f" — closest is ₹{closest:g}" if closest else "") + ")")
+                continue
+            variants = priced
 
         def _normalize(v):
             # Master-table rows use original_model/price_3star/price_4star —
@@ -1039,6 +1100,23 @@ def dashboard(user: dict = Depends(get_current_user)):
                 "total": sum((i.get("qty") or 0) * (i.get("price_per_pc") or 0) for i in items),
             })
         out["recent"] = recent
+
+        # Sparkline data: quotations per day (last 14 days with any activity),
+        # role-filtered the same way as the count above.
+        if is_admin:
+            spark_rows = conn.execute(
+                "SELECT substr(created_at,1,10) d, COUNT(*) c FROM quotations "
+                "GROUP BY d ORDER BY d DESC LIMIT 14").fetchall()
+        else:
+            spark_rows = conn.execute(
+                "SELECT substr(created_at,1,10) d, COUNT(*) c FROM quotations "
+                "WHERE created_by=? GROUP BY d ORDER BY d DESC LIMIT 14",
+                (user["id"],)).fetchall()
+        out["quotes_spark"] = [r["c"] for r in reversed(spark_rows)]
+        # Mini bars: products per catalogue, biggest first.
+        out["cat_bars"] = [{"name": r["file_name"], "n": r["c"]} for r in conn.execute(
+            "SELECT file_name, COUNT(*) c FROM master_products "
+            "GROUP BY file_name ORDER BY c DESC LIMIT 6")]
 
         if is_admin:
             m = conn.execute(

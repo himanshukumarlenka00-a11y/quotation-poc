@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=27">
+<link rel="stylesheet" href="/static/css/main.css?v=55">
 </head>
 <body>
 
@@ -75,15 +75,13 @@
 </aside>
 <div class="main-col">
 <header class="topbar">
-  <div class="pill-search-box topbar-pill" id="global-search-box">
-    <input type="text" id="global-search" class="pill-search-input" placeholder="Search the master catalogue…"
-           onkeydown="topbarSearch(event)" onfocus="onGlobalSearchFocus()" onblur="onGlobalSearchBlur()">
-    <button type="button" class="pill-search-btn" onclick="document.getElementById('global-search').focus()" aria-label="Search">
-      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/>
-        <line x1="16.4" y1="16.4" x2="21" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-      </svg>
-    </button>
+  <div class="tsearch2" id="global-search-box" onclick="document.getElementById('global-search').focus()">
+    <svg viewBox="0 0 24 24" fill="none">
+      <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/>
+      <line x1="16.4" y1="16.4" x2="21" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    <input type="text" id="global-search" placeholder="Search the master catalogue…" onkeydown="topbarSearch(event)">
+    <kbd>Ctrl K</kbd>
   </div>
   <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" title="Light / dark">🌙</button>
   <div class="nav-user" id="nav-user"></div>
@@ -274,9 +272,26 @@
 <!-- ── SECTION 2: Generate ── -->
 <section id="sec-generate" class="section">
 
-  <div class="page-head">
-    <h1>Generate a Quotation</h1>
-    <p>Describe what your customer needs in plain English — QuoteGen builds the itemised quote.</p>
+  <div class="page-head gen-head">
+    <div>
+      <h1><span class="gh-spark">✦</span> Generate a Quotation</h1>
+      <p>Describe what your customer needs in plain English — QuoteGen builds the itemised quote.</p>
+    </div>
+    <svg class="gh-art" viewBox="0 0 120 100" aria-hidden="true">
+      <g transform="rotate(8 60 50)">
+        <rect x="30" y="12" width="58" height="74" rx="10" fill="#8b6bff"/>
+        <rect x="38" y="24" width="30" height="5" rx="2.5" fill="#fff" opacity=".85"/>
+        <rect x="38" y="35" width="42" height="5" rx="2.5" fill="#fff" opacity=".6"/>
+        <rect x="38" y="46" width="36" height="5" rx="2.5" fill="#fff" opacity=".6"/>
+        <circle cx="78" cy="26" r="12" fill="#ede9fe"/>
+        <text x="78" y="31" text-anchor="middle" font-size="14" font-weight="bold" fill="#6d28d9">₹</text>
+        <rect x="80" y="58" width="34" height="8" rx="4" transform="rotate(40 80 58)" fill="#f59e0b"/>
+        <path d="M 76 92 l 8 -6 -5 -7 z" fill="#fbbf24"/>
+      </g>
+      <text x="8" y="26" font-size="12" fill="#a78bfa">✦</text>
+      <text x="104" y="14" font-size="9" fill="#c4b5fd">✦</text>
+      <text x="12" y="80" font-size="8" fill="#c4b5fd">＋</text>
+    </svg>
   </div>
 
   <div class="steps-strip">
@@ -291,20 +306,30 @@
     <h2 data-icon="✨">Create a Quotation</h2>
 
     <label>Customer / Hotel Name <span style="font-weight:400;color:var(--muted);font-size:var(--fs-sm);">(optional)</span></label>
-    <input type="text" id="client-name" placeholder="e.g. Taj Hotel, Mumbai">
+    <div class="input-ico">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+      <input type="text" id="client-name" placeholder="e.g. Taj Hotel, Mumbai">
+    </div>
 
     <!-- catalog selector kept but hidden — defaults to searching everything -->
     <div id="catalog-selector" style="display:none;"></div>
 
     <label style="margin-top:18px;">Price tier <span style="font-weight:400;color:var(--muted);font-size:var(--fs-sm);">— select one or both</span></label>
-    <div style="display:flex;gap:8px;">
-      <div class="tier-toggle" id="tier-3star" onclick="toggleTier('3star')">⭐ 3 Star</div>
-      <div class="tier-toggle" id="tier-4star" onclick="toggleTier('4star')">⭐⭐ 4 Star</div>
+    <div class="tier-cards">
+      <div class="tier-card" id="tier-3star" onclick="toggleTier('3star')">
+        <span class="tc-dot"></span>
+        <div><b>⭐ 3 Star</b><small>Standard quality, best value</small></div>
+      </div>
+      <div class="tier-card" id="tier-4star" onclick="toggleTier('4star')">
+        <span class="tc-dot"></span>
+        <div><b>⭐⭐ 4 Star</b><small>Premium quality, superior finish</small></div>
+      </div>
     </div>
 
     <label style="margin-top:18px;font-size:var(--fs-md);">What do you need? <span style="font-weight:400;color:var(--muted);font-size:var(--fs-base);">Just type it in plain English.</span></label>
     <div style="position:relative;">
-      <textarea id="req-prompt" placeholder="e.g. 30 electric kettles, 20 hair dryers and 50 coat hangers" style="min-height:110px;font-size:var(--fs-md);"></textarea>
+      <textarea id="req-prompt" maxlength="1000" oninput="updateReqCount()" placeholder="e.g. 30 electric kettles, 20 hair dryers and 50 coat hangers" style="min-height:110px;font-size:var(--fs-md);"></textarea>
+      <div class="ta-count" id="req-count">0 / 1000</div>
       <div id="suggest-dropdown" class="suggest-dropdown" style="display:none;"></div>
     </div>
 
@@ -323,24 +348,28 @@
   </div>
 
   <div class="card card-alt">
-    <h3 class="section-head" data-icon="📋">Check a BOQ against the Master Table</h3>
-    <p class="section-sub">See what we already stock, and add anything missing.</p>
+    <div class="boq-head">
+      <div>
+        <h3 class="section-head" data-icon="📋">Check a BOQ against the Master Table</h3>
+        <p class="section-sub">See what we already stock, and add anything missing.</p>
+      </div>
+      <div class="boq-actions">
+        <button class="btn btn-accent" id="check-boq-btn" onclick="checkBoqCoverage()" disabled>🔍 Check what we stock</button>
+        <button class="btn btn-accent" id="gen-boq-btn" onclick="generateFromBoqFile()" disabled>📤 Generate from BOQ</button>
+      </div>
+    </div>
     <div class="drop-zone" id="boq-req-drop-zone" onclick="document.getElementById('boq-req-file-input').click()">
-      <div class="icon">📂</div>
+      <svg class="dz-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 17.6A4.5 4.5 0 0 0 17.5 9h-1.3A7 7 0 1 0 4 14.9"/><path d="M12 12v9"/><path d="m8 16 4-4 4 4"/></svg>
       <p><strong>Click or drag &amp; drop</strong> the requirement file here</p>
       <p style="margin-top:4px;font-size:var(--fs-sm);">.xls and .xlsx supported</p>
       <input type="file" id="boq-req-file-input" accept=".xls,.xlsx">
-    </div>
-    <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">
-      <button class="btn btn-accent" id="check-boq-btn" onclick="checkBoqCoverage()" disabled>🔍 Check what we stock</button>
-      <button class="btn btn-accent" id="gen-boq-btn" onclick="generateFromBoqFile()" disabled>📤 Generate from BOQ</button>
     </div>
     <div id="gen-boq-status" style="margin-top:12px;"></div>
     <div id="boq-coverage" style="margin-top:14px;"></div>
   </div>
 
   <div class="hint-box">
-    💡 After it's generated, you can tap any <b>price</b> or <b>quantity</b> to change it before downloading.
+    💡 After it's generated, you can tap any <b class="hk-price">price</b> or <b class="hk-qty">quantity</b> to change it before downloading.
   </div>
 </section>
 
@@ -549,6 +578,6 @@
 </div><!--/shell-->
 
 
-<script src="/static/js/app.js?v=27"></script>
+<script src="/static/js/app.js?v=50"></script>
 </body>
 </html>

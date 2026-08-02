@@ -50,7 +50,8 @@ async function checkAuth() {
 function onAuthed() {
   document.body.classList.add('authed');
   const nav = document.getElementById('nav-user');
-  nav.innerHTML = `<span>${currentUser.name}</span><span class="role-badge">${currentUser.role}</span><button onclick="doLogout()">Log out</button>`;
+  const showName = (currentUser.name || '').trim().toLowerCase() !== (currentUser.role || '').toLowerCase();
+  nav.innerHTML = `${showName ? `<span>${currentUser.name}</span>` : ''}<span class="role-badge">${currentUser.role}</span><button onclick="doLogout()">Log out</button>`;
   // Only Admins manage the BOQ catalog — hide the tab for everyone else.
   document.getElementById('tab-upload').style.display = currentUser.role === 'admin' ? '' : 'none';
   // Master Table is viewable by everyone, but only Admins can import/replace it.
@@ -271,6 +272,10 @@ async function loadDashboard() {
     const h = new Date().getHours();
     const part = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
     hello.textContent = `Good ${part}, ${(currentUser.name || '').split(' ')[0]} 👋`;
+    const sub = document.querySelector('.dash-sub');
+    if (sub) sub.textContent = new Date().toLocaleDateString('en-IN',
+      { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+      + ' · every number on this page is live from the database';
   }
   const view = document.getElementById('dash-view');
   try {
@@ -283,29 +288,55 @@ async function loadDashboard() {
   }
 }
 
+// Tiny inline visuals for the stat tiles — no chart library.
+function sparkline(vals, color) {
+  if (!vals || vals.length < 2) return '';
+  const w = 120, h = 28, mx = Math.max(...vals, 1);
+  const pts = vals.map((v, i) =>
+    `${(i * w / (vals.length - 1)).toFixed(1)},${(h - 3 - (v / mx) * (h - 6)).toFixed(1)}`).join(' ');
+  return `<svg class="dviz" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2"
+      stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="${pts.split(' ').pop().split(',')[0]}" cy="${pts.split(' ').pop().split(',')[1]}" r="2.5" fill="${color}"/></svg>`;
+}
+function meterbar(pct, color) {
+  return `<div class="dmeter"><div style="width:${Math.max(2, Math.min(100, pct))}%;background:${color}"></div></div>`;
+}
+function minibars(rows, color) {
+  if (!rows || !rows.length) return '';
+  const mx = Math.max(...rows.map(r => r.n), 1);
+  return `<div class="dbars">${rows.map(r =>
+    `<i title="${r.name}: ${r.n}" style="height:${Math.max(12, r.n * 100 / mx)}%;background:${color}"></i>`).join('')}</div>`;
+}
+
 function renderDashboard(d) {
   const view = document.getElementById('dash-view');
-  const stat = (chipBg, icon, label, value, sub) => `
+  const stat = (chipBg, icon, label, value, sub, viz) => `
     <div class="dstat">
       <div class="dhead"><span class="dchip" style="background:${chipBg}">${icon}</span>
         <span class="dlbl">${label}</span></div>
       <div class="dval">${value}</div><div class="dsub">${sub || ''}</div>
+      ${viz || ''}
     </div>`;
 
+  const imgPct = Math.round(d.images * 100 / Math.max(d.products, 1));
   let stats = stat('var(--accent-soft2)', '📄', d.is_admin ? 'Quotations' : 'My Quotations',
-                   d.quotes, 'in the repository')
+                   d.quotes, 'in the repository', sparkline(d.quotes_spark, '#6366f1'))
             + stat('var(--blue-soft)', '📦', 'Products in Master', d.products.toLocaleString('en-IN'),
-                   `${d.catalogues} catalogues`)
+                   `${d.catalogues} catalogues`, minibars(d.cat_bars, '#3b82f6'))
             + stat('var(--blue-soft)', '🖼', 'Product Images',
                    d.images.toLocaleString('en-IN'),
-                   `${Math.round(d.images * 100 / Math.max(d.products, 1))}% of catalogue`);
+                   `${imgPct}% of catalogue`, meterbar(imgPct, '#3b82f6'));
   if (d.is_admin) {
     stats += stat('var(--green-soft2)', '₹', 'Avg. Margin',
-                  d.avg_margin != null ? d.avg_margin + '%' : '—', 'on priced products');
-    if (d.coverage)
-      stats += stat('var(--amber-soft2)', '☑', 'BOQ Coverage',
-                    Math.round(d.coverage.found * 100 / Math.max(d.coverage.total, 1)) + '%',
-                    `last check: ${d.coverage.found}/${d.coverage.total} stocked`);
+                  d.avg_margin != null ? d.avg_margin + '%' : '—', 'on priced products',
+                  d.avg_margin != null ? meterbar(d.avg_margin, '#16a34a') : '');
+    if (d.coverage) {
+      const covPct = Math.round(d.coverage.found * 100 / Math.max(d.coverage.total, 1));
+      stats += stat('var(--amber-soft2)', '☑', 'BOQ Coverage', covPct + '%',
+                    `last check: ${d.coverage.found}/${d.coverage.total} stocked`,
+                    meterbar(covPct, covPct < 30 ? '#dc2626' : covPct < 70 ? '#f59e0b' : '#16a34a'));
+    }
     stats += stat('var(--pink-soft2)', '🧠', 'Learning',
                   d.learned + d.mappings,
                   `${d.learned} corrections · ${d.mappings} mappings`);
@@ -351,12 +382,8 @@ function renderDashboard(d) {
            ondragover="event.preventDefault();this.classList.add('drag')"
            ondragleave="this.classList.remove('drag')"
            ondrop="event.preventDefault();this.classList.remove('drag');dashFileChosen(event.dataTransfer.files[0])"
-           onclick="document.getElementById('dash-file-input').click()">
-        <div class="ddoc">📄</div>
-        <b>Drop your BOQ, Price List or Quotation</b>
-        <small>The file type is detected and routed to the right flow</small><br>
-        <button class="btn btn-primary" style="margin-top:12px"
-                onclick="event.stopPropagation();document.getElementById('dash-file-input').click()">⇪ Upload File</button>
+           onclick="if(!window._dashBusy)document.getElementById('dash-file-input').click()">
+        <div id="dash-stage">${window._dashSaved ? `<div class="dfade">${window._dashSaved}</div>` : dashIdleHTML()}</div>
         <input type="file" id="dash-file-input" accept=".xls,.xlsx" style="display:none"
                onchange="dashFileChosen(this.files[0]);this.value=''">
       </div>
@@ -381,6 +408,8 @@ function renderDashboard(d) {
       ${qa}
       ${activity}
     </div>`;
+  // Re-apply the stepper ticks for a restored in-flight/finished flow.
+  Object.entries(window._dashStepState || {}).forEach(([n, s]) => dashStep(n, s));
 }
 
 // Smart Import (dashboard): detect what a workbook is, then hand it to the
@@ -388,56 +417,285 @@ function renderDashboard(d) {
 // routing here only ever passes the File object into the existing, tested
 // entry points — no second upload path to keep in sync.
 function dashStep(name, state) {
+  window._dashStepState = window._dashStepState || {};
+  window._dashStepState[name] = state;
   const el = document.querySelector(`#dash-steps .dstep[data-s="${name}"]`);
-  if (el) { el.classList.remove('now', 'done'); if (state) el.classList.add(state); }
+  if (!el) return;
+  el.classList.remove('now', 'done');
+  if (state) el.classList.add(state);
+  const dot = el.querySelector('.ddot');
+  if (dot) dot.textContent = state === 'done' ? '✓'
+    : ['detect','route','map','approve','import'].indexOf(name) + 1;
+}
+
+function dashIdleHTML() {
+  return `
+    <div class="ddoc2"><span class="dtile">${DSVG_DOC}</span><i class="dspark s1">✦</i><i class="dspark s2">✦</i><i class="dspark s3">＋</i></div>
+    <b>Drop your BOQ, Price List or Quotation</b>
+    <small class="dsub-idle">The file type is detected and routed to the right flow</small>
+    <small class="dsub-drag">Release to upload the file</small><br>
+    <button class="btn btn-primary" style="margin-top:12px"
+            onclick="event.stopPropagation();document.getElementById('dash-file-input').click()">⇪ Upload File</button>`;
+}
+
+// Fake-but-honest progress: creeps to 90% while the real request runs, jumps
+// to 100% when it resolves. Never shows "done" before the server said so.
+function dashProgHTML(id, pct) {
+  return `<div class="dprogc"><div class="dprog" id="${id}"></div></div>${pct ? `<span class="dpct" id="${id}-pct">0%</span>` : ''}`;
+}
+function dashProgRun(id) {
+  let p = 0;
+  return setInterval(() => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    p = Math.min(90, p + 4 + Math.random() * 10);
+    el.style.width = p + '%';
+    const l = document.getElementById(id + '-pct');
+    if (l) l.textContent = Math.round(p) + '%';
+  }, 200);
+}
+function dashProgDone(timer, id) {
+  clearInterval(timer);
+  const el = document.getElementById(id);
+  if (el) el.style.width = '100%';
+  const l = document.getElementById(id + '-pct');
+  if (l) l.textContent = '100%';
+}
+
+// Swap the drop zone's content for the current flow state. Buttons inside
+// must stopPropagation so a click doesn't reopen the file picker.
+function dashStage(html) {
+  // Remembered so leaving the dashboard (e.g. "View full report") and coming
+  // back re-renders the same state instead of a blank drop zone.
+  window._dashSaved = html;
+  const s = document.getElementById('dash-stage');
+  if (s) s.innerHTML = `<div class="dfade">${html}</div>`;
+}
+// Inline SVGs — emoji glyphs render grey/tofu on Windows, these don't.
+const DSVG_DOC = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>`;
+const DSVG_SHUFFLE = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>`;
+
+function dashChip(file, spin) {
+  return `<div class="dfchip"><span class="dfic">XLS</span>
+    <span class="dfchip-nm"><b>${file.name}</b><small>${(file.size / 1048576).toFixed(1)} MB</small></span>
+    <span class="dfchip-rt">${spin ? '<span class="dspin"></span>' : '<span class="dok">✓</span>'}</span></div>`;
+}
+function dashReset() {
+  window._dashBusy = false;
+  ['detect', 'route', 'map', 'approve', 'import'].forEach(x => dashStep(x, null));
+  dashStage(dashIdleHTML());
+  window._dashSaved = null;
+  window._dashStepState = null;
+  const st = document.getElementById('dash-si-status');
+  if (st) st.innerHTML = '';
+}
+function dashFail(msg) {
+  window._dashBusy = false;
+  dashStage(`<div class="dmsg err">${msg}</div>
+    <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();dashReset()">↩ Try another file</button>`);
 }
 
 async function dashFileChosen(file) {
-  if (!file) return;
-  const st = document.getElementById('dash-si-status');
+  if (!file || window._dashBusy) return;
+  if (!/\.xlsx?$/i.test(file.name)) { dashFail('Only .xls / .xlsx files are supported.'); return; }
+  window._dashBusy = true;
+  window._dashFile = file;
+  document.getElementById('dash-si-status').innerHTML = '';
   ['detect', 'route', 'map', 'approve', 'import'].forEach(x => dashStep(x, null));
-  dashStep('detect', 'now');
-  st.innerHTML = `<div class="loading-state">Detecting what '${file.name}' is...</div>`;
-  try {
-    const fd = new FormData(); fd.append('file', file);
-    const res = await fetch(`${API}/api/detect-file`, { method: 'POST', body: fd });
-    const d = await res.json();
-    if (!res.ok) { st.innerHTML = `<div class="alert alert-error">${apiErr(d)}</div>`; dashStep('detect', null); return; }
-    dashStep('detect', 'done');
-    dashRouteFile(d, file, st);
-  } catch (e) {
-    st.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
-    dashStep('detect', null);
-  }
+
+  // State 3: file received — quick fill of the progress bar, then detect.
+  dashStage(`${dashChip(file, false)}<div class="dmsg ok">File uploaded successfully!</div>${dashProgHTML('dash-up')}`);
+  setTimeout(() => { const b = document.getElementById('dash-up'); if (b) b.style.width = '100%'; }, 30);
+
+  setTimeout(async () => {
+    dashStep('detect', 'now');
+    dashStage(`${dashChip(file, true)}
+      <div class="dmsg">Detecting file type and structure…</div>
+      <div class="ddots"><i></i><i></i><i></i></div>`);
+    try {
+      const fd = new FormData(); fd.append('file', file);
+      const res = await fetch(`${API}/api/detect-file`, { method: 'POST', body: fd });
+      const d = await res.json();
+      if (!res.ok) { dashStep('detect', null); dashFail(apiErr(d)); return; }
+      dashStep('detect', 'done');
+      dashStep('route', 'now');
+      // State 5: routing animation — doc → switch → destination.
+      dashStage(`${dashChip(file, true)}
+        <div class="dmsg">Routing to the right flow…</div>
+        <div class="droute"><span class="drico">${DSVG_DOC}</span><span class="drdash"></span>
+          <span class="drico hub">${DSVG_SHUFFLE}</span><span class="drdash"></span><span class="drico tgt"><i></i></span></div>`);
+      setTimeout(() => dashRouteFile(d, file), 900);
+    } catch (e) {
+      dashStep('detect', null); dashFail(e.message);
+    }
+  }, 650);
 }
 
-function dashRouteFile(d, file, st) {
+function dashRouteFile(d, file) {
   const isAdmin = currentUser && currentUser.role === 'admin';
+  const st = document.getElementById('dash-si-status');
   dashStep('route', 'done');
   if (d.type === 'price_list') {
     if (!isAdmin) {
-      st.innerHTML = `<div class="alert alert-error">This looks like a <b>supplier price list</b> — only an admin can import those into the Master Table.</div>`;
+      dashFail('This looks like a <b>supplier price list</b> — only an admin can import those into the Master Table.');
       return;
     }
-    st.innerHTML = `<div class="alert alert-success">Detected: <b>${d.label}</b> — opening the Master Table import and scanning it.</div>`;
-    setMasterFiles([file]);
-    show('master');
-    setTimeout(() => { document.getElementById('master-scan-btn')?.scrollIntoView({behavior: 'smooth', block: 'center'}); scanMasterFiles(); }, 150);
+    dashMapScan(file, d.label);
   } else if (d.type === 'client_boq' || d.type === 'quotation') {
     const extra = d.type === 'quotation'
-      ? ' It looks like a quotation rather than a requirement sheet — the coverage screen will show the same warning.'
+      ? '<br><small>It looks like a quotation rather than a requirement sheet — the coverage screen will show the same warning.</small>'
       : '';
-    st.innerHTML = `<div class="alert alert-success">Detected: <b>${d.label}</b> — opening the BOQ check with the file loaded.${extra}</div>`;
-    setBoqReqFile(file);
-    showBoqCoverage();
+    window._dashBusy = false;
+    dashStage(`
+      <div class="dmsg ok">✅ Detected: <b>${d.label}</b>${extra}</div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:10px;">
+        <button class="btn btn-sm btn-primary"
+          onclick="event.stopPropagation();dashBoqCheck()">☑ Check what we stock</button>
+        <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();dashReset()">↩ Cancel</button>
+      </div>`);
   } else {
-    st.innerHTML = `
-      <div class="alert alert-info">Couldn't tell what this file is. Where should it go?</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
-        ${isAdmin ? `<button class="btn btn-sm btn-primary" onclick="setMasterFiles([window._dashPendingFile]);show('master');setTimeout(scanMasterFiles,150)">Master Table import</button>` : ''}
-        <button class="btn btn-sm btn-accent" onclick="setBoqReqFile(window._dashPendingFile);showBoqCoverage()">BOQ coverage check</button>
-      </div>`;
     window._dashPendingFile = file;
+    dashStage(`
+      <div class="dmsg">Couldn't tell what this file is. Where should it go?</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:8px;">
+        ${isAdmin ? `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();dashMapScan(window._dashFile,'Master Table file')">Master Table import</button>` : ''}
+        <button class="btn btn-sm btn-accent" onclick="event.stopPropagation();dashReset();setBoqReqFile(window._dashPendingFile);showBoqCoverage()">BOQ coverage check</button>
+      </div>`);
+  }
+}
+
+// Price list (admin): the whole flow stays inside the card — scan the file
+// (Map), show what was found (Approve), then import right here.
+async function dashMapScan(file, label) {
+  dashStep('map', 'now');
+  dashStage(`${dashChip(file, true)}
+    <div class="dmsg">Detected: <b>${label}</b> — mapping columns with your fields…</div>
+    <div style="display:flex;align-items:center;gap:8px">${dashProgHTML('dash-map', true)}</div>`);
+  const timer = dashProgRun('dash-map');
+  try {
+    const fd = new FormData(); fd.append('file', file);
+    const res = await fetch(`${API}/api/master-table/scan`, { method: 'POST', body: fd });
+    const d = await res.json();
+    dashProgDone(timer, 'dash-map');
+    if (!res.ok) { dashStep('map', null); dashFail(apiErr(d)); return; }
+    dashStep('map', 'done');
+    const review = `event.stopPropagation();dashReset();setMasterFiles([window._dashFile]);show('master');setTimeout(scanMasterFiles,150)`;
+    if (d.total_products > 0 && d.priced_products === 0) {
+      dashFail(`<b>No price column was detected</b> — every product would import at ₹0.
+        Teach the price column in the scan report, then re-try.
+        <br><button class="btn btn-sm btn-primary" style="margin-top:8px" onclick="${review}">Open scan report</button>`);
+      return;
+    }
+    dashStep('approve', 'now');
+    dashStage(`
+      <span class="dokbig">✓</span>
+      <div class="dmsg ok"><b>Mapping looks good!</b></div>
+      <div class="dmsg"><b>${d.total_products}</b> products · <b>${d.priced_products}</b> priced · <b>${d.images_found}</b> images</div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:10px;">
+        <button class="btn btn-sm btn-outline" onclick="${review}">👁 Review Mapping</button>
+        <button class="btn btn-sm btn-primary" onclick="event.stopPropagation();dashImportNow()">✓ Approve &amp; Import</button>
+      </div>`);
+  } catch (e) {
+    dashProgDone(timer, 'dash-map');
+    dashStep('map', null); dashFail(e.message);
+  }
+}
+
+function dashConfetti() {
+  return `<div class="dcfx">${Array.from({length: 12}, (_, i) => `<i class="c${i % 6}"></i>`).join('')}</div>`;
+}
+
+async function dashImportNow() {
+  const file = window._dashFile;
+  if (!file) return;
+  dashStep('approve', 'done');
+  dashStep('import', 'now');
+  // State 8: donut % + task checklist. Donut creeps to 90 while the real
+  // upload runs; checklist rows tick on a schedule matched to typical timing.
+  dashStage(`
+    <div class="dimp">
+      <div class="ddonut" id="dash-donut" style="--p:0"><span id="dash-donut-t">0%</span></div>
+      <div class="dchk">
+        <div class="dmsg" style="margin:0 0 6px"><b>Importing data…</b></div>
+        <div id="chk-0" class="dchkrow now">● Validating rows</div>
+        <div id="chk-1" class="dchkrow">○ Importing items</div>
+        <div id="chk-2" class="dchkrow">○ Saving to repository</div>
+      </div>
+    </div>`);
+  let p = 0;
+  const timer = setInterval(() => {
+    p = Math.min(90, p + 3 + Math.random() * 8);
+    const el = document.getElementById('dash-donut');
+    const t = document.getElementById('dash-donut-t');
+    if (el) el.style.setProperty('--p', p);
+    if (t) t.textContent = Math.round(p) + '%';
+    const tick = (i, s) => { const r = document.getElementById('chk-' + i);
+      if (r) { r.className = 'dchkrow ' + s; r.textContent = (s === 'ok' ? '✔ ' : s === 'now' ? '● ' : '○ ') + r.textContent.slice(2); } };
+    if (p > 30) { tick(0, 'ok'); tick(1, 'now'); }
+    if (p > 65) { tick(1, 'ok'); tick(2, 'now'); }
+  }, 220);
+  try {
+    const fd = new FormData(); fd.append('file', file);
+    const res = await fetch(`${API}/api/master-table/upload`, { method: 'POST', body: fd });
+    const d = await res.json();
+    clearInterval(timer);
+    if (!res.ok) {
+      dashStep('import', null);
+      dashFail(`${apiErr(d)}<br><button class="btn btn-sm btn-primary" style="margin-top:8px"
+        onclick="event.stopPropagation();dashReset();setMasterFiles([window._dashFile]);show('master');setTimeout(scanMasterFiles,150)">Open Master import</button>`);
+      return;
+    }
+    dashStep('import', 'done');
+    window._dashBusy = false;
+    dashStage(`${dashConfetti()}
+      <span class="dokbig">✓</span>
+      <div class="dmsg ok" style="font-size:16px"><b>Import Successful!</b></div>
+      <div class="dmsg">${d.message}</div>
+      <button class="btn btn-sm btn-outline" style="margin-top:8px"
+        onclick="event.stopPropagation();dashReset();show('master')">View Imported Data →</button>`);
+  } catch (e) {
+    clearInterval(timer);
+    dashStep('import', null); dashFail(e.message);
+  }
+}
+
+// BOQ/quotation: run the coverage check right here in the card. The full
+// report (missing-item table, add-to-master) stays on the coverage screen —
+// one click away, never automatic.
+async function dashBoqCheck() {
+  const file = window._dashFile;
+  if (!file) return;
+  window._dashBusy = true;
+  dashStep('map', 'now');
+  dashStage(`${dashChip(file, true)}
+    <div class="dmsg">Matching every BOQ line against the Master Table…</div>
+    <div style="display:flex;align-items:center;gap:8px">${dashProgHTML('dash-boq', true)}</div>`);
+  const timer = dashProgRun('dash-boq');
+  try {
+    const fd = new FormData(); fd.append('file', file);
+    const res = await fetch(`${API}/api/master-table/check-boq`, { method: 'POST', body: fd });
+    const d = await res.json();
+    dashProgDone(timer, 'dash-boq');
+    if (!res.ok) { dashStep('map', null); dashFail(apiErr(d, 'Coverage check failed')); return; }
+    dashStep('map', 'done');
+    window._dashBusy = false;
+    window._dashCov = d;
+    dashStage(`
+      <div class="dmsg ok" style="font-size:16px"><b>${d.coverage_pct}% covered</b></div>
+      <div class="cov-bar" style="margin:10px 0 8px"><div class="cov-fill" style="width:${d.coverage_pct}%"></div></div>
+      <div class="dcov">
+        <span><b>${d.total}</b> lines</span>
+        <span class="cok">✔ <b>${d.found_count}</b> we stock</span>
+        <span class="cmiss">✕ <b>${d.missing_count}</b> we don't</span>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:12px;">
+        <button class="btn btn-sm btn-primary"
+          onclick="event.stopPropagation();setBoqReqFile(window._dashFile);showBoqCoverage();boqMissingItems=window._dashCov.missing||[];renderBoqCoverage(window._dashCov)">View full report →</button>
+        <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();dashReset()">Done</button>
+      </div>`);
+  } catch (e) {
+    dashProgDone(timer, 'dash-boq');
+    dashStep('map', null); dashFail(e.message);
   }
 }
 
@@ -492,6 +750,20 @@ function toggleTheme() {
   applyTheme(next);
 }
 applyTheme(localStorage.getItem('theme') || 'light');
+
+function updateReqCount() {
+  const ta = document.getElementById('req-prompt');
+  const c = document.getElementById('req-count');
+  if (ta && c) c.textContent = `${ta.value.length} / 1000`;
+}
+
+// Ctrl+K / Cmd+K jumps to the topbar search from anywhere
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+    const s = document.getElementById('global-search');
+    if (s) { e.preventDefault(); s.focus(); s.select(); }
+  }
+});
 
 // ── Users (admin only) ───────────────────────────────────────────────────────
 async function loadUsers() {
@@ -1318,6 +1590,15 @@ function toggleTier(tier) {
   selectedTiers = isSelected ? selectedTiers.filter(t => t !== tier) : [...selectedTiers, tier];
   const el = document.getElementById(`tier-${tier}`);
   el.classList.toggle('active', !isSelected);
+  // Inline because a stylesheet .active rule mysteriously never lands on
+  // these two specific nodes (a clone of them styles fine) — engine quirk.
+  if (!isSelected) {
+    el.style.setProperty('background', 'var(--accent-soft2, #efeafe)', 'important');
+    el.style.setProperty('border', '1.5px solid var(--primary, #6a4cf0)', 'important');
+  } else {
+    el.style.removeProperty('background');
+    el.style.removeProperty('border');
+  }
   el.classList.remove('tier-pop'); void el.offsetWidth; el.classList.add('tier-pop');
 }
 
