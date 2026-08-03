@@ -255,7 +255,7 @@ function show(tab) {
   document.getElementById('sec-' + tab).classList.add('active');
   window.scrollTo({ top: 0, behavior: 'instant' in document.documentElement.style ? 'instant' : 'auto' });
   if (tab === 'upload')    { loadCatalog(); loadUploadedFiles(); }
-  if (tab === 'master')    { loadMasterFiles(); loadMasterTable(); }
+  if (tab === 'master')    { loadMasterFiles(); if (!masterAllItems.length) loadMasterTable(); }
   if (tab === 'generate')  { document.getElementById('sec-generate').classList.remove('boq-only'); loadCatalogSelector(); }
   if (tab === 'repository') { window._marginOnly = false; loadRepository(); }
   if (tab === 'audit')     loadAuditLog();
