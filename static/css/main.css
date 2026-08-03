@@ -1655,3 +1655,13 @@ html[data-theme=dark] .mlg-sweep { background: rgba(255,255,255,.14); }
 .src-badge { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px; margin-left: 6px; }
 .src-badge.boq { background: var(--accent-soft2, #ede9fe); color: var(--primary, #534AB7); }
 .src-badge.typed { background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
+/* Quotation table: proper column spacing and alignment (headers were
+   colliding and the GST% input visually merged with Amount) */
+.quot-doc table { border-collapse: separate; border-spacing: 0; }
+.quot-doc th { padding: 10px 12px !important; white-space: nowrap; text-align: left; }
+.quot-doc td { padding: 8px 12px !important; vertical-align: middle; }
+.quot-doc td input { width: 78px; text-align: right; padding: 4px 6px !important;
+  border-radius: 6px; }
+.quot-doc .table-wrap, .quot-wrap { overflow-x: auto; }
+.quot-doc th:nth-last-child(-n+7), .quot-doc td:nth-last-child(-n+7) { text-align: right; }
+.quot-doc th:first-child, .quot-doc td:first-child { text-align: center; }
