@@ -343,8 +343,8 @@ def bulk_set_tier_pricing(filename: str, req: BulkTierPricingRequest,
             raise HTTPException(400, "Enter both %, or a $ rate on its own to convert existing prices.")
     elif req.pct_3star is None or req.pct_4star is None:
         raise HTTPException(400, "Enter both percentages, or leave both blank and set only a $ rate.")
-    elif req.pct_3star < 0 or req.pct_4star < 0:
-        raise HTTPException(400, "Percentages can't be negative")
+    elif not (0 <= req.pct_3star <= 100 and 0 <= req.pct_4star <= 100):
+        raise HTTPException(400, "Percentages must be between 0 and 100 — a discount over 100% would make prices negative.")
     if req.usd_rate < 0:
         raise HTTPException(400, "USD rate can't be negative")
 

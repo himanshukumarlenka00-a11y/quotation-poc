@@ -198,8 +198,10 @@ def _parse_items_deterministically(prompt):
 
 
 _PRICE_NUM = r"(?:rs\.?|inr|₹)?\s*(\d[\d,]*(?:\.\d+)?)\s*(k)?"
-_MAX_WORDS = r"(?:under|below|less\s+th[ae]n|cheaper\s+than|up\s?to|within|max(?:imum)?|budget|<=|<)"
-_MIN_WORDS = r"(?:above|over|more\s+than|greater\s+than|at\s+least|min(?:imum)?|>=|>)"
+# Word forms need \b on their own (so "thunder 500" isn't "under 500");
+# symbol forms (<, <=) sit next to non-word chars where \b can't match.
+_MAX_WORDS = r"(?:\b(?:under|below|less\s+th[ae]n|cheaper\s+than|up\s?to|within|max(?:imum)?|budget)\b|<=|<)"
+_MIN_WORDS = r"(?:\b(?:above|over|more\s+than|greater\s+than|at\s+least|min(?:imum)?)\b|>=|>)"
 
 
 def _strip_price_constraint(text):
@@ -222,12 +224,10 @@ def _strip_price_constraint(text):
         a, b = _num(m, 1), _num(m, 3)
         pmin, pmax = min(a, b), max(a, b)
         return re.sub(r"\s+", " ", t.replace(m.group(0), " ")).strip(" ,.-"), pmin, pmax
-    m = re.search(rf"\b{_MAX_WORDS}\s*{_PRICE_NUM}\b", t, re.I) or \
-        re.search(rf"{_MAX_WORDS}\s*{_PRICE_NUM}\b", t, re.I)
+    m = re.search(rf"{_MAX_WORDS}\s*{_PRICE_NUM}\b", t, re.I)
     if m:
         pmax = _num(m); t = t.replace(m.group(0), " ")
-    m = re.search(rf"\b{_MIN_WORDS}\s*{_PRICE_NUM}\b", t, re.I) or \
-        re.search(rf"{_MIN_WORDS}\s*{_PRICE_NUM}\b", t, re.I)
+    m = re.search(rf"{_MIN_WORDS}\s*{_PRICE_NUM}\b", t, re.I)
     if m:
         pmin = _num(m); t = t.replace(m.group(0), " ")
     return re.sub(r"\s+", " ", t).strip(" ,.-"), pmin, pmax
@@ -569,9 +569,12 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         search_term = (item.get("search_term") or original_kw).strip()
         # "cups under 1k" — the constraint filters candidates, it is not part
         # of the product name (it would poison name matching and corrections).
+        # Only the typed label carries constraints: a BOQ search_term embeds
+        # SPECIFICATION text, where "capacity up to 1000 ml" is a spec, not a
+        # price budget — stripping there mispriced real coverage checks.
         original_kw, pmin, pmax = _strip_price_constraint(original_kw)
-        search_term, smin, smax = _strip_price_constraint(search_term)
-        pmin, pmax = pmin or smin, pmax or smax
+        if not item.get("search_term"):
+            search_term = original_kw
         kw  = original_kw.upper()
         qty = int(item.get("qty") or 1)
         if not kw:

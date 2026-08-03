@@ -256,7 +256,7 @@ function show(tab) {
   window.scrollTo({ top: 0, behavior: 'instant' in document.documentElement.style ? 'instant' : 'auto' });
   if (tab === 'upload')    { loadCatalog(); loadUploadedFiles(); }
   if (tab === 'master')    { loadMasterFiles(); loadMasterTable(); }
-  if (tab === 'generate')  loadCatalogSelector();
+  if (tab === 'generate')  { document.getElementById('sec-generate').classList.remove('boq-only'); loadCatalogSelector(); }
   if (tab === 'repository') loadRepository();
   if (tab === 'audit')     loadAuditLog();
   if (tab === 'users')     loadUsers();
@@ -475,9 +475,13 @@ function dashStage(html) {
 const DSVG_DOC = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>`;
 const DSVG_SHUFFLE = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>`;
 
+function escHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 function dashChip(file, spin) {
   return `<div class="dfchip"><span class="dfic">XLS</span>
-    <span class="dfchip-nm"><b>${file.name}</b><small>${(file.size / 1048576).toFixed(1)} MB</small></span>
+    <span class="dfchip-nm"><b>${escHtml(file.name)}</b><small>${(file.size / 1048576).toFixed(1)} MB</small></span>
     <span class="dfchip-rt">${spin ? '<span class="dspin"></span>' : '<span class="dok">✓</span>'}</span></div>`;
 }
 function dashReset() {
@@ -554,12 +558,12 @@ function dashRouteFile(d, file) {
         <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();dashReset()">↩ Cancel</button>
       </div>`);
   } else {
-    window._dashPendingFile = file;
     dashStage(`
       <div class="dmsg">Couldn't tell what this file is. Where should it go?</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:8px;">
         ${isAdmin ? `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();dashMapScan(window._dashFile,'Master Table file')">Master Table import</button>` : ''}
-        <button class="btn btn-sm btn-accent" onclick="event.stopPropagation();dashReset();setBoqReqFile(window._dashPendingFile);showBoqCoverage()">BOQ coverage check</button>
+        <button class="btn btn-sm btn-accent" onclick="event.stopPropagation();dashReset();setBoqReqFile(window._dashFile);showBoqCoverage()">BOQ coverage check</button>
+        <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();dashReset()">↩ Cancel</button>
       </div>`);
   }
 }
@@ -703,24 +707,15 @@ async function dashBoqCheck() {
 function showBoqCoverage() {
   document.querySelectorAll('.snav').forEach(b => b.classList.toggle('active', b.dataset.tab === 'coverage'));
   document.querySelectorAll('.section').forEach(x => x.classList.remove('active'));
-  document.getElementById('sec-generate').classList.add('active');
+  const sec = document.getElementById('sec-generate');
+  sec.classList.add('active', 'boq-only');   // coverage view: BOQ card only
   loadCatalogSelector();
-  setTimeout(() => document.querySelector('.card-alt')?.scrollIntoView({behavior: 'smooth', block: 'start'}), 60);
 }
 function showMargins() {
   document.querySelectorAll('.snav').forEach(b => b.classList.toggle('active', b.dataset.tab === 'margin'));
   document.querySelectorAll('.section').forEach(x => x.classList.remove('active'));
   document.getElementById('sec-repository').classList.add('active');
   loadRepository();
-}
-
-// Topbar pill search — same expanding mechanic as the master catalogue one
-function onGlobalSearchFocus() {
-  document.getElementById('global-search-box').classList.add('active');
-}
-function onGlobalSearchBlur() {
-  if (!document.getElementById('global-search').value.trim())
-    document.getElementById('global-search-box').classList.remove('active');
 }
 
 // Topbar search: jump to the master catalogue with the term applied
@@ -2706,9 +2701,9 @@ function repoCard(q, status) {
       <div class="meta">${q.created_at ? new Date(q.created_at).toLocaleDateString('en-IN') : ''}</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;">
-      <button class="btn btn-sm btn-outline" onclick="viewQuote(${q.id})">👁 View</button>
-      <button class="btn btn-sm btn-accent" onclick="window.open(API+'/api/download/${q.id}')">⬇ XLS</button>
-      ${isAdmin ? `<button class="btn btn-sm btn-outline" onclick="toggleMargin(${q.id})">📊 Margin</button>` : ''}
+      <button class="btn btn-sm btn-outline" onclick="viewQuote(${q.id})"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>View</button>
+      <button class="btn btn-sm btn-accent" onclick="window.open(API+'/api/download/${q.id}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/></svg>XLS</button>
+      ${isAdmin ? `<button class="btn btn-sm btn-outline" onclick="toggleMargin(${q.id})"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Margin</button>` : ''}
       ${status==='draft' ? `<button class="btn btn-sm btn-success" onclick="approveQuote(${q.id})">✓ Approve</button>` : ''}
       <button class="btn btn-sm btn-danger" onclick="deleteQuote(${q.id})" title="Delete" style="padding:6px 10px;">✕</button>
     </div>
