@@ -1882,6 +1882,11 @@ async function generateQuote() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Generation failed');
+    if (data.unsaved) {
+      document.getElementById('gen-status').innerHTML =
+        `<div class="alert alert-error">Nothing matched${(data.not_found||[]).length ? ` — not found: ${data.not_found.join(', ')}` : ''}. No quotation was saved.</div>`;
+      return;
+    }
     currentQuotation = data;
     renderResult(data);
     show('result');
@@ -2162,6 +2167,11 @@ async function generateFromBoqFile() {
     const res = await fetch(`${API}/api/smart-generate-from-boq`, { method: 'POST', body: fd });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Generation failed');
+    if (data.unsaved) {
+      status.innerHTML = `<div class="alert alert-error">Nothing in this BOQ matched the Master Table. No quotation was saved.</div>`;
+      btn.disabled = false; btn.innerHTML = '📤 Generate from BOQ';
+      return;
+    }
     currentQuotation = data;
     renderResult(data);
     show('result');

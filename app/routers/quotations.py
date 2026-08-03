@@ -99,6 +99,12 @@ def _finish_smart_generate(req, user, extracted, groq_client):
     conn = get_db()
     result_items, not_found = _resolve_master_matches(conn, extracted, req.catalogs, req.tiers, groq_client, prompt=req.prompt)
 
+    if not result_items:
+        # Nothing matched — an empty quotation is clutter, not a record.
+        conn.close()
+        return {"ref_no": None, "client_name": req.client_name,
+                "items": [], "not_found": not_found, "unsaved": True}
+
     ref_no = f"QT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     data   = {"ref_no": ref_no, "client_name": req.client_name,
               "items": result_items, "not_found": not_found}
@@ -807,6 +813,12 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
     conn = get_db()
     result_items, not_found = _resolve_master_matches(conn, extracted, [], tiers, groq_client, prompt="")
 
+    if not result_items:
+        # Nothing in the BOQ matched — don't save an empty quotation.
+        conn.close()
+        return {"ref_no": None, "client_name": client_name, "items": [],
+                "not_found": not_found, "unsaved": True}
+
     ref_no = f"QT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     data = {"ref_no": ref_no, "client_name": client_name, "has_boq_pricing": has_boq_pricing,
             "file_type": file_type,
@@ -847,6 +859,10 @@ def build_quotation(req: BuildQuotationRequest, user: dict = Depends(get_current
             "gst_pct":       float(item.get("gst_pct", 18)),
             "image_path":    item.get("image_path", ""),
         })
+    if not enriched:
+        # Same rule as the typed flow: never save an empty quotation.
+        return {"ref_no": None, "client_name": req.client_name,
+                "items": [], "unsaved": True}
     data = {"ref_no": ref_no, "client_name": req.client_name, "items": enriched}
     conn = get_db()
     cur = conn.execute(
