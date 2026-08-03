@@ -1669,7 +1669,7 @@ html[data-theme=dark] .mlg-sweep { background: rgba(255,255,255,.14); }
    BOQ Coverage tab (boq-only view) and is hidden here */
 #sec-generate:not(.boq-only) .card-alt { display: none; }
 #sec-generate:not(.boq-only) .gh-art { display: none; }
-#sec-generate.active { grid-template-columns: 1fr; max-width: 940px; margin: 0 auto; min-height: 0; }
+#sec-generate.active { grid-template-columns: 1fr; max-width: 1280px; margin: 0 auto; min-height: 0; }
 #sec-generate .card { height: auto; }
 #sec-generate .gen-head { margin-bottom: 18px; }
 #sec-generate .hint-box { margin-top: 18px; align-self: auto; }
