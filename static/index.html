@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=67">
+<link rel="stylesheet" href="/static/css/main.css?v=70">
 </head>
 <body>
 
@@ -410,9 +410,9 @@
 
       <!-- Action buttons -->
       <div class="quot-actions">
-        <button class="btn btn-primary" onclick="window.print()">🖨 Print / PDF</button>
-        <button class="btn btn-accent" onclick="downloadXLS()">⬇ Download XLS</button>
-        <button class="btn btn-outline" onclick="saveEdits()">💾 Save Edits</button>
+        <button class="btn qa-ghost" onclick="window.print()"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>Print / PDF</button>
+        <button class="btn qa-main" onclick="downloadXLS()"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Download XLS</button>
+        <button class="btn qa-ghost" onclick="saveEdits()"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save Edits</button>
         <span class="quot-refbadge" id="stat-ref">—</span>
       </div>
 
@@ -428,7 +428,7 @@
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <input type="text" id="add-item-input" placeholder="e.g. 10 coffee machines and 5 ice buckets"
                  style="flex:1;min-width:220px;" onkeydown="if(event.key==='Enter')addToQuote()">
-          <button class="btn btn-accent" id="add-item-btn" onclick="addToQuote()">➕ Add</button>
+          <button class="btn qa-main" id="add-item-btn" onclick="addToQuote()"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add</button>
         </div>
         <div id="add-item-status" style="font-size:var(--fs-sm);color:var(--muted);margin-top:8px;">Type any product in plain English — it searches all catalogues and adds new rows. Totals update automatically.</div>
         <div id="suggest-strip" style="display:none;margin-top:12px;"></div>
