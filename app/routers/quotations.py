@@ -902,6 +902,16 @@ def list_quotations(status: str = None, user: dict = Depends(get_current_user)):
 class UpdateItemsRequest(BaseModel):
     items: list
     client_name: str = ""
+    sales_person: dict | None = None
+
+
+@router.get("/api/sales-persons")
+def list_sales_persons(user: dict = Depends(get_current_user)):
+    conn = get_db()
+    rows = conn.execute("SELECT id, name, phone, email, region FROM sales_persons "
+                        "WHERE active=1 ORDER BY name").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 @router.put("/api/quotations/{qid}")
@@ -978,6 +988,8 @@ def update_quotation(qid: int, req: UpdateItemsRequest, user: dict = Depends(get
     data["items"] = req.items
     if req.client_name:
         data["client_name"] = req.client_name
+    if req.sales_person is not None:
+        data["sales_person"] = req.sales_person
     for item in data["items"]:
         qty = int(item.get("qty") or 0)
         price = float(item.get("price_per_pc") or 0)

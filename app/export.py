@@ -256,6 +256,14 @@ def build_company_quotation(quotation: dict, items: list) -> str:
     ws["A17"] = f"REF NO: {ref_no}"
     ws["A10"] = client_name
 
+    # Sales concern block (J11-J13): the template ships with one person
+    # hardcoded — overwrite with the person selected on the quotation.
+    sp = quotation.get("sales_person") or {}
+    if sp.get("name"):
+        ws["J11"] = f"SALES CONCERN PERSON : MR {sp['name']}"
+        ws["J12"] = f"CONTACT N0: {sp.get('phone', '')}"
+        ws["J13"] = f"MAIL ID: {sp.get('email', '')}"
+
     FIRST_ITEM_ROW = 21
     FOOTER_START = 22   # freight row onward in the template
 

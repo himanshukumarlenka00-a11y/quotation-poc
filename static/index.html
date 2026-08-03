@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=70">
+<link rel="stylesheet" href="/static/css/main.css?v=71">
 </head>
 <body>
 
@@ -457,8 +457,13 @@
               <tr><td>Quotation No.</td><td><strong id="doc-ref">—</strong></td></tr>
               <tr><td>Date</td><td><strong id="doc-date">—</strong></td></tr>
               <tr><td>Valid Until</td><td><strong id="doc-valid">—</strong></td></tr>
-              <tr><td>Prepared By</td><td><strong>Sales Team</strong></td></tr>
+              <tr><td>Prepared By</td><td>
+                <select id="sales-person-sel" class="sp-select" onchange="setSalesPerson(this.value)">
+                  <option value="">Sales Team</option>
+                </select>
+              </td></tr>
             </table>
+            <div id="sp-card" class="sp-card" style="display:none;"></div>
           </div>
         </div>
 
@@ -580,6 +585,6 @@
 </div><!--/shell-->
 
 
-<script src="/static/js/app.js?v=69"></script>
+<script src="/static/js/app.js?v=71"></script>
 </body>
 </html>

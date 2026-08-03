@@ -2445,6 +2445,7 @@ function renderResult(q) {
   document.getElementById('doc-date').textContent  = fd(now);
   const vd = new Date(now); vd.setDate(vd.getDate()+30);
   document.getElementById('doc-valid').textContent = fd(vd);
+  initSalesPersonPicker(q);
 
   // Not-found banner
   const nfBanner = document.getElementById('not-found-banner');
@@ -2638,6 +2639,48 @@ function removeRow(idx) {
   if (!currentQuotation) return;
   currentQuotation.items.splice(idx, 1);
   renderResult(currentQuotation);
+}
+
+// ── Sales person on the quote: pick → animated card → saved with the quote ──
+let salesPersons = null;
+async function initSalesPersonPicker(q) {
+  const sel = document.getElementById('sales-person-sel');
+  if (!sel) return;
+  if (!salesPersons) {
+    try { salesPersons = await (await fetch(`${API}/api/sales-persons`)).json(); }
+    catch (e) { salesPersons = []; }
+  }
+  sel.innerHTML = '<option value="">Sales Team</option>' + salesPersons.map(p =>
+    `<option value="${p.id}">${p.name}</option>`).join('');
+  const cur = (q && q.sales_person) || null;
+  sel.value = cur && cur.id ? String(cur.id) : '';
+  renderSalesPersonCard(cur, false);
+}
+function renderSalesPersonCard(p, animate) {
+  const card = document.getElementById('sp-card');
+  if (!card) return;
+  if (!p || !p.name) { card.style.display = 'none'; card.innerHTML = ''; return; }
+  card.innerHTML = `
+    <span class="sp-avatar">${p.name.trim()[0]}</span>
+    <span class="sp-info"><b>${p.name}</b>
+      <small>📞 ${p.phone || '—'} &nbsp; ✉ ${p.email || '—'}</small></span>
+    ${p.region ? `<span class="sp-region">${p.region}</span>` : ''}`;
+  card.style.display = 'flex';
+  if (animate) { card.classList.remove('sp-pop'); void card.offsetWidth; card.classList.add('sp-pop'); }
+}
+async function setSalesPerson(idStr) {
+  if (!currentQuotation) return;
+  const p = (salesPersons || []).find(x => String(x.id) === idStr) || null;
+  currentQuotation.sales_person = p;
+  renderSalesPersonCard(p, true);
+  // Persist immediately — the export reads it server-side.
+  try {
+    await fetch(`${API}/api/quotations/${currentQuotation.id}`, {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ items: currentQuotation.items,
+        client_name: currentQuotation.client_name, sales_person: p })
+    });
+  } catch (e) { /* next Save Edits will carry it */ }
 }
 
 async function saveEdits(silent) {

@@ -144,6 +144,28 @@ def migrate_db():
         pass
     conn.execute("CREATE INDEX IF NOT EXISTS idx_quotations_created_by ON quotations(created_by)")
 
+    # Sales team: who a quotation is prepared by — selectable on the quote,
+    # written into the exported letterhead. Seeded once from the company list;
+    # rows can be edited in the DB later without touching code.
+    conn.execute("""CREATE TABLE IF NOT EXISTS sales_persons (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL, phone TEXT DEFAULT '', email TEXT DEFAULT '',
+        region TEXT DEFAULT '', active INTEGER DEFAULT 1)""")
+    if conn.execute("SELECT COUNT(*) FROM sales_persons").fetchone()[0] == 0:
+        conn.executemany(
+            "INSERT INTO sales_persons (name, phone, email, region) VALUES (?,?,?,?)",
+            [("KASHYAP BHATT", "9898715649", "kashyap@melangeindia.in", "GUJARAT, RAJASTHAN"),
+             ("AASHISH JAIN", "7795527228", "aashish@melangeindia.in", "BENGALURU"),
+             ("HARISH MENON", "9606448344", "harish.menon@melangeindia.in", "MUMBAI, MP, GOA"),
+             ("ABHISHEK JAIN", "9901708514", "abhishek@melangeindia.in", "SOUTH"),
+             ("NIKUNJ LAKHOTIA", "9674059963", "nikunj@melangeindia.in", "KOLKATA, NORTHEAST"),
+             ("JANMESH SONI", "9187191970", "janmesh@melangeindia.in", "RAJASTHAN - JAIPUR"),
+             ("ANIL KUMAR", "8178243005", "anil@melangeindia.in", "DELHI, UP"),
+             ("SURAJ KOUL", "8867921718", "suraaj@melangeindia.in", "COUNTRY HEAD"),
+             ("SUNIL", "8861924848", "sunil@melangeindia.in", "BANGALORE"),
+             ("NAGESH", "7204071304", "nagesh.k@melangeindia.in", "BENGALURU")])
+        conn.commit()
+
     # Snapshot columns backing the "reset pricing" action. They stay NULL until
     # the first bulk edit touches a row, at which point that row's pre-edit
     # prices are copied in — so reset restores what the row held before we
