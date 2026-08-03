@@ -49,6 +49,18 @@ app.include_router(quotations.router)
 app.include_router(master_table.router)
 
 
+@app.get("/health")
+def health():
+    """Liveness for monitoring: process up AND the database answers."""
+    from app.db import get_db
+    conn = get_db()
+    try:
+        conn.execute("SELECT 1")
+    finally:
+        conn.close()
+    return {"status": "ok"}
+
+
 @app.get("/")
 def index():
     return FileResponse(

@@ -618,6 +618,10 @@ async def check_boq_coverage(file: UploadFile = File(...),
                 "unit": (row.get("unit") or "").strip(),
                 "hsn_code": (row.get("hsn_code") or "").strip(),
                 "qty": ex["qty"],
+                # Content-hash of the row's embedded image — the parser already
+                # persisted the bytes under data/images/, so the hash alone is
+                # enough for the UI to render it and for add-from-boq to keep it.
+                "image_path": (row.get("image_path") or "").strip(),
             })
 
     total = len(src)
@@ -672,10 +676,12 @@ def add_products_from_boq(req: AddFromBoqRequest,
                      price_3star, price_4star, price_3star_usd, price_4star_usd,
                      hsn_code, gst_pct, original_brand, mrp, cost, cost_currency,
                      category, unit, product_group, image_path, image_match, uploaded_at)
-                VALUES (?,?,?,?,?,?,0,0,0,0,?,0,?,0,0,'INR','',?,'','','',?)
+                VALUES (?,?,?,?,?,?,0,0,0,0,?,0,?,0,0,'INR','',?,'',?,?,?)
             """, (req.file_name, "", product, model, (it.get("brand") or "").strip(),
                   (it.get("specification") or "").strip(), (it.get("hsn_code") or "").strip(),
                   (it.get("brand") or "").strip(), (it.get("unit") or "").strip(),
+                  (it.get("image_path") or "").strip(),
+                  "exact" if (it.get("image_path") or "").strip() else "",
                   datetime.now().isoformat()))
             added += 1
         conn.commit()

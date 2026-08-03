@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=61">
+<link rel="stylesheet" href="/static/css/main.css?v=63">
 </head>
 <body>
 
@@ -534,8 +534,8 @@
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
       <div>
-        <h2 data-icon="🗄" style="margin-bottom:4px;">Approved Quotations Repository</h2>
-        <p style="color:var(--muted);font-size:var(--fs-base);">All approved quotations are stored here.</p>
+        <h2 data-icon="🗄" style="margin-bottom:4px;" id="repo-title">Approved Quotations Repository</h2>
+        <p style="color:var(--muted);font-size:var(--fs-base);" id="repo-sub">All approved quotations are stored here.</p>
       </div>
       <button class="btn btn-danger btn-sm" onclick="clearAllQuotations()">🗑 Clear All</button>
     </div>
@@ -543,7 +543,7 @@
   </div>
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
-      <h2 data-icon="📝" style="margin-bottom:0;">All Drafts</h2>
+      <h2 data-icon="📝" style="margin-bottom:0;" id="drafts-title">All Drafts</h2>
       <button class="btn btn-danger btn-sm" onclick="clearAllQuotations()">🗑 Clear All Quotations</button>
     </div>
     <div id="drafts-list"><div class="empty-state"><span class="es-icon">📝</span><div class="es-title">No drafts</div><div class="es-hint">Quotations you generate are saved here as drafts.</div></div></div>
@@ -588,6 +588,6 @@
 </div><!--/shell-->
 
 
-<script src="/static/js/app.js?v=61"></script>
+<script src="/static/js/app.js?v=63"></script>
 </body>
 </html>

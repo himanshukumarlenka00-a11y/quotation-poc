@@ -257,7 +257,7 @@ function show(tab) {
   if (tab === 'upload')    { loadCatalog(); loadUploadedFiles(); }
   if (tab === 'master')    { loadMasterFiles(); loadMasterTable(); }
   if (tab === 'generate')  { document.getElementById('sec-generate').classList.remove('boq-only'); loadCatalogSelector(); }
-  if (tab === 'repository') loadRepository();
+  if (tab === 'repository') { window._marginOnly = false; loadRepository(); }
   if (tab === 'audit')     loadAuditLog();
   if (tab === 'users')     loadUsers();
   if (tab === 'dashboard') loadDashboard();
@@ -715,6 +715,7 @@ function showMargins() {
   document.querySelectorAll('.snav').forEach(b => b.classList.toggle('active', b.dataset.tab === 'margin'));
   document.querySelectorAll('.section').forEach(x => x.classList.remove('active'));
   document.getElementById('sec-repository').classList.add('active');
+  window._marginOnly = true;   // margin view: only BOQ-priced quotes
   loadRepository();
 }
 
@@ -2094,8 +2095,9 @@ function renderBoqCoverage(d) {
               onclick="addMissingToMaster()">➕ Add all to Master Table</button>` : ''}
         </div>
         <div class="table-wrap" style="max-height:320px;overflow:auto;">
-          <table><thead><tr><th>Product</th><th>Model</th><th>Brand</th><th>Specification</th><th>Qty</th></tr></thead>
+          <table><thead><tr><th>Image</th><th>Product</th><th>Model</th><th>Brand</th><th>Specification</th><th>Qty</th></tr></thead>
           <tbody>${d.missing.map(m => `<tr>
+            <td>${m.image_path ? `<img class="cov-thumb" src="${API}/api/image/${m.image_path}" loading="lazy" alt="">` : '—'}</td>
             <td><strong>${m.product}</strong></td><td>${m.original_model || '—'}</td>
             <td>${m.brand || '—'}</td><td style="font-size:var(--fs-sm)">${m.specification || '—'}</td>
             <td>${m.qty}</td></tr>`).join('')}</tbody></table>
@@ -2670,19 +2672,35 @@ async function submitFeedback() {
 
 // ── Repository ────────────────────────────────────────────────────────────────
 async function loadRepository() {
-  const [approved, all] = await Promise.all([
+  let [approved, all] = await Promise.all([
     fetch(`${API}/api/quotations?status=approved`).then(r=>r.json()),
     fetch(`${API}/api/quotations`).then(r=>r.json())
   ]);
-  const drafts = all.filter(q => q.status === 'draft');
+  let drafts = all.filter(q => q.status === 'draft');
+
+  // Margin view: only quotes with client BOQ pricing — margin is a
+  // comparison against what the client priced; typed quotes have nothing
+  // to compare and only produce "cost unknown" noise.
+  const marginView = !!window._marginOnly;
+  if (marginView) {
+    const boq = q => !!(q.items_json && q.items_json.has_boq_pricing);
+    approved = approved.filter(boq);
+    drafts = drafts.filter(boq);
+  }
+  const t = document.getElementById('repo-title'), s = document.getElementById('repo-sub'),
+        dt = document.getElementById('drafts-title');
+  if (t)  t.textContent  = marginView ? 'Margin Analysis — Approved' : 'Approved Quotations Repository';
+  if (s)  s.textContent  = marginView ? 'Cost, profit and margin per BOQ-priced quotation.'
+                                      : 'All approved quotations are stored here.';
+  if (dt) dt.textContent = marginView ? 'BOQ-priced Drafts' : 'All Drafts';
 
   document.getElementById('repo-list').innerHTML = approved.length
     ? approved.map(q => repoCard(q, 'approved')).join('')
-    : '<div class="empty-state"><span class="es-icon">✅</span><div class="es-title">No approved quotations yet</div><div class="es-hint">Approved quotes will appear here.</div></div>';
+    : `<div class="empty-state"><span class="es-icon">${marginView ? '◔' : '✅'}</span><div class="es-title">${marginView ? 'No BOQ-priced approved quotes' : 'No approved quotations yet'}</div><div class="es-hint">${marginView ? 'Margin needs a client BOQ with prices — generate a quote from a priced BOQ file.' : 'Approved quotes will appear here.'}</div></div>`;
 
   document.getElementById('drafts-list').innerHTML = drafts.length
     ? drafts.map(q => repoCard(q, 'draft')).join('')
-    : '<div class="empty-state"><span class="es-icon">📝</span><div class="es-title">No drafts</div><div class="es-hint">Quotations you generate are saved here as drafts.</div></div>';
+    : `<div class="empty-state"><span class="es-icon">📝</span><div class="es-title">${marginView ? 'No BOQ-priced drafts' : 'No drafts'}</div><div class="es-hint">${marginView ? 'Typed quotations don\'t appear here — they have no client prices to compare.' : 'Quotations you generate are saved here as drafts.'}</div></div>`;
 }
 
 function repoCard(q, status) {
@@ -2694,16 +2712,18 @@ function repoCard(q, status) {
     return s + amt + amt*((i.gst_pct||0)/100);
   }, 0);
   const isAdmin = currentUser && currentUser.role === 'admin';
+  const fromBoq = !!d.has_boq_pricing;
   return `<div class="repo-item" id="repo-${q.id}">
     <div>
       <strong>${d.ref_no || q.ref_no}</strong> &nbsp; <span class="badge badge-${status}">${status}</span>
+      <span class="src-badge ${fromBoq ? 'boq' : 'typed'}">${fromBoq ? 'from BOQ' : 'typed'}</span>
       <div class="meta">${d.client_name || q.client_name} &nbsp;·&nbsp; ${items.length} items &nbsp;·&nbsp; ₹${grand.toLocaleString('en-IN',{maximumFractionDigits:0})}</div>
       <div class="meta">${q.created_at ? new Date(q.created_at).toLocaleDateString('en-IN') : ''}</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;">
       <button class="btn btn-sm btn-outline" onclick="viewQuote(${q.id})"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>View</button>
       <button class="btn btn-sm btn-accent" onclick="window.open(API+'/api/download/${q.id}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/></svg>XLS</button>
-      ${isAdmin ? `<button class="btn btn-sm btn-outline" onclick="toggleMargin(${q.id})"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Margin</button>` : ''}
+      ${isAdmin && fromBoq ? `<button class="btn btn-sm btn-outline" onclick="toggleMargin(${q.id})"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Margin</button>` : ''}
       ${status==='draft' ? `<button class="btn btn-sm btn-success" onclick="approveQuote(${q.id})">✓ Approve</button>` : ''}
       <button class="btn btn-sm btn-danger" onclick="deleteQuote(${q.id})" title="Delete" style="padding:6px 10px;">✕</button>
     </div>

@@ -1648,3 +1648,10 @@ html[data-theme=dark] .mlg-word { color: #eceff5; }
   background: rgba(255,255,255,.55); left: -80px; animation: mlgsweep 1s ease-in-out 3.1s forwards; pointer-events: none; }
 html[data-theme=dark] .mlg-sweep { background: rgba(255,255,255,.14); }
 @keyframes mlgsweep { to { left: 110%; } }
+/* BOQ coverage missing-list thumbnails */
+.cov-thumb { width: 46px; height: 46px; object-fit: contain; border-radius: 8px;
+  background: #fff; border: 1px solid var(--border); display: block; }
+/* Quote origin badges */
+.src-badge { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px; margin-left: 6px; }
+.src-badge.boq { background: var(--accent-soft2, #ede9fe); color: var(--primary, #534AB7); }
+.src-badge.typed { background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
