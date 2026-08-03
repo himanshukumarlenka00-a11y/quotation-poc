@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=71">
+<link rel="stylesheet" href="/static/css/main.css?v=72">
 </head>
 <body>
 
@@ -448,15 +448,14 @@
         <!-- Meta -->
         <div class="quot-meta">
           <div class="quot-meta-l">
-            <div class="quot-sec-lbl">Bill &amp; Ship To</div>
-            <div class="quot-client" id="doc-client">—</div>
-            <div style="font-size:var(--fs-sm);color:#666;margin-top:4px;">Attn: Purchase Manager</div>
+            <div class="quot-sec-lbl">Bill &amp; Ship To <span class="billto-hint">✎ click to write</span></div>
+            <textarea id="doc-billto" class="billto-edit" rows="5"
+              placeholder="Client / hotel name&#10;Address line 1&#10;Address line 2&#10;Attn: Purchase Manager"
+              onchange="setBillTo(this.value)"></textarea>
           </div>
           <div class="quot-meta-r">
             <table class="quot-mt">
               <tr><td>Quotation No.</td><td><strong id="doc-ref">—</strong></td></tr>
-              <tr><td>Date</td><td><strong id="doc-date">—</strong></td></tr>
-              <tr><td>Valid Until</td><td><strong id="doc-valid">—</strong></td></tr>
               <tr><td>Prepared By</td><td>
                 <select id="sales-person-sel" class="sp-select" onchange="setSalesPerson(this.value)">
                   <option value="">Sales Team</option>
@@ -585,6 +584,6 @@
 </div><!--/shell-->
 
 
-<script src="/static/js/app.js?v=71"></script>
+<script src="/static/js/app.js?v=72"></script>
 </body>
 </html>

@@ -903,6 +903,7 @@ class UpdateItemsRequest(BaseModel):
     items: list
     client_name: str = ""
     sales_person: dict | None = None
+    bill_to: str | None = None
 
 
 @router.get("/api/sales-persons")
@@ -990,6 +991,8 @@ def update_quotation(qid: int, req: UpdateItemsRequest, user: dict = Depends(get
         data["client_name"] = req.client_name
     if req.sales_person is not None:
         data["sales_person"] = req.sales_person
+    if req.bill_to is not None:
+        data["bill_to"] = req.bill_to
     for item in data["items"]:
         qty = int(item.get("qty") or 0)
         price = float(item.get("price_per_pc") or 0)

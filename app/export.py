@@ -254,7 +254,13 @@ def build_company_quotation(quotation: dict, items: list) -> str:
 
     ws["L9"] = f"DATE : {date_str}"
     ws["A17"] = f"REF NO: {ref_no}"
-    ws["A10"] = client_name
+    # Bill & Ship To: the hand-written block from the quote (multi-line);
+    # falls back to the bare client name for older quotes.
+    bill_to = (quotation.get("bill_to") or "").strip()
+    ws["A10"] = bill_to if bill_to else client_name
+    if bill_to and "\n" in bill_to:
+        from openpyxl.styles import Alignment
+        ws["A10"].alignment = Alignment(wrap_text=True, vertical="top")
 
     # Sales concern block (J11-J13): the template ships with one person
     # hardcoded — overwrite with the person selected on the quotation.

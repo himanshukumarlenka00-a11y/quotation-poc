@@ -1713,3 +1713,17 @@ html[data-theme=dark] .mlg-sweep { background: rgba(255,255,255,.14); }
 @keyframes sppop { 0% { opacity: 0; transform: translateY(-8px) scale(.92); }
   100% { opacity: 1; transform: none; } }
 @media print { .sp-select { border: none; appearance: none; } }
+
+/* Bill & Ship To: hand-written block replacing the fixed client line */
+.billto-hint { font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: .4px;
+  background: var(--bg); border-radius: 999px; padding: 2px 8px; margin-left: 8px; vertical-align: middle; }
+.billto-edit { width: 100%; min-height: 110px; margin-top: 8px; resize: vertical;
+  background: var(--bg); border: 1.5px dashed var(--border); border-radius: 12px;
+  padding: 10px 14px; font-size: var(--fs-base); line-height: 1.55; color: var(--text);
+  font-family: inherit; transition: border-color .15s, background .15s, box-shadow .15s; }
+.billto-edit:hover { border-color: var(--primary, #6a4cf0); }
+.billto-edit:focus { background: var(--card); border-style: solid;
+  border-color: var(--primary, #6a4cf0); box-shadow: 0 0 0 4px rgba(99,102,241,.12); outline: none; }
+.billto-edit::placeholder { color: var(--muted); opacity: .7; }
+.quot-meta-r .quot-mt td { padding: 7px 0; }
+@media print { .billto-edit { border: none; resize: none; } .billto-hint { display: none; } }

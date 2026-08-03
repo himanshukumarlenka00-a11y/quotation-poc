@@ -2439,12 +2439,9 @@ function renderResult(q) {
   const refNo = q.ref_no || '—';
   document.getElementById('stat-ref').textContent  = '📄 ' + refNo;
   document.getElementById('doc-ref').textContent   = refNo;
-  document.getElementById('doc-client').textContent = q.client_name || '—';
-  const now = new Date();
-  const fd  = d => d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
-  document.getElementById('doc-date').textContent  = fd(now);
-  const vd = new Date(now); vd.setDate(vd.getDate()+30);
-  document.getElementById('doc-valid').textContent = fd(vd);
+  const bt = document.getElementById('doc-billto');
+  if (bt) bt.value = q.bill_to
+    || (q.client_name ? `${q.client_name}\nAttn: Purchase Manager` : '');
   initSalesPersonPicker(q);
 
   // Not-found banner
@@ -2668,6 +2665,21 @@ function renderSalesPersonCard(p, animate) {
   card.style.display = 'flex';
   if (animate) { card.classList.remove('sp-pop'); void card.offsetWidth; card.classList.add('sp-pop'); }
 }
+async function setBillTo(text) {
+  if (!currentQuotation) return;
+  currentQuotation.bill_to = text;
+  // First non-empty line doubles as the client name for lists/search.
+  const first = (text.split('\n').find(l => l.trim()) || '').trim();
+  if (first) currentQuotation.client_name = first;
+  try {
+    await fetch(`${API}/api/quotations/${currentQuotation.id}`, {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ items: currentQuotation.items,
+        client_name: currentQuotation.client_name, bill_to: text })
+    });
+  } catch (e) { /* Save Edits carries it next time */ }
+}
+
 async function setSalesPerson(idStr) {
   if (!currentQuotation) return;
   const p = (salesPersons || []).find(x => String(x.id) === idStr) || null;
