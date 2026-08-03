@@ -456,6 +456,11 @@
           <div class="quot-meta-r">
             <table class="quot-mt">
               <tr><td>Quotation No.</td><td><strong id="doc-ref">—</strong></td></tr>
+              <tr><td>Region</td><td>
+                <select id="sales-region-sel" class="sp-select" onchange="filterByRegion(this.value)">
+                  <option value="">All regions</option>
+                </select>
+              </td></tr>
               <tr><td>Prepared By</td><td>
                 <select id="sales-person-sel" class="sp-select" onchange="setSalesPerson(this.value)">
                   <option value="">Sales Team</option>
@@ -584,6 +589,6 @@
 </div><!--/shell-->
 
 
-<script src="/static/js/app.js?v=72"></script>
+<script src="/static/js/app.js?v=73"></script>
 </body>
 </html>

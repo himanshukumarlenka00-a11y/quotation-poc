@@ -2640,18 +2640,49 @@ function removeRow(idx) {
 
 // ── Sales person on the quote: pick → animated card → saved with the quote ──
 let salesPersons = null;
+function _spRegions(p) {
+  return (p.region || '').split(',').map(r => r.trim().toUpperCase()).filter(Boolean);
+}
+function _fillPersonOptions(regionFilter) {
+  const sel = document.getElementById('sales-person-sel');
+  const list = (salesPersons || []).filter(p =>
+    !regionFilter || _spRegions(p).includes(regionFilter));
+  sel.innerHTML = '<option value="">Sales Team</option>' + list.map(p =>
+    `<option value="${p.id}">${p.name}</option>`).join('');
+  return list;
+}
 async function initSalesPersonPicker(q) {
   const sel = document.getElementById('sales-person-sel');
+  const rsel = document.getElementById('sales-region-sel');
   if (!sel) return;
   if (!salesPersons) {
     try { salesPersons = await (await fetch(`${API}/api/sales-persons`)).json(); }
     catch (e) { salesPersons = []; }
   }
-  sel.innerHTML = '<option value="">Sales Team</option>' + salesPersons.map(p =>
-    `<option value="${p.id}">${p.name}</option>`).join('');
+  if (rsel) {
+    const regions = [...new Set(salesPersons.flatMap(_spRegions))].sort();
+    rsel.innerHTML = '<option value="">All regions</option>' + regions.map(r =>
+      `<option value="${r}">${r}</option>`).join('');
+  }
   const cur = (q && q.sales_person) || null;
+  if (rsel) rsel.value = '';                 // fresh view starts unfiltered
+  _fillPersonOptions('');
   sel.value = cur && cur.id ? String(cur.id) : '';
   renderSalesPersonCard(cur, false);
+}
+function filterByRegion(region) {
+  const list = _fillPersonOptions(region);
+  const sel = document.getElementById('sales-person-sel');
+  if (region && list.length === 1) {
+    // Only one person covers this region — pick them automatically.
+    sel.value = String(list[0].id);
+    setSalesPerson(sel.value);
+  } else {
+    // Two or more (or none): let the user choose between them.
+    const cur = currentQuotation && currentQuotation.sales_person;
+    sel.value = cur && list.some(p => p.id === cur.id) ? String(cur.id) : '';
+    if (!sel.value && cur) { currentQuotation.sales_person = null; renderSalesPersonCard(null, false); setSalesPerson(''); }
+  }
 }
 function renderSalesPersonCard(p, animate) {
   const card = document.getElementById('sp-card');
