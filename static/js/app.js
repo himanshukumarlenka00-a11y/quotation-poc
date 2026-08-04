@@ -719,21 +719,6 @@ function showMargins() {
   loadRepository();
 }
 
-// Topbar search: jump to the master catalogue with the term applied
-function topbarSearch(e) {
-  if (e.key !== 'Enter') return;
-  const term = e.target.value.trim();
-  show('master');
-  setTimeout(() => {
-    const box = document.getElementById('master-search');
-    if (box) {
-      box.value = term;
-      document.getElementById('master-search-box')?.classList.add('active');
-      filterMasterTable();
-    }
-  }, 120);
-}
-
 // Theme: light is the default; the choice sticks per browser
 function applyTheme(t) {
   document.documentElement.dataset.theme = t;
@@ -784,14 +769,6 @@ function updateReqCount() {
   const c = document.getElementById('req-count');
   if (ta && c) c.textContent = `${ta.value.length} / 1000`;
 }
-
-// Ctrl+K / Cmd+K jumps to the topbar search from anywhere
-document.addEventListener('keydown', e => {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-    const s = document.getElementById('global-search');
-    if (s) { e.preventDefault(); s.focus(); s.select(); }
-  }
-});
 
 // ── Users (admin only) ───────────────────────────────────────────────────────
 async function loadUsers() {
