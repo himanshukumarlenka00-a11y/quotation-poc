@@ -1126,6 +1126,13 @@ def update_quotation(qid: int, req: UpdateItemsRequest, user: dict = Depends(get
             old = old_by_phrase.get(ph)
             if not old or old.get("matched_by") == "human":
                 continue        # nothing to compare, or already human-settled
+            # Placeholder lineage never teaches the matcher (user rule):
+            # a Find pick on a not-in-catalogue row is a stand-in for THIS
+            # quote, not a fact about what the phrase means — learning it
+            # made "[WCCE001-SS]" permanently resolve to WCCE002.
+            if any(x.get("not_in_catalog") or x.get("was_placeholder")
+                   for x in (item, old)):
+                continue
             ident = lambda x: ((str(x.get("product") or "")).strip().lower(),
                                (str(x.get("model_no") or "")).strip().lower())
             if ident(old) != ident(item):
