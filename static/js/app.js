@@ -2405,9 +2405,14 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing) {
   const activeTier = item.active_tier || (item.tiers && item.tiers[0]) || '3star';
 
   const hasVariants = item._variants && item._variants.length > 1;
-  const switchBtn   = hasVariants
-    ? `<button class="btn-switch" onclick="switchVariant(${idx})" style="display:block;margin-top:4px;">🔄 Switch</button>`
-    : '';
+  // Placeholder rows get a catalogue search instead — the matcher found
+  // nothing, so the user picks the right product by hand.
+  const switchBtn = item.not_in_catalog
+    ? `<button class="btn-switch" onclick="findProduct(${idx})" style="display:block;margin-top:4px;">
+         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.4" y1="16.4" x2="21" y2="21"/></svg> Find</button>`
+    : (hasVariants
+      ? `<button class="btn-switch" onclick="switchVariant(${idx})" style="display:block;margin-top:4px;">🔄 Switch</button>`
+      : '');
 
   // Image cell — manually uploaded image first, else the catalog image (served
   // from disk via the API, never shipped inline in the JSON response)
@@ -2498,6 +2503,94 @@ function initRowDrag() {
 function setItemField(idx, field, val) {
   const it = currentQuotation && currentQuotation.items && currentQuotation.items[idx];
   if (it) it[field] = val.trim();
+}
+
+// ── Find in catalogue (placeholder rows) ────────────────────────────────────
+// The matcher found nothing for this line, so give the user a live search
+// over the master table; picking a result fills the whole row.
+let _findResults = [];
+let _findTimer = null;
+
+function findProduct(idx) {
+  document.querySelectorAll('.switch-panel').forEach(p => p.remove());
+  const item = currentQuotation && currentQuotation.items[idx];
+  const row = document.querySelector(`#items-body tr[data-idx="${idx}"]`);
+  if (!item || !row) return;
+  const panel = document.createElement('tr');
+  panel.className = 'switch-panel';
+  panel.innerHTML = `<td colspan="${row.cells.length}">
+    <div class="switch-panel-inner">
+      <div class="switch-panel-title">Find in catalogue — "${escHtml(item.product || '')}"</div>
+      <input type="text" id="find-input-${idx}" placeholder="Type a product, brand or model no…"
+        style="width:min(360px,90%);margin:8px 0;" oninput="findProductSearch(${idx})"
+        onkeydown="stopEnterSubmit(event)">
+      <div class="switch-cards" id="find-results-${idx}"></div>
+      <button onclick="document.querySelectorAll('.switch-panel').forEach(p=>p.remove())"
+        style="margin-top:10px;background:none;border:none;cursor:pointer;font-size:var(--fs-sm);color:var(--muted);">
+        ✕ Close
+      </button>
+    </div>
+  </td>`;
+  row.insertAdjacentElement('afterend', panel);
+  document.getElementById(`find-input-${idx}`).focus();
+}
+
+function findProductSearch(idx) {
+  clearTimeout(_findTimer);
+  _findTimer = setTimeout(async () => {
+    const inp = document.getElementById(`find-input-${idx}`);
+    const box = document.getElementById(`find-results-${idx}`);
+    if (!inp || !box) return;
+    const term = inp.value.trim();
+    if (term.length < 2) { box.innerHTML = ''; return; }
+    const r = await fetch(`${API}/api/master-table/page?q=${encodeURIComponent(term)}&limit=12`);
+    const d = await r.json();
+    const cur = document.getElementById(`find-input-${idx}`);
+    if (!cur || cur.value.trim() !== term) return;   // superseded by a newer keystroke
+    _findResults = d.items || [];
+    if (!_findResults.length) {
+      box.innerHTML = `<p style="color:var(--muted);font-size:var(--fs-sm);">No match — try fewer words.</p>`;
+      return;
+    }
+    box.innerHTML = _findResults.map((v, ri) => {
+      const price = v.price_3star || v.price_4star || 0;
+      const thumbSrc = v.image_path ? `${API}/api/image/${v.image_path}` : '';
+      return `
+      <div class="switch-card" onclick="applyFind(${idx},${ri})" style="animation-delay:${ri * 35}ms">
+        <div class="sc-thumb">${thumbSrc ? `<img class="sc-thumb-img" src="${thumbSrc}" alt="">` : '<div class="sc-thumb-placeholder">📦</div>'}</div>
+        <div class="sc-body">
+          <div class="sc-name">${escHtml(v.product || '')}</div>
+          <div class="sc-price">₹${price.toLocaleString('en-IN', {maximumFractionDigits: 2})}</div>
+          <div class="sc-file">📁 ${escHtml((v.file_name || '').substring(0, 28))}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }, 300);
+}
+
+function applyFind(idx, ri) {
+  const item = currentQuotation && currentQuotation.items[idx];
+  const v = _findResults[ri];
+  if (!item || !v) return;
+  const tier = (item.tiers && item.tiers[0]) || '3star';
+  item.product        = v.product || '';
+  item.brand          = v.brand || '';
+  item.model_no       = v.original_model || '';
+  item.specification  = v.specification || '';
+  item.description    = v.specification || '';
+  item.hsn_code       = v.hsn_code || '';
+  item.image_path     = v.image_path || '';
+  item.gst_pct        = v.gst_pct != null ? v.gst_pct : 18;
+  item.cost           = v.cost || 0;
+  item.price_3star    = v.price_3star || 0;
+  item.price_4star    = v.price_4star || 0;
+  item.price_per_pc   = (tier === '4star' ? v.price_4star : v.price_3star) || v.price_3star || v.price_4star || 0;
+  item.price_currency = 'INR';
+  item.matched_by     = 'manual';
+  item.not_in_catalog = false;
+  document.querySelectorAll('.switch-panel').forEach(p => p.remove());
+  renderResult(currentQuotation);
+  saveEdits(true);
 }
 
 // ── Switch Variant ───────────────────────────────────────────────────────────
