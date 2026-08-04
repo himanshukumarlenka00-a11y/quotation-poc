@@ -262,13 +262,19 @@ def build_company_quotation(quotation: dict, items: list) -> str:
         from openpyxl.styles import Alignment
         ws["A10"].alignment = Alignment(wrap_text=True, vertical="top")
 
-    # Sales concern block (J11-J13): the template ships with one person
-    # hardcoded — overwrite with the person selected on the quotation.
+    # Sales concern block: the template ships it at J11-J13, which ends
+    # mid-page — relocate to column M so it right-aligns with the DATE and
+    # the table edge. Selected person overrides the template's default.
+    from openpyxl.styles import Alignment
     sp = quotation.get("sales_person") or {}
-    if sp.get("name"):
-        ws["J11"] = f"SALES CONCERN PERSON : MR {sp['name']}"
-        ws["J12"] = f"CONTACT N0: {sp.get('phone', '')}"
-        ws["J13"] = f"MAIL ID: {sp.get('email', '')}"
+    lines = ([f"SALES CONCERN PERSON : MR {sp['name']}",
+              f"CONTACT N0: {sp.get('phone', '')}",
+              f"MAIL ID: {sp.get('email', '')}"] if sp.get("name")
+             else [ws["J11"].value, ws["J12"].value, ws["J13"].value])
+    for row, text in zip((11, 12, 13), lines):
+        ws[f"J{row}"] = None
+        ws[f"M{row}"] = text
+        ws[f"M{row}"].alignment = Alignment(horizontal="right")
 
     FIRST_ITEM_ROW = 21
     FOOTER_START = 22   # freight row onward in the template
