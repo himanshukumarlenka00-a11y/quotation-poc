@@ -196,8 +196,11 @@ def parse_boq_excel(filepath: str, filename: str):
             # A header row names a product/description column AND at least one
             # data field (price/qty/model/amount). Substring match so variants
             # like "PRODUCT NAME", "MATERIAL DESCRIPTION", "SL. NO." all work.
+            # "ITEM" must match as a whole cell too — client BOQs write the
+            # product column as just "ITEM" (e.g. "SI NO | ITEM | QTY").
             has_name  = any(s in joined for s in
-                            ["PRODUCT", "ITEM NAME", "ITEM CODE", "MATERIAL DESCRI", "DESCRIPTION"])
+                            ["PRODUCT", "ITEM NAME", "ITEM CODE", "MATERIAL DESCRI",
+                             "DESCRIPTION"]) or "ITEM" in vals
             has_field = any(s in joined for s in
                             ["PRICE", "QTY", "QUANTITY", "MODEL", "AMOUNT", "RATE", "MRP"])
             if has_name and has_field:
