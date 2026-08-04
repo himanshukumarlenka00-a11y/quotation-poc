@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=90">
+<link rel="stylesheet" href="/static/css/main.css?v=91">
 </head>
 <body>
 
@@ -476,22 +476,15 @@
             <tfoot id="items-foot"></tfoot>
           </table>
         </div>
-        <div style="padding:5px 14px;font-size:var(--fs-xs);color:var(--muted);background:#fafbfd;border-top:1px solid var(--border);">
-          ✏️ Click any Price/Pc, QTY or GST% field to edit inline.
-        </div>
-
-        <!-- Amount in words -->
-        <div class="quot-words">Amount in Words: <span id="doc-words" style="font-weight:600;">—</span></div>
-
-
       </div><!-- /quot-doc -->
 
-      <!-- Action buttons — below the document, per user preference -->
+      <!-- Action buttons — below the document; ref badge left, buttons right
+           (swapped per user request) -->
       <div class="quot-actions" style="margin-top:16px;">
+        <span class="quot-refbadge" id="stat-ref" style="margin-left:0;margin-right:auto;">—</span>
         <button class="btn qa-ghost" onclick="window.print()"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>Print / PDF</button>
         <button class="btn qa-main" onclick="downloadXLS()"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Download XLS</button>
         <button class="btn qa-ghost" onclick="saveEdits()"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save Edits</button>
-        <span class="quot-refbadge" id="stat-ref">—</span>
       </div>
 
     </div><!-- /quot-wrap -->
@@ -578,6 +571,6 @@
 </div><!--/shell-->
 
 
-<script src="/static/js/app.js?v=90"></script>
+<script src="/static/js/app.js?v=91"></script>
 </body>
 </html>
