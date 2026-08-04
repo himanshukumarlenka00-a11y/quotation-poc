@@ -255,7 +255,7 @@ function show(tab) {
   document.getElementById('sec-' + tab).classList.add('active');
   window.scrollTo({ top: 0, behavior: 'instant' in document.documentElement.style ? 'instant' : 'auto' });
   if (tab === 'upload')    { loadCatalog(); loadUploadedFiles(); }
-  if (tab === 'master')    { loadMasterFiles(); if (!masterAllItems.length) loadMasterTable(); }
+  if (tab === 'master')    { loadMasterFiles(); if (!masterSummary.length) loadMasterTable(); }
   if (tab === 'generate')  { document.getElementById('sec-generate').classList.remove('boq-only'); loadCatalogSelector(); }
   if (tab === 'repository') { window._marginOnly = false; loadRepository(); }
   if (tab === 'audit')     loadAuditLog();
@@ -1282,7 +1282,6 @@ async function deleteMasterFile(filename) {
   loadMasterTable();
 }
 
-let masterAllItems = [];
 
 function onMasterSearchFocus() {
   document.getElementById('master-search-box').classList.add('active');
@@ -1296,28 +1295,90 @@ function onMasterSearchBlur() {
   }
 }
 
-async function loadMasterTable() {
-  const res = await fetch(`${API}/api/master-table`);
-  masterAllItems = await res.json();
-  document.getElementById('master-count').textContent = masterAllItems.length;
-  // Respect a search term typed before the fetch resolved (topbar search races
-  // this load) — rendering unfiltered here would clobber the filtered view.
-  const term = document.getElementById('master-search')?.value.trim();
-  if (term) filterMasterTable(); else renderMasterProducts(masterAllItems);
+// Phase 2 paging: the page loads a names+counts summary only; product rows
+// come per catalogue on expand / "Load more" (200 a page), and search runs
+// server-side — so a 3-lakh master table can't flood the browser.
+let masterSummary = [];        // [{file_name, count}]
+let masterFolders = {};        // fname -> {items: [], total: N}
+let masterSearchTerm = '';
+const MASTER_PAGE = 200;
+
+function _currentGroups() {
+  const g = {};
+  masterSummary.forEach(f => g[f.file_name] = masterFolders[f.file_name] || { items: [], total: f.count });
+  return g;
 }
 
+function _expandedMasterFolders() {
+  const set = new Set();
+  document.querySelectorAll('#master-table-view > div').forEach(div => {
+    const body = div.querySelector('.master-folder-body');
+    const nameEl = div.querySelector('strong');
+    if (body && nameEl && body.classList.contains('open')) set.add(nameEl.textContent.trim());
+  });
+  return set;
+}
+
+async function loadMasterTable() {
+  const openSet = _expandedMasterFolders();
+  const res = await fetch(`${API}/api/master-table/summary`);
+  masterSummary = await res.json();
+  document.getElementById('master-count').textContent =
+    masterSummary.reduce((s, f) => s + f.count, 0);
+  // Folders the user has open must show fresh rows (a bulk-price apply or an
+  // inline edit reloads through here) — refetch what was loaded, first page
+  // minimum. Closed folders keep whatever they had; they refetch on expand.
+  for (const f of masterSummary) {
+    const g = masterFolders[f.file_name];
+    if (openSet.has(f.file_name)) {
+      const want = Math.max((g && g.items.length) || 0, MASTER_PAGE);
+      const r = await fetch(`${API}/api/master-table/page?file=${encodeURIComponent(f.file_name)}&limit=${want}`);
+      const d = await r.json();
+      masterFolders[f.file_name] = { items: d.items, total: d.total };
+    } else if (!g) {
+      masterFolders[f.file_name] = { items: [], total: f.count };
+    } else {
+      g.total = f.count;
+    }
+  }
+  // Respect a search term typed before the fetch resolved — rendering
+  // unfiltered here would clobber the filtered view.
+  const term = document.getElementById('master-search')?.value.trim();
+  if (term) _doMasterSearch(); else renderMasterProducts(_currentGroups(), openSet);
+}
+
+let _msTimer = null;
 function filterMasterTable() {
-  const term = document.getElementById('master-search').value.trim().toLowerCase();
   pulseMasterSearchBox();
-  if (!term) { renderMasterProducts(masterAllItems); return; }
-  const matches = masterAllItems.filter(i =>
-    (i.product || '').toLowerCase().includes(term) ||
-    (i.brand || '').toLowerCase().includes(term) ||
-    (i.original_model || '').toLowerCase().includes(term));
+  clearTimeout(_msTimer);
+  _msTimer = setTimeout(_doMasterSearch, 300);   // debounce keystrokes — each search is a server round-trip now
+}
+
+async function _doMasterSearch() {
+  const term = document.getElementById('master-search').value.trim();
+  masterSearchTerm = term;
+  if (!term) { renderMasterProducts(_currentGroups(), _expandedMasterFolders()); return; }
+  const r = await fetch(`${API}/api/master-table/page?q=${encodeURIComponent(term)}&limit=500`);
+  const d = await r.json();
+  if (masterSearchTerm !== term) return;   // a newer keystroke superseded this response
+  const groups = {};
+  d.items.forEach(i => {
+    const k = i.file_name || 'Unknown';
+    (groups[k] = groups[k] || { items: [], total: 0 }).items.push(i);
+  });
+  Object.values(groups).forEach(g => g.total = g.items.length);
   // Searching implies "show me the matches now" — auto-expand every catalog
   // that has a hit instead of making the user click each folder open.
-  const matchedFiles = new Set(matches.map(i => i.file_name || 'Unknown'));
-  renderMasterProducts(matches, matchedFiles, term);
+  renderMasterProducts(groups, new Set(Object.keys(groups)), term, d.total);
+}
+
+async function loadMoreFolder(fname) {
+  const g = masterFolders[fname] || (masterFolders[fname] = { items: [], total: 0 });
+  const r = await fetch(`${API}/api/master-table/page?file=${encodeURIComponent(fname)}&offset=${g.items.length}&limit=${MASTER_PAGE}`);
+  const d = await r.json();
+  g.total = d.total;
+  g.items = g.items.concat(d.items);
+  renderMasterProducts(_currentGroups(), _expandedMasterFolders());
 }
 
 let _masterPulseTimer = null;
@@ -1333,9 +1394,9 @@ function pulseMasterSearchBox() {
   _masterPulseTimer = setTimeout(() => box.classList.remove('pulse'), 500);
 }
 
-function renderMasterProducts(items, forceExpanded, searchTerm) {
+function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
   const el = document.getElementById('master-table-view');
-  if (!items.length) {
+  if (!Object.keys(groups).length) {
     el.innerHTML = `<p style="color:var(--muted);font-size:var(--fs-base);">${searchTerm ? 'No products match your search.' : 'No products yet.'}</p>`;
     return;
   }
@@ -1344,30 +1405,17 @@ function renderMasterProducts(items, forceExpanded, searchTerm) {
   // by replacing its innerHTML — without remembering which catalog was
   // expanded, that folder silently snaps shut on every save, making the
   // just-applied prices seem to "vanish" until the user re-expands it.
-  // Capture what's open now so the rebuild below can restore it exactly.
   // (Search results instead use forceExpanded, passed in by the caller.)
-  const expandedFiles = forceExpanded || (() => {
-    const set = new Set();
-    document.querySelectorAll('#master-table-view > div').forEach(div => {
-      const body = div.querySelector('.master-folder-body');
-      const nameEl = div.querySelector('strong');
-      if (body && nameEl && body.classList.contains('open')) {
-        set.add(nameEl.textContent.trim());
-      }
-    });
-    return set;
-  })();
-
-  const groups = {};
-  items.forEach(i => {
-    const key = i.file_name || 'Unknown';
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(i);
-  });
+  const expandedFiles = forceExpanded || _expandedMasterFolders();
 
   const isAdminView = currentUser && currentUser.role === 'admin';
 
-  el.innerHTML = Object.entries(groups).map(([fname, prods], gIdx) => {
+  const capNote = (searchTerm && searchTotal > 500)
+    ? `<p style="color:var(--muted);font-size:var(--fs-sm);margin-bottom:10px;">Showing the first 500 of ${searchTotal} matches — refine the search to narrow it down.</p>`
+    : '';
+
+  el.innerHTML = capNote + Object.entries(groups).map(([fname, g], gIdx) => {
+    const prods = g.items;
     const headerCells = `<th class="num">3★ Price (₹)</th><th class="num">3★ Price ($)</th><th class="num">4★ Price (₹)</th><th class="num">4★ Price ($)</th>`;
 
     // Every catalog gets independent 3★/4★ fields now — a catalog that
@@ -1410,7 +1458,7 @@ function renderMasterProducts(items, forceExpanded, searchTerm) {
           <span class="mbp-caption">$ rate (₹ per $1)</span>
           <input type="number" id="bulk-usdrate-${gIdx}" class="mbp-usd-input" placeholder="e.g. 83" step="0.01" min="0" onkeydown="stopEnterSubmit(event)">
         </div>
-        <button class="btn btn-sm btn-primary" id="bulk-apply-${gIdx}" onclick="applyBulkTierPricing(${gIdx}, '${fnameEsc}')">✨ Apply to all ${prods.length}</button>
+        <button class="btn btn-sm btn-primary" id="bulk-apply-${gIdx}" onclick="applyBulkTierPricing(${gIdx}, '${fnameEsc}')">✨ Apply to all ${g.total}</button>
         <button class="mbp-reset" id="bulk-reset-${gIdx}" onclick="resetBulkTierPricing(${gIdx}, '${fnameEsc}')"
                 title="Revert to the prices before the last bulk change" aria-label="Reset pricing">
           <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1424,11 +1472,11 @@ function renderMasterProducts(items, forceExpanded, searchTerm) {
     const wasExpanded = expandedFiles.has(fname);
     return `
     <div class="master-folder">
-      <div class="master-folder-head" onclick="toggleMasterFolder(${gIdx})">
+      <div class="master-folder-head" onclick="toggleMasterFolder(${gIdx}, '${fnameEsc}')">
         <div class="mf-title">
           <span class="mf-icon">📁</span>
           <strong>${fname}</strong>
-          <span class="mf-count">${prods.length} products</span>
+          <span class="mf-count">${searchTerm ? `${prods.length} match(es)` : `${g.total} products`}</span>
         </div>
         <span style="display:flex;align-items:center;gap:8px;">
           ${isAdminView ? `<button class="mf-dl" title="Download the original file"
@@ -1456,6 +1504,12 @@ function renderMasterProducts(items, forceExpanded, searchTerm) {
             </tr>`).join('')}</tbody>
           </table>
         </div>
+        ${(!searchTerm && prods.length < g.total) ? `
+        <div style="text-align:center;padding:10px 0 2px;">
+          <button class="btn btn-sm" onclick="loadMoreFolder('${fnameEsc}')">
+            Load more — showing ${prods.length} of ${g.total}
+          </button>
+        </div>` : ''}
         </div>
       </div>
     </div>`;
@@ -1552,12 +1606,18 @@ async function resetBulkTierPricing(gIdx, fname) {
   btn.disabled = false; btn.classList.remove('spinning');
 }
 
-function toggleMasterFolder(idx) {
+async function toggleMasterFolder(idx, fname) {
   const content = document.getElementById(`master-folder-${idx}`);
   const arrow = document.getElementById(`master-arrow-${idx}`);
   const open = content.classList.contains('open');
   content.classList.toggle('open', !open);
   arrow.classList.toggle('open', !open);
+  // First expand fetches the folder's first page (search results already
+  // carry their rows, so only the normal folder view lazy-loads).
+  if (!open && !masterSearchTerm && fname) {
+    const g = masterFolders[fname];
+    if (g && !g.items.length && g.total) await loadMoreFolder(fname);
+  }
 }
 
 // ── Catalog Selector ─────────────────────────────────────────────────────────

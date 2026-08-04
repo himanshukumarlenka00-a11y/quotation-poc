@@ -306,6 +306,55 @@ def list_master_products(user: dict = Depends(get_current_user)):
     return result
 
 
+@router.get("/api/master-table/summary")
+def master_table_summary(user: dict = Depends(get_current_user)):
+    """Catalogue names + product counts only — what the folder list needs to
+    draw itself without shipping every product row (Phase 2: the master page
+    must survive lakh-scale catalogues)."""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT file_name, COUNT(*) AS count FROM master_products "
+        "GROUP BY file_name ORDER BY file_name").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@router.get("/api/master-table/page")
+def master_table_page(file: str = "", q: str = "", limit: int = 200, offset: int = 0,
+                      user: dict = Depends(get_current_user)):
+    """One page of master products — by catalogue (folder expand / Load more)
+    or by search term across all catalogues. Same read rules as the full
+    listing above: any authenticated user, cost fields stripped for
+    non-admins server-side."""
+    is_admin = (user or {}).get("role") == "admin"
+    limit = max(1, min(int(limit or 200), 500))
+    offset = max(0, int(offset or 0))
+    where, params = [], []
+    if file:
+        where.append("file_name = ?"); params.append(file)
+    if q.strip():
+        like = f"%{q.strip()}%"
+        where.append("(product LIKE ? OR brand LIKE ? OR original_model LIKE ?)")
+        params += [like, like, like]
+    w = ("WHERE " + " AND ".join(where)) if where else ""
+    conn = get_db()
+    total = conn.execute(f"SELECT COUNT(*) FROM master_products {w}", params).fetchone()[0]
+    rows = conn.execute(
+        f"SELECT * FROM master_products {w} ORDER BY file_name, sl_no LIMIT ? OFFSET ?",
+        params + [limit, offset]).fetchall()
+    conn.close()
+    COST_FIELDS = ("cost", "cost_currency", "mrp")
+    items = []
+    for r in rows:
+        item = dict(r)
+        item["has_image"] = bool(_image_file_path(item.get("image_path", "")))
+        if not is_admin:
+            for f in COST_FIELDS:
+                item.pop(f, None)
+        items.append(item)
+    return {"items": items, "total": total, "offset": offset}
+
+
 @router.put("/api/master-table/product/{product_id}")
 def update_master_product_price(product_id: int, req: UpdateMasterPriceRequest,
                                  admin: dict = Depends(require_role("admin"))):
