@@ -1871,14 +1871,9 @@ async function generateQuote() {
   const prompt = document.getElementById('req-prompt').value.trim();
   const client = document.getElementById('client-name')?.value.trim() || '';
   if (!prompt) { alert('Please enter customer requirements.'); return; }
-  if (!selectedTiers.length) {
-    alert('Please select a price tier (3 Star or 4 Star) first.');
-    ['tier-3star', 'tier-4star'].forEach(id => {
-      const el = document.getElementById(id);
-      el.classList.remove('tier-shake'); void el.offsetWidth; el.classList.add('tier-shake');
-    });
-    return;
-  }
+  // No tier picked is fine: the quote prices off the base price and shows a
+  // single PRICE column (no star columns) — never a roadblock.
+  const tiersToUse = selectedTiers;
 
   const btn = document.getElementById('gen-btn');
   btn.disabled = true;
@@ -1891,7 +1886,7 @@ async function generateQuote() {
     const res = await fetch(`${API}/api/smart-generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, client_name: client, catalogs: selectedCatalogs, tiers: selectedTiers })
+      body: JSON.stringify({ prompt, client_name: client, catalogs: selectedCatalogs, tiers: tiersToUse })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Generation failed');
@@ -2200,14 +2195,9 @@ async function addMissingToMaster() {
 
 async function generateFromBoqFile() {
   if (!boqReqSelectedFile) return;
-  if (!selectedTiers.length) {
-    alert('Please select a price tier (3 Star or 4 Star) first.');
-    ['tier-3star', 'tier-4star'].forEach(id => {
-      const el = document.getElementById(id);
-      el.classList.remove('tier-shake'); void el.offsetWidth; el.classList.add('tier-shake');
-    });
-    return;
-  }
+  // No tier picked is fine: the quote prices off the base price and shows a
+  // single PRICE column (no star columns) — never a roadblock.
+  const tiersToUse = selectedTiers;
   const client = document.getElementById('client-name')?.value.trim() || '';
   const btn = document.getElementById('gen-boq-btn');
   const status = document.getElementById('gen-boq-status');
@@ -2218,7 +2208,7 @@ async function generateFromBoqFile() {
   const fd = new FormData();
   fd.append('file', boqReqSelectedFile);
   fd.append('client_name', client);
-  fd.append('tiers', selectedTiers.join(','));
+  fd.append('tiers', tiersToUse.join(','));
 
   try {
     const res = await fetch(`${API}/api/smart-generate-from-boq`, { method: 'POST', body: fd });
@@ -2494,6 +2484,14 @@ function renderResult(q) {
 
   // Fill document header
   const refNo = q.ref_no || '—';
+  // Star columns follow what was asked at generation time: none selected →
+  // both boxes off → the table shows only the plain PRICE column.
+  const tq = Array.isArray(q.tiers) ? q.tiers : null;
+  const c3 = document.getElementById('show-3star-col'), c4 = document.getElementById('show-4star-col');
+  if (tq && c3 && c4 && !q._tiersApplied) {
+    c3.checked = tq.includes('3star'); c4.checked = tq.includes('4star');
+    q._tiersApplied = true;   // user's later checkbox clicks win over this default
+  }
   document.getElementById('stat-ref').textContent  = '📄 ' + refNo;
   document.getElementById('doc-ref').textContent   = refNo;
   const bt = document.getElementById('doc-billto');

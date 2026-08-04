@@ -111,6 +111,9 @@ def _finish_smart_generate(req, user, extracted, groq_client):
 
     ref_no = f"QT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     data   = {"ref_no": ref_no, "client_name": req.client_name,
+              # Which tiers the user actually asked for — [] means none
+              # (single plain PRICE column in the quote view).
+              "tiers": [t for t in (req.tiers or []) if t in ("3star", "4star")],
               "items": result_items, "not_found": not_found}
 
     # Save to DB (strip internal _ keys)
@@ -830,7 +833,8 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
 
     has_boq_pricing = any(it["boq_price"] > 0 for it in extracted)
 
-    tiers = [t.strip() for t in (tiers_str or "").split(",") if t.strip() in ("3star", "4star")] or ["3star"]
+    tiers_requested = [t.strip() for t in (tiers_str or "").split(",") if t.strip() in ("3star", "4star")]
+    tiers = tiers_requested or ["3star"]
 
     groq_client = Groq(api_key=api_key)
     conn = get_db()
@@ -844,7 +848,7 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
 
     ref_no = f"QT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     data = {"ref_no": ref_no, "client_name": client_name, "has_boq_pricing": has_boq_pricing,
-            "file_type": file_type,
+            "file_type": file_type, "tiers": tiers_requested,
             "items": result_items, "not_found": not_found}
 
     clean_items = [{k: v for k, v in i.items() if not k.startswith("_")} for i in result_items]
