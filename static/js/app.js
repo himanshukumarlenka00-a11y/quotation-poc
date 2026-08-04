@@ -2406,13 +2406,20 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing) {
 
   const hasVariants = item._variants && item._variants.length > 1;
   // Placeholder rows get a catalogue search instead — the matcher found
-  // nothing, so the user picks the right product by hand.
+  // nothing, so the user picks the right product by hand. Once picked, the
+  // row keeps Find (choose differently) and gains Revert (back to the
+  // client's original wording as a blank placeholder).
+  const findBtn = `<button class="btn-switch" onclick="findProduct(${idx})" style="display:block;margin-top:4px;">
+         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.4" y1="16.4" x2="21" y2="21"/></svg> Find</button>`;
+  const revertBtn = `<button class="btn-switch" onclick="revertFind(${idx})" title="Back to the client's original line" style="display:block;margin-top:4px;">
+         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg> Revert</button>`;
   const switchBtn = item.not_in_catalog
-    ? `<button class="btn-switch" onclick="findProduct(${idx})" style="display:block;margin-top:4px;">
-         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.4" y1="16.4" x2="21" y2="21"/></svg> Find</button>`
-    : (hasVariants
-      ? `<button class="btn-switch" onclick="switchVariant(${idx})" style="display:block;margin-top:4px;">🔄 Switch</button>`
-      : '');
+    ? findBtn
+    : item.was_placeholder
+      ? findBtn + revertBtn
+      : (hasVariants
+        ? `<button class="btn-switch" onclick="switchVariant(${idx})" style="display:block;margin-top:4px;">🔄 Switch</button>`
+        : '');
 
   // Image cell — manually uploaded image first, else the catalog image (served
   // from disk via the API, never shipped inline in the JSON response)
@@ -2588,7 +2595,26 @@ function applyFind(idx, ri) {
   item.price_currency = 'INR';
   item.matched_by     = 'manual';
   item.not_in_catalog = false;
+  item.was_placeholder = true;   // persisted — enables Revert after reload too
   document.querySelectorAll('.switch-panel').forEach(p => p.remove());
+  renderResult(currentQuotation);
+  saveEdits(true);
+}
+
+// Undo a Find pick: back to the client's original wording as a blank
+// placeholder row (qty kept, price cleared).
+function revertFind(idx) {
+  const item = currentQuotation && currentQuotation.items[idx];
+  if (!item || !item.was_placeholder) return;
+  Object.assign(item, {
+    product: item.requested || item.product,
+    model_no: '', brand: '', specification: '', description: '',
+    hsn_code: '', image_path: '', local_image: '',
+    price_per_pc: 0, cost: 0, gst_pct: 18,
+    price_3star: 0, price_3star_usd: 0, price_4star: 0, price_4star_usd: 0,
+    matched_by: 'not_found', not_in_catalog: true,
+  });
+  delete item.was_placeholder;
   renderResult(currentQuotation);
   saveEdits(true);
 }
