@@ -17,6 +17,13 @@ handle (initRowDrag, renumbers + silent save). Phase 2 paging DONE:
 master page lazy-loads 200/folder + Load more; server-side search cap 500.
 Phase 2 chunked-import half DROPPED — user will split the 3-lakh sheet and
 upload chunks himself (open q: append chunks into one catalogue or not).
+Later (v89-v92): class-based column alignment (killed nth-last-child(-n+7)
+rule); removed dup grand-total block + edit-hint + amount-in-words lines
+(web only; export keeps its own); action buttons moved BELOW doc, ref badge
+left/buttons right; Amount/GST spacing; placeholder rows got 🔍 Find (live
+search via /api/master-table/page, applyFind fills row); export HSN col
+width 11. HEAD 37f4480, cache v92, server current. Commits NOT pushed to
+GitHub yet — user hasn't said push.
 Deploy flow: edit dev → verify → commit → scp files → restart quotegen →
 ASK USER BEFORE EVERY SERVER-CHANGING COMMAND. Report est. tokens after
 each task. RTK proxy corrupts piped grep output — use python for pipes.
