@@ -252,6 +252,11 @@ def build_company_quotation(quotation: dict, items: list) -> str:
     client_name = quotation.get("client_name", "")
     date_str = datetime.now().strftime("%d.%m.%Y")
 
+    # HSN codes are 8 digits — the template's I column is a shade too narrow
+    # and wraps them mid-number.
+    if (ws.column_dimensions["I"].width or 0) < 11:
+        ws.column_dimensions["I"].width = 11
+
     ws["L9"] = f"DATE : {date_str}"
     ws["A17"] = f"REF NO: {ref_no}"
     # Bill & Ship To: the hand-written block from the quote (multi-line);
