@@ -1759,3 +1759,17 @@ body.sb-mini .side-user > div:not(.savatar) { display: none; }
 .main-col { margin-left: 240px; transition: margin-left .3s cubic-bezier(.2, .9, .3, 1); }
 body.sb-mini .main-col { margin-left: 72px; }
 @media (max-width: 900px) { .main-col { margin-left: 0; } }
+
+/* Add-to-quote: one sleek search-style bar, no headings or helper prose */
+.add-item-cool { padding: 10px 12px; }
+.aic-row { display: flex; align-items: center; gap: 10px; background: var(--bg);
+  border: 1.5px solid transparent; border-radius: 999px; padding: 6px 8px 6px 16px;
+  transition: border-color .15s, background .15s, box-shadow .15s; }
+.aic-row:focus-within { background: var(--card); border-color: var(--primary, #6a4cf0);
+  box-shadow: 0 0 0 4px rgba(99,102,241,.12); }
+.aic-ic { flex: none; color: var(--muted); }
+.aic-row input { flex: 1; border: none !important; background: transparent !important;
+  padding: 8px 0 !important; font-size: var(--fs-base) !important; outline: none; min-width: 0; }
+.aic-row .qa-main { padding: 8px 18px; flex: none; }
+.aic-status { font-size: var(--fs-sm); color: var(--muted); margin-top: 8px; }
+.aic-status:empty { display: none; }
