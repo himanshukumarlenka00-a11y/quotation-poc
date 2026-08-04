@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=81">
+<link rel="stylesheet" href="/static/css/main.css?v=82">
 </head>
 <body>
 
@@ -325,7 +325,13 @@
       </div>
     </div>
 
-    <label style="margin-top:18px;font-size:var(--fs-md);">What do you need? <span style="font-weight:400;color:var(--muted);font-size:var(--fs-base);">Just type it in plain English.</span></label>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:18px;flex-wrap:wrap;gap:8px;">
+      <label style="margin:0;font-size:var(--fs-md);">What do you need? <span style="font-weight:400;color:var(--muted);font-size:var(--fs-base);">Just type it in plain English.</span></label>
+      <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('pdf-req-input').click()">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+        From PDF</button>
+      <input type="file" id="pdf-req-input" accept=".pdf" style="display:none" onchange="fillFromPdf(this.files[0]);this.value=''">
+    </div>
     <div style="position:relative;">
       <textarea id="req-prompt" maxlength="1000" oninput="updateReqCount()" placeholder="e.g. 30 electric kettles, 20 hair dryers and 50 coat hangers" style="min-height:110px;font-size:var(--fs-md);"></textarea>
       <div class="ta-count" id="req-count">0 / 1000</div>
@@ -586,6 +592,6 @@
 </div><!--/shell-->
 
 
-<script src="/static/js/app.js?v=80"></script>
+<script src="/static/js/app.js?v=82"></script>
 </body>
 </html>

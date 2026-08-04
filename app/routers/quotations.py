@@ -76,7 +76,7 @@ def _smart_generate(req: GenerateRequest, user: dict):
                  "Default qty to 1 if not stated. Do not add any product not mentioned."},
                 {"role": "user", "content": req.prompt}
             ],
-            max_tokens=400, temperature=0.1
+            max_tokens=1200, temperature=0.1   # long pasted lists overflowed 400 mid-JSON
         )
         raw = resp.choices[0].message.content.strip()
         raw = re.sub(r"```[a-z]*\n?", "", raw).strip().rstrip("```")
@@ -199,11 +199,17 @@ def _parse_items_deterministically(prompt):
     if len(lines) >= 2:
         items = []
         for line in lines:
-            m = re.match(r"^(.{3,90}?)[\s\-–]+(\d{1,5})$", line)
+            # Trailing qty is optional — a bare product line means qty 1.
+            # A line reading like a sentence sends the prompt to the LLM.
+            if len(line) > 90 or _PROSE_MARKERS.search(line):
+                items = None
+                break
+            m = re.match(r"^(.{3,90}?)(?:[\s\-–]+(\d{1,5}))?$", line)
             if not m or not re.search(r"[A-Za-z]", m.group(1)):
                 items = None
                 break
-            items.append({"product": m.group(1).strip(" .-"), "qty": int(m.group(2))})
+            items.append({"product": m.group(1).strip(" .-"),
+                          "qty": int(m.group(2)) if m.group(2) else 1})
         if items:
             return items
 
@@ -931,6 +937,26 @@ class UpdateItemsRequest(BaseModel):
     client_name: str = ""
     sales_person: dict | None = None
     bill_to: str | None = None
+
+
+@router.post("/api/extract-pdf")
+async def extract_pdf(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    """Pull the text lines out of a (text-based) PDF so they can fill the
+    requirement box. Scanned/image PDFs have no text layer — reported
+    honestly rather than returning garbage."""
+    if not (file.filename or "").lower().endswith(".pdf"):
+        raise HTTPException(400, "Only .pdf files are supported here.")
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(file.file)
+        text = "\n".join((page.extract_text() or "") for page in reader.pages[:20])
+    except Exception as e:
+        raise HTTPException(400, f"Could not read this PDF: {type(e).__name__}")
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    if not lines:
+        raise HTTPException(422, "This PDF has no readable text — it looks like a "
+                                 "scanned image. Type or paste the items instead.")
+    return {"lines": lines}
 
 
 @router.get("/api/sales-persons")
