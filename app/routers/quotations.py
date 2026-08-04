@@ -681,6 +681,30 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                     print(f"Rejected semantic guess: {original_kw!r} -> {sem_match!r} "
                           f"(no shared term)")
 
+        # An explicit model number is a hard constraint, never a hint. A line
+        # like "... chiller with ear [WCCE001-SS]" must NOT silently become
+        # WCCE002-SS just because the names read alike — a wrong model on a
+        # customer quotation is worse than an honest blank. Exact model match
+        # goes first (rest stay as switch options); no exact match -> the row
+        # stays a placeholder for the user to Find/fill by hand. A human
+        # correction ("learned") still outranks this gate.
+        req_model = (item.get("model_no") or "").strip()
+        if not req_model:
+            brackets = re.findall(r"\[([^\]\[]{2,40})\]", item.get("product", ""))
+            req_model = brackets[-1].strip() if brackets else ""
+        if variants and req_model and matched_by != "learned" \
+                and any(c.isdigit() for c in req_model):
+            norm = lambda s: re.sub(r"[^a-z0-9]", "", (s or "").lower())
+            rm = norm(req_model)
+            exact = [v for v in variants if norm(v.get("original_model")) == rm]
+            if exact:
+                exact_ids = {id(v) for v in exact}
+                variants = exact + [v for v in variants if id(v) not in exact_ids]
+            else:
+                not_found.append(f"{original_kw} (model {req_model} not in master — nothing substituted)")
+                _add_placeholder(original_kw, qty)
+                continue
+
         if not variants:
             not_found.append(original_kw)
             _add_placeholder(original_kw, qty)
@@ -849,6 +873,7 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
     # price column at all (a pure requirement list).
     extracted = [
         {"product": r.get("product", ""), "search_term": _search_term(r),
+         "model_no": r.get("model_no", ""),
          "qty": int(r.get("qty") or 1), "boq_price": float(r.get("price") or 0)}
         for r in rows if (r.get("product") or "").strip()
     ]
