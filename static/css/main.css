@@ -1753,3 +1753,9 @@ body.sb-mini .side-user > div:not(.savatar) { display: none; }
   align-items: center; justify-content: center; padding: 0; transition: all .15s; }
 .mf-dl:hover { color: var(--primary, #6a4cf0); border-color: var(--primary, #6a4cf0);
   transform: translateY(-1px); }
+
+/* Sidebar pinned like Gmail: fixed to the viewport, content scrolls alone */
+.sidebar { position: fixed; left: 0; top: 0; bottom: 0; height: 100vh; z-index: 200; }
+.main-col { margin-left: 240px; transition: margin-left .3s cubic-bezier(.2, .9, .3, 1); }
+body.sb-mini .main-col { margin-left: 72px; }
+@media (max-width: 900px) { .main-col { margin-left: 0; } }
