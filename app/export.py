@@ -448,10 +448,13 @@ def build_company_quotation(quotation: dict, items: list) -> str:
         ws.cell(r, 6, item.get("brand", ""))
         ws.cell(r, 8, desc_text)
         ws.cell(r, 9, item.get("hsn_code", ""))
+        # Plain computed values, not formulas — some Excel installs sit in
+        # manual-calc mode and show formula cells blank until F9.
+        amount = round(qty * price, 2)
         ws.cell(r, 10, round(price, 2))
-        ws.cell(r, 11, f"=J{r}*C{r}")
+        ws.cell(r, 11, amount)
         ws.cell(r, 12, gst_pct / 100)
-        ws.cell(r, 13, f"=L{r}*K{r}")
+        ws.cell(r, 13, round(amount * gst_pct / 100, 2))
 
         if has_boq_pricing:
             boq_price = float(item.get("boq_price") or 0)
@@ -497,15 +500,24 @@ def build_company_quotation(quotation: dict, items: list) -> str:
     grand_row = new_footer_start + 3      # template offset 3 (orig row 25)
 
     freight_amt = float(quotation.get("freight_charge") or 0)
+    freight_gst_pct = float(ws.cell(freight_row, 12).value or 0)   # template's GST% on the freight row (decimal)
+    freight_gst = round(freight_amt * freight_gst_pct, 2)
     ws.cell(freight_row, 3, 1)
     ws.cell(freight_row, 10, freight_amt)
-    ws.cell(freight_row, 11, f"=J{freight_row}*C{freight_row}")
-    ws.cell(freight_row, 13, f"=L{freight_row}*K{freight_row}")
+    ws.cell(freight_row, 11, freight_amt)
+    ws.cell(freight_row, 13, freight_gst)
 
-    ws.cell(total_row, 11, f"=SUM(K{FIRST_ITEM_ROW}:K{freight_row})")
-    ws.cell(total_row, 13, f"=SUM(M{FIRST_ITEM_ROW}:M{freight_row})")
-    ws.cell(gst_row, 11, f"=M{total_row}")
-    ws.cell(grand_row, 11, f"=K{total_row}+K{gst_row}")
+    total_amount = round(sum(
+        round(int(i.get("qty") or 0) * float(i.get("price_per_pc") or i.get("price") or 0), 2)
+        for i in items) + freight_amt, 2)
+    total_gst = round(sum(
+        round(round(int(i.get("qty") or 0) * float(i.get("price_per_pc") or i.get("price") or 0), 2)
+              * (float(i.get("gst_pct")) if i.get("gst_pct") is not None else 18.0) / 100, 2)
+        for i in items) + freight_gst, 2)
+    ws.cell(total_row, 11, total_amount)
+    ws.cell(total_row, 13, total_gst)
+    ws.cell(gst_row, 11, total_gst)
+    ws.cell(grand_row, 11, round(total_amount + total_gst, 2))
 
     if has_boq_pricing:
         # Same fix as the letterhead box: the totals block's right edge sits
