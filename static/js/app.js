@@ -1588,12 +1588,16 @@ function toggleTier(tier) {
   el.classList.toggle('active', !isSelected);
   // Inline because a stylesheet .active rule mysteriously never lands on
   // these two specific nodes (a clone of them styles fine) — engine quirk.
+  const dot = el.querySelector('.tc-dot');
   if (!isSelected) {
     el.style.setProperty('background', 'var(--accent-soft2, #efeafe)', 'important');
     el.style.setProperty('border', '1.5px solid var(--primary, #6a4cf0)', 'important');
+    if (dot) { dot.style.borderColor = 'var(--primary, #6a4cf0)';
+               dot.style.borderWidth = '5px'; dot.style.background = 'var(--card)'; }
   } else {
     el.style.removeProperty('background');
     el.style.removeProperty('border');
+    if (dot) { dot.style.borderColor = ''; dot.style.borderWidth = ''; dot.style.background = ''; }
   }
   el.classList.remove('tier-pop'); void el.offsetWidth; el.classList.add('tier-pop');
 }
