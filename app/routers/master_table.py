@@ -578,7 +578,35 @@ async def check_boq_coverage(file: UploadFile = File(...),
 
     src = [r for r in rows if (r.get("product") or "").strip()]
     if not src:
-        raise HTTPException(400, "No product rows could be read from this file.")
+        # Self-service instead of a dead end: show the admin the headers we
+        # saw so they can TEACH the right mapping and re-check — same
+        # column_mappings table the master import learns from.
+        from app.master_table import suggest_field, FIELD_LABELS
+        headers = []
+        try:
+            import pandas as _pd
+            # The tmp copy is already deleted — re-read from the upload
+            # stream itself; rewind first, name the engine explicitly since
+            # a file object carries no extension for pandas to sniff.
+            file.file.seek(0)
+            df = _pd.read_excel(
+                file.file, header=None, nrows=12,
+                engine="xlrd" if file.filename.lower().endswith(".xls") else "openpyxl")
+            best = max(range(len(df)), default=None,
+                       key=lambda i: sum(1 for v in df.iloc[i]
+                                         if isinstance(v, str) and v.strip()))
+            if best is not None:
+                for v in df.iloc[best]:
+                    if isinstance(v, str) and v.strip():
+                        sug, conf, why = suggest_field(v)
+                        headers.append({"header": v.strip(), "suggested": sug,
+                                        "label": FIELD_LABELS.get(sug) if sug else None})
+        except Exception:
+            pass
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=422, content={
+            "detail": "No product rows could be read from this file.",
+            "teachable": True, "headers": headers})
 
     extracted = [{
         "product": r.get("product", ""),

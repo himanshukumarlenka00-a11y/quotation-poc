@@ -3,6 +3,8 @@ from datetime import datetime
 import pandas as pd
 import openpyxl
 from app.images import _save_image_to_disk, _xlsx_sheet_images, _assign_images_by_span
+
+_TAUGHT = {}   # header→boq-field map, refreshed per parse from column_mappings
 from app.xls_converter import convert_xls_to_xlsx
 
 try:
@@ -101,11 +103,31 @@ def analyze_template(wb: openpyxl.Workbook) -> dict:
 
 # ── BOQ Parser ────────────────────────────────────────────────────────────────
 
+def _taught_boq_cols():
+    """Learned header→field mappings (the same Teach table the master import
+    uses), translated to this parser's column keys — so teaching a heading
+    once fixes BOQ reads too. Best-effort: an empty dict on any failure."""
+    xlate = {"product": "product", "original_model": "model_no", "brand": "brand",
+             "specification": "specification", "hsn_code": "hsn_code",
+             "gst_pct": "gst_pct", "price_inr": "price_inr",
+             "price_usd": "price_usd", "unit": "unit", "qty": "qty"}
+    try:
+        from app.db import get_db
+        conn = get_db()
+        rows = conn.execute("SELECT header_norm, field FROM column_mappings").fetchall()
+        conn.close()
+        return {r["header_norm"]: xlate[r["field"]] for r in rows if r["field"] in xlate}
+    except Exception:
+        return {}
+
+
 def parse_boq_excel(filepath: str, filename: str):
     """
     Fully dynamic parser — detects structure from the file itself.
     Returns (items, structure_dict)
     """
+    global _TAUGHT
+    _TAUGHT = _taught_boq_cols()
     items = []
     structure = {}
 
@@ -203,6 +225,10 @@ def parse_boq_excel(filepath: str, filename: str):
                              "DESCRIPTION"]) or "ITEM" in vals
             has_field = any(s in joined for s in
                             ["PRICE", "QTY", "QUANTITY", "MODEL", "AMOUNT", "RATE", "MRP"])
+            # A header an admin has TAUGHT as "product" also marks the row —
+            # that's what makes BOQ column names fixable without code changes.
+            if not has_name and any(_TAUGHT.get(v) == "product" for v in vals):
+                has_name = True
             if has_name and has_field:
                 sheet_thr = i
                 for ci_, v in enumerate(row.values):
@@ -218,6 +244,14 @@ def parse_boq_excel(filepath: str, filename: str):
             structure["table_header_row"] = sheet_thr + 1
             structure["col_map"] = {k: v+1 for k, v in sheet_col_map.items()}
 
+        # Taught headers win over the built-in guesses — an admin's explicit
+        # mapping must never lose to a substring heuristic.
+        taught_cols = {}
+        for hdr, idx in sheet_col_map.items():
+            f = _TAUGHT.get(hdr)
+            if f is not None and f not in taught_cols:
+                taught_cols[f] = idx
+
         def find_col(*names, exclude=None):
             """Find column index by matching name substring. exclude= list of substrings to avoid."""
             for n in names:
@@ -228,18 +262,22 @@ def parse_boq_excel(filepath: str, filename: str):
                         return idx
             return None
 
+        def col(key, *names, exclude=None):
+            t = taught_cols.get(key)
+            return t if t is not None else find_col(*names, exclude=exclude)
+
         ci = {
-            "product":       find_col("PRODUCT NAME", "PRODUCT", "ITEM NAME",
+            "product":       col("product", "PRODUCT NAME", "PRODUCT", "ITEM NAME",
                                       "MATERIAL DESCRIPTION", "MATERIAL DESCRI", "DESCRIPTION", "ITEM"),
             # "REQUIREMENT" catches client-specific naming like "OPM Requirement"
             # — a client's own project/company code prefixed onto "Requirement"
             # is a common pattern for a BOQ's quantity column, not just this one.
-            "qty":           find_col("TOTAL QTY", "QTY", "QUANTITY", "REQUIREMENT"),
+            "qty":           col("qty", "TOTAL QTY", "QTY", "QUANTITY", "REQUIREMENT"),
             "description":   find_col("DESCRIPTION", "DESC"),
-            "model_no":      find_col("MODEL NO", "MODEL", "ITEM CODE", "ITEM CODES"),
-            "brand":         find_col("BRAND", "MAKE"),
-            "specification": find_col("OUR SPECIFICATION", "SPECIFICATION", "SPEC"),
-            "hsn_code":      find_col("HSN"),
+            "model_no":      col("model_no", "MODEL NO", "MODEL", "ITEM CODE", "ITEM CODES"),
+            "brand":         col("brand", "BRAND", "MAKE"),
+            "specification": col("specification", "OUR SPECIFICATION", "SPECIFICATION", "SPEC"),
+            "hsn_code":      col("hsn_code", "HSN"),
             # INR price: explicitly exclude any column containing USD.
             # "AMOUNT" is a last-resort fallback — some client templates use
             # it to mean a per-unit price rather than qty×price, and only
@@ -247,10 +285,10 @@ def parse_boq_excel(filepath: str, filename: str):
             # empty means it never overrides a real price column when one
             # exists (e.g. a file with both PRICE/PC and AMOUNT columns,
             # where AMOUNT genuinely is qty×price, still uses PRICE/PC).
-            "price_inr":     find_col("PRICE/PC INR", "PRICE INR", "PRICE/PC", "PRICE", "RATE", "UNIT PRICE", "AMOUNT", exclude=["USD", "DOLLAR"]),
+            "price_inr":     col("price_inr", "PRICE/PC INR", "PRICE INR", "PRICE/PC", "PRICE", "RATE", "UNIT PRICE", "AMOUNT", exclude=["USD", "DOLLAR"]),
             # USD price: must contain USD or DOLLAR
-            "price_usd":     find_col("PRICE/PC USD", "UNIT PRICE USD", "PRICE USD", "AMOUNT USD", "TOTAL USD"),
-            "gst_pct":       find_col("GST%", "GST"),
+            "price_usd":     col("price_usd", "PRICE/PC USD", "UNIT PRICE USD", "PRICE USD", "AMOUNT USD", "TOTAL USD"),
+            "gst_pct":       col("gst_pct", "GST%", "GST"),
         }
 
         if ci["product"] is None:

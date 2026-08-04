@@ -2079,6 +2079,7 @@ async function checkBoqCoverage() {
   try {
     const res = await fetch(`${API}/api/master-table/check-boq`, { method: 'POST', body: fd });
     const d = await res.json();
+    if (res.status === 422 && d.teachable) { await renderBoqTeach(d, out); btn.disabled = false; btn.innerHTML = '🔍 Check what we stock'; return; }
     if (!res.ok) throw new Error(apiErr(d, 'Coverage check failed'));
     boqMissingItems = d.missing || [];
     renderBoqCoverage(d);
@@ -2087,6 +2088,49 @@ async function checkBoqCoverage() {
   }
   btn.disabled = false;
   btn.innerHTML = '🔍 Check what we stock';
+}
+
+// The file's columns weren't recognised — let the admin teach them right
+// here, then re-check. Teaching writes to the shared column_mappings table.
+async function renderBoqTeach(d, out) {
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  if (!isAdmin) {
+    out.innerHTML = `<div class="alert alert-error">${d.detail} An admin can teach this file's column names.</div>`;
+    return;
+  }
+  await ensureMappableFields();
+  const opts = f => mappableFields.map(x =>
+    `<option value="${x.field}"${x.field === f ? ' selected' : ''}>${x.label}</option>`).join('');
+  const rows = (d.headers || []).map((h, i) => `
+    <tr id="bteach-${i}">
+      <td class="colmap-head">${escHtml(h.header)}</td>
+      <td><select id="bsel-${i}" class="colmap-select">
+        <option value="">— ignore —</option>${opts(h.suggested)}</select></td>
+      <td><button class="btn btn-sm btn-primary"
+        onclick="teachBoqCol(${i}, '${String(h.header).replace(/'/g, "\\'")}')">Teach</button></td>
+    </tr>`).join('');
+  out.innerHTML = `
+    <div class="alert alert-error">${d.detail}</div>
+    <div class="colmap">
+      <div class="colmap-bar">These are the column headings the file uses — tell the
+        system what each one means, then re-check.</div>
+      <table><thead><tr><th>Heading in file</th><th>Means</th><th></th></tr></thead>
+      <tbody>${rows}</tbody></table>
+      <button class="btn btn-sm btn-primary" style="margin-top:10px"
+        onclick="checkBoqCoverage()">↻ Re-check this file</button>
+    </div>`;
+}
+
+async function teachBoqCol(i, header) {
+  const sel = document.getElementById(`bsel-${i}`);
+  const row = document.getElementById(`bteach-${i}`);
+  if (!sel || !row) return;
+  const res = await fetch(`${API}/api/master-table/confirm-mapping`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ header, field: sel.value })
+  });
+  row.style.opacity = res.ok ? '.55' : '1';
+  if (!res.ok) alert('Could not save that mapping.');
 }
 
 function renderBoqCoverage(d) {

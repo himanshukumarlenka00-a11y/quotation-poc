@@ -80,6 +80,10 @@ def _smart_generate(req: GenerateRequest, user: dict):
         )
         raw = resp.choices[0].message.content.strip()
         raw = re.sub(r"```[a-z]*\n?", "", raw).strip().rstrip("```")
+        # The model sometimes wraps or trails the JSON with prose — parse the
+        # outermost {...} slice instead of failing on the decoration.
+        if "{" in raw:
+            raw = raw[raw.find("{"):raw.rfind("}") + 1]
         extracted = json.loads(raw).get("items", [])
     except Exception as e:
         # Surface Groq rate limits as a clear, retryable 429 instead of a 500
@@ -179,8 +183,27 @@ def _parse_items_deterministically(prompt):
     of an API call.
     """
     p = (prompt or "").strip()
-    if not p or len(p) > 400:
+    if not p or len(p) > 1000:
         return None
+
+    # Pasted-list shape: one product per LINE with the qty at the END —
+    # "MIRROR KORIKO BOSTON SHAKER [WBS001-SS]  4". Common when copying
+    # straight out of a client's sheet. Model codes in the text make the
+    # matcher's model-number scoring kick in, so these lines never need
+    # the LLM. All-or-nothing: one non-conforming line sends the whole
+    # prompt to the model rather than risking wrong quantities.
+    lines = [l.strip().strip('"') for l in p.splitlines() if l.strip().strip('"')]
+    if len(lines) >= 2:
+        items = []
+        for line in lines:
+            m = re.match(r"^(.{3,90}?)[\s\-–]+(\d{1,5})$", line)
+            if not m or not re.search(r"[A-Za-z]", m.group(1)):
+                items = None
+                break
+            items.append({"product": m.group(1).strip(" .-"), "qty": int(m.group(2))})
+        if items:
+            return items
+
     if _PROSE_MARKERS.search(p):
         return None
 

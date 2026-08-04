@@ -49,6 +49,9 @@ COLUMN_ALIASES = {
     "category":         ["CATEGERY", "CATEGORY"],
     "unit":             ["UNIT"],
     "product_group":    ["GROUP"],
+    # Quantity exists only in client BOQ files, but keeping it teachable here
+    # lets the SAME Teach table fix BOQ column names — see parser._taught_boq_cols.
+    "qty":              ["QTY", "QUANTITY", "TOTAL QTY"],
 }
 
 
@@ -302,6 +305,7 @@ FIELD_LABELS = {
     "hsn_code": "HSN code", "gst_pct": "GST %", "original_brand": "Original brand",
     "mrp": "MRP / list price", "cost": "Purchase cost", "cost_currency": "Cost currency",
     "category": "Category", "unit": "Unit (Nos/Pcs)", "product_group": "Product group",
+    "qty": "Quantity (client BOQs)",
 }
 
 # Words that hint at a field when the header is worded unfamiliarly. Checked

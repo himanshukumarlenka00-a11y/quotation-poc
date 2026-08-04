@@ -38,7 +38,7 @@ def _bootstrap_admin():
                   f"  email:    {email}\n  password: {password}\n"
                   f"Log in and change this, or set ADMIN_EMAIL/ADMIN_PASSWORD "
                   f"in .env to control it directly.\n{'='*60}\n")
-    conn.close()
+    conn.close()  
 
 _bootstrap_admin()
 
