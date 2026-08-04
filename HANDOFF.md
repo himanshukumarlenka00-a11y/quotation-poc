@@ -1,4 +1,33 @@
-# HANDOFF — quotation-poc session state (2026-08-02)
+# HANDOFF — quotation-poc session state (2026-08-04)
+
+## LIVE IN PRODUCTION (see memory: ubuntu-server-deployment)
+Server melange@192.168.0.146 (crm-server). App at :8000 + HTTPS :8443
+(nginx, self-signed; cert trusted on user's PC). HEAD 45cd3e7, cache v84.
+Deploy flow: edit dev → verify → commit → scp files → restart quotegen →
+ASK USER BEFORE EVERY SERVER-CHANGING COMMAND. Report est. tokens after
+each task. RTK proxy corrupts piped grep output — use python for pipes.
+
+## Built 2026-08-03/04 (all deployed)
+- Sales person picker (region-first, auto-select single-region); editable
+  Bill & Ship To (bill_to, exports to A10); export sales block at M11-13.
+- Optional tiers: none selected = single plain PRICE column (data.tiers).
+- Teachable BOQ columns (shared column_mappings; qty teachable; 422 +
+  teach UI on coverage page when a BOQ can't be read).
+- Generate box: pasted lists PRODUCT [MODEL] [qty] parse without LLM
+  (qty optional → 1); From PDF (pypdf) + From Excel fill buttons;
+  LLM extraction max_tokens 1200 + tolerant JSON slicing.
+- .xls images on Linux via LibreOffice convert (installed on server);
+  CRITICAL: parser reads VALUES from ORIGINAL file, conversion is
+  images-only (formula columns lost cached values otherwise — BARKRAFT
+  1100/1100 priced + 1077 images after re-import). Import result always
+  reports priced count (canary).
+- Per-catalogue download of original file (admin, audit-logged).
+- Gmail sidebar: hamburger above Dashboard, fixed position, mini icon
+  rail (.slbl spans — never font-size:0), main-col margin-left.
+- Add-to-quote = sleek pill bar (no heading/helper prose).
+- Never-save-empty-quotations guard on all three generate paths.
+
+# Older state (2026-08-02)
 
 Read this first in a new session. Cross-session rules also live in
 `C:\Users\itzan\.claude\projects\E--rtk-bin\memory\` (auto-loaded).
