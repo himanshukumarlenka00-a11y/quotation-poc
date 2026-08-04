@@ -426,6 +426,21 @@ def bulk_set_tier_pricing(filename: str, req: BulkTierPricingRequest,
     return {"message": msg, "updated": updated, "skipped": skipped}
 
 
+@router.get("/api/master-table/download-file/{filename:path}")
+def download_master_file(filename: str, admin: dict = Depends(require_role("admin"))):
+    """Download the original uploaded catalogue file. Admin-only — source
+    files carry purchase costs. Catalogues created from a BOQ (add-missing)
+    have no source file to download."""
+    from fastapi.responses import FileResponse
+    dest = (MASTER_UPLOADS_DIR / filename).resolve()
+    if MASTER_UPLOADS_DIR.resolve() not in dest.parents:
+        raise HTTPException(400, "Invalid filename.")
+    if not dest.is_file():
+        raise HTTPException(404, "No source file is stored for this catalogue.")
+    log_action(admin, "download_master_file", target=filename)
+    return FileResponse(str(dest), filename=filename)
+
+
 @router.post("/api/detect-file")
 async def detect_file(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
     """What kind of workbook is this? Powers the dashboard's Smart Import

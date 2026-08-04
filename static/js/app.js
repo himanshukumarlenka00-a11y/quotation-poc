@@ -1430,7 +1430,12 @@ function renderMasterProducts(items, forceExpanded, searchTerm) {
           <strong>${fname}</strong>
           <span class="mf-count">${prods.length} products</span>
         </div>
-        <span id="master-arrow-${gIdx}" class="master-arrow${wasExpanded ? ' open' : ''}">▶</span>
+        <span style="display:flex;align-items:center;gap:8px;">
+          ${isAdminView ? `<button class="mf-dl" title="Download the original file"
+            onclick="event.stopPropagation();window.open(API+'/api/master-table/download-file/'+encodeURIComponent('${fnameEsc}'))">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/></svg></button>` : ''}
+          <span id="master-arrow-${gIdx}" class="master-arrow${wasExpanded ? ' open' : ''}">▶</span>
+        </span>
       </div>
       <div id="master-folder-${gIdx}" class="master-folder-body${wasExpanded ? ' open' : ''}">
         <div class="master-folder-content">

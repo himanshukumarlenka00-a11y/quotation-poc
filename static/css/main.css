@@ -1746,3 +1746,9 @@ body.sb-mini .slogo > div:last-child { display: none; }
 body.sb-mini .sb-toggle { margin: 0 auto 10px; }
 body.sb-mini .side-user { justify-content: center; padding: 8px 4px; }
 body.sb-mini .side-user > div:not(.savatar) { display: none; }
+/* Per-catalogue download button in the folder header */
+.mf-dl { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--card); color: var(--muted); cursor: pointer; display: inline-flex;
+  align-items: center; justify-content: center; padding: 0; transition: all .15s; }
+.mf-dl:hover { color: var(--primary, #6a4cf0); border-color: var(--primary, #6a4cf0);
+  transform: translateY(-1px); }
