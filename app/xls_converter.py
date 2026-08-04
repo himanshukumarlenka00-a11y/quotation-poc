@@ -25,9 +25,39 @@ _lock = threading.Lock()  # serialize COM automation — one Excel instance at a
 
 
 def convert_xls_to_xlsx(src_path: str, dst_path: str) -> bool:
-    """Convert src_path (.xls) to dst_path (.xlsx) using Excel COM automation.
-    Returns True on success, False if Excel/COM isn't available or the
-    conversion fails for any reason — callers should fall back gracefully."""
+    """Convert src_path (.xls) to dst_path (.xlsx). Tries real Excel (COM,
+    Windows dev machines) first, then LibreOffice headless (the Linux
+    production server). Returns True on success, False when neither route
+    is available — callers fall back to the raw .xls parser."""
+    return _convert_via_excel(src_path, dst_path) or _convert_via_soffice(src_path, dst_path)
+
+
+def _convert_via_soffice(src_path: str, dst_path: str) -> bool:
+    """LibreOffice does the same open-and-repair trick as Excel — the Linux
+    answer to .xls files whose image positions our raw parser can't read."""
+    import shutil, subprocess, tempfile, os
+    soffice = shutil.which("soffice") or shutil.which("libreoffice")
+    if not soffice:
+        return False
+    with _lock:                      # one office process at a time, same as COM
+        try:
+            with tempfile.TemporaryDirectory() as outdir:
+                subprocess.run(
+                    [soffice, "--headless", "--convert-to", "xlsx",
+                     "--outdir", outdir, src_path],
+                    check=True, capture_output=True, timeout=120)
+                produced = os.path.join(
+                    outdir, os.path.splitext(os.path.basename(src_path))[0] + ".xlsx")
+                if not os.path.isfile(produced):
+                    return False
+                shutil.move(produced, dst_path)
+                return True
+        except Exception:
+            return False
+
+
+def _convert_via_excel(src_path: str, dst_path: str) -> bool:
+    """Convert via Excel COM automation (Windows with Excel installed only)."""
     try:
         import win32com.client as wc
         import pythoncom
