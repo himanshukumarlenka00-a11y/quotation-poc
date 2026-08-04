@@ -2526,16 +2526,23 @@ function findProduct(idx) {
   const panel = document.createElement('tr');
   panel.className = 'switch-panel';
   panel.innerHTML = `<td colspan="${row.cells.length}">
-    <div class="switch-panel-inner">
-      <div class="switch-panel-title">Find in catalogue — "${escHtml(item.product || '')}"</div>
-      <input type="text" id="find-input-${idx}" placeholder="Type a product, brand or model no…"
-        style="width:min(360px,90%);margin:8px 0;" oninput="findProductSearch(${idx})"
-        onkeydown="stopEnterSubmit(event)">
-      <div class="switch-cards" id="find-results-${idx}"></div>
-      <button onclick="document.querySelectorAll('.switch-panel').forEach(p=>p.remove())"
-        style="margin-top:10px;background:none;border:none;cursor:pointer;font-size:var(--fs-sm);color:var(--muted);">
-        ✕ Close
-      </button>
+    <div class="switch-panel-inner find-panel">
+      <div class="find-head">
+        <span class="find-ico"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.4" y1="16.4" x2="21" y2="21"/></svg></span>
+        <div class="find-txt">
+          <div class="find-title">Find in catalogue</div>
+          <div class="find-sub">Replacing: ${escHtml(item.product || '')}</div>
+        </div>
+        <button class="find-close" title="Close" onclick="document.querySelectorAll('.switch-panel').forEach(p=>p.remove())">✕</button>
+      </div>
+      <div class="find-search">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.4" y1="16.4" x2="21" y2="21"/></svg>
+        <input type="text" id="find-input-${idx}" placeholder="Search by product, brand or model no…"
+          oninput="findProductSearch(${idx})" onkeydown="stopEnterSubmit(event)">
+      </div>
+      <div class="switch-cards" id="find-results-${idx}">
+        <p class="find-empty">Start typing — matching products appear here; click one to fill this row.</p>
+      </div>
     </div>
   </td>`;
   row.insertAdjacentElement('afterend', panel);
@@ -2549,14 +2556,17 @@ function findProductSearch(idx) {
     const box = document.getElementById(`find-results-${idx}`);
     if (!inp || !box) return;
     const term = inp.value.trim();
-    if (term.length < 2) { box.innerHTML = ''; return; }
+    if (term.length < 2) {
+      box.innerHTML = '<p class="find-empty">Start typing — matching products appear here; click one to fill this row.</p>';
+      return;
+    }
     const r = await fetch(`${API}/api/master-table/page?q=${encodeURIComponent(term)}&limit=12`);
     const d = await r.json();
     const cur = document.getElementById(`find-input-${idx}`);
     if (!cur || cur.value.trim() !== term) return;   // superseded by a newer keystroke
     _findResults = d.items || [];
     if (!_findResults.length) {
-      box.innerHTML = `<p style="color:var(--muted);font-size:var(--fs-sm);">No match — try fewer words.</p>`;
+      box.innerHTML = `<p class="find-empty">No match for “${escHtml(term)}” — try fewer or different words.</p>`;
       return;
     }
     box.innerHTML = _findResults.map((v, ri) => {

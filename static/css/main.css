@@ -1668,6 +1668,28 @@ html[data-theme=dark] .mlg-sweep { background: rgba(255,255,255,.14); }
 .quot-doc td input { width: 78px; text-align: right; padding: 4px 6px !important;
   border-radius: 6px; }
 .quot-doc .table-wrap, .quot-wrap { overflow-x: auto; }
+/* Find-in-catalogue panel (placeholder rows) */
+.find-panel { text-align: left; }
+.find-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.find-ico { width: 34px; height: 34px; flex-shrink: 0; border-radius: 9px;
+  display: inline-flex; align-items: center; justify-content: center; color: var(--primary);
+  background: linear-gradient(135deg, rgba(106,76,240,.12), rgba(232,160,32,.14)); }
+.find-txt { min-width: 0; }
+.find-title { font-weight: 700; color: var(--primary); font-size: var(--fs-md); }
+.find-sub { font-size: var(--fs-sm); color: var(--muted); margin-top: 1px;
+  max-width: 640px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.find-close { margin-left: auto; background: none; border: none; cursor: pointer;
+  color: var(--muted); font-size: var(--fs-md); padding: 4px 9px; border-radius: 7px; }
+.find-close:hover { background: var(--card-soft); color: var(--text); }
+.find-search { display: flex; align-items: center; gap: 9px; max-width: 460px;
+  background: var(--card); border: 1.5px solid var(--border); border-radius: 999px;
+  padding: 9px 16px; margin-bottom: 12px; transition: border-color .2s, box-shadow .2s; }
+.find-search:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(106,76,240,.14); }
+.find-search svg { flex: none; color: var(--muted); }
+.find-search input { flex: 1; border: none !important; outline: none; background: transparent;
+  font-size: var(--fs-base); color: var(--text); padding: 0; }
+.find-empty { color: var(--muted); font-size: var(--fs-sm); padding: 2px; }
+
 /* Amount / GST% / GST Val: keep the money figures off the neighbouring
    column — never let them wrap or butt up against the GST input box. */
 #items-table .amount-cell, #items-table .gst-val-cell { min-width: 96px; white-space: nowrap; padding-right: 18px; }
