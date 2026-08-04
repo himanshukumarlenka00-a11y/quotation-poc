@@ -103,8 +103,9 @@ def _finish_smart_generate(req, user, extracted, groq_client):
     conn = get_db()
     result_items, not_found = _resolve_master_matches(conn, extracted, req.catalogs, req.tiers, groq_client, prompt=req.prompt)
 
-    if not result_items:
-        # Nothing matched — an empty quotation is clutter, not a record.
+    if all(i.get("not_in_catalog") for i in result_items):
+        # Nothing matched (placeholders don't count) — an empty quotation is
+        # clutter, not a record.
         conn.close()
         return {"ref_no": None, "client_name": req.client_name,
                 "items": [], "not_found": not_found, "unsaved": True}
@@ -599,6 +600,21 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
     result_items = []
     not_found    = []
 
+    def _add_placeholder(label, qty):
+        # Not-in-catalogue rows keep their place in the quote (name + qty from
+        # the client, everything else blank) so the sequence order survives —
+        # the user fills the price inline or swaps the product later.
+        result_items.append({
+            "sl_no": len(result_items) + 1, "product": label, "qty": qty,
+            "description": "", "model_no": "", "brand": "", "specification": "",
+            "hsn_code": "", "price_per_pc": 0, "price_currency": "INR",
+            "cost": 0, "gst_pct": 18.0, "image_path": "",
+            "tiers": [t for t in (tiers_req or ["3star"]) if t in ("3star", "4star")] or ["3star"],
+            "price_3star": 0, "price_3star_usd": 0, "price_4star": 0, "price_4star_usd": 0,
+            "_variants": [], "_requested": label, "requested": label,
+            "matched_by": "not_found", "not_in_catalog": True, "boq_price": 0,
+        })
+
     for item in extracted:
         original_kw = item.get("product", "").strip()
         # BOQ-file rows can supply a richer search_term (product + model_no +
@@ -667,6 +683,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
 
         if not variants:
             not_found.append(original_kw)
+            _add_placeholder(original_kw, qty)
             continue
 
         tiers = [t for t in (tiers_req or ["3star"]) if t in ("3star", "4star")] or ["3star"]
@@ -686,6 +703,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                     f"under ₹{pmax:g}" if pmax is not None else None]))
                 not_found.append(f"{original_kw} ({cons}"
                                  + (f" — closest is ₹{closest:g}" if closest else "") + ")")
+                _add_placeholder(original_kw, qty)
                 continue
             variants = priced
 
@@ -846,8 +864,9 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
     conn = get_db()
     result_items, not_found = _resolve_master_matches(conn, extracted, [], tiers, groq_client, prompt="")
 
-    if not result_items:
-        # Nothing in the BOQ matched — don't save an empty quotation.
+    if all(i.get("not_in_catalog") for i in result_items):
+        # Nothing in the BOQ matched (placeholders don't count) — don't save
+        # an empty quotation.
         conn.close()
         return {"ref_no": None, "client_name": client_name, "items": [],
                 "not_found": not_found, "unsaved": True}
