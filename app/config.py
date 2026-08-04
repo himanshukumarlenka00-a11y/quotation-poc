@@ -37,6 +37,11 @@ ALLOWED_ORIGINS = [o.strip() for o in os.environ.get(
 
 GROQ_API_KEY_DEFAULT = os.environ.get("GROQ_API_KEY", "")
 
+# Fallback LLM provider — used only when Groq answers 429 (rate limit).
+# Key lives in /etc/quotegen/env on the server, never in the repo.
+CEREBRAS_API_KEY = os.environ.get("CEREBRAS_API_KEY", "")
+CEREBRAS_MODEL = os.environ.get("CEREBRAS_MODEL", "gpt-oss-120b")
+
 # Self-registration is only allowed for company email addresses — keeps
 # random visitors from creating themselves an account if this is ever
 # reachable off the internal network. Configurable via env in case the

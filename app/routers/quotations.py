@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Request, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from groq import Groq
-from app.config import limiter, GROQ_API_KEY_DEFAULT
+from app.config import limiter, GROQ_API_KEY_DEFAULT, CEREBRAS_API_KEY, CEREBRAS_MODEL
 from app.db import get_db
 from app.auth import get_current_user, require_role, _check_quote_access, log_action
 from app.matching import get_boq_context, get_feedback_context, generate_ref_no, get_latest_template
@@ -42,6 +42,43 @@ def smart_generate(request: Request, req: GenerateRequest, user: dict = Depends(
         import traceback
         raise HTTPException(500, f"{type(e).__name__}: {e}\n{traceback.format_exc()[-600:]}")
 
+def _llm_chat(groq_client, messages, max_tokens, temperature):
+    """One LLM chat call: Groq first; if Groq is rate-limited and a Cerebras
+    key is configured, the same prompt goes to Cerebras (OpenAI-compatible,
+    plain stdlib HTTP — no extra dependency). Returns the content string.
+    Cerebras gets a higher token budget because gpt-oss spends some of it on
+    reasoning before the answer."""
+    try:
+        r = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile", messages=messages,
+            max_tokens=max_tokens, temperature=temperature)
+        return r.choices[0].message.content
+    except Exception as e:
+        rate_limited = "429" in str(e) or "rate limit" in str(e).lower()
+        if not (rate_limited and CEREBRAS_API_KEY):
+            raise
+        try:
+            import urllib.request
+            body = json.dumps({"model": CEREBRAS_MODEL, "messages": messages,
+                               "max_tokens": max(max_tokens * 4, 3000),
+                               "temperature": temperature}).encode()
+            http_req = urllib.request.Request(
+                "https://api.cerebras.ai/v1/chat/completions", data=body,
+                headers={"Content-Type": "application/json",
+                         "Authorization": f"Bearer {CEREBRAS_API_KEY}",
+                         # Their edge blocks the default Python UA with a 403
+                         "User-Agent": "quotegen/1.0"})
+            with urllib.request.urlopen(http_req, timeout=60) as resp:
+                data = json.loads(resp.read().decode())
+            print("LLM fallback: Groq 429 -> Cerebras answered")
+            return data["choices"][0]["message"]["content"]
+        except Exception as ce:
+            # Fallback failing must not worsen the error — surface the
+            # original Groq rate limit (clean, retryable) instead.
+            print(f"LLM fallback failed (non-fatal): {ce}")
+            raise e
+
+
 def _smart_generate(req: GenerateRequest, user: dict):
     api_key = os.environ.get("GROQ_API_KEY", "") or GROQ_API_KEY_DEFAULT
     if not api_key:
@@ -58,8 +95,7 @@ def _smart_generate(req: GenerateRequest, user: dict):
         return _finish_smart_generate(req, user, extracted, groq_client)
 
     try:
-        resp = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+        raw = _llm_chat(groq_client,
             messages=[
                 {"role": "system", "content":
                  "Extract product names and quantities from the customer requirement. "
@@ -78,7 +114,7 @@ def _smart_generate(req: GenerateRequest, user: dict):
             ],
             max_tokens=1200, temperature=0.1   # long pasted lists overflowed 400 mid-JSON
         )
-        raw = resp.choices[0].message.content.strip()
+        raw = (raw or "").strip()
         raw = re.sub(r"```[a-z]*\n?", "", raw).strip().rstrip("```")
         # The model sometimes wraps or trails the JSON with prose — parse the
         # outermost {...} slice instead of failing on the decoration.
@@ -197,12 +233,20 @@ def _parse_items_deterministically(prompt):
     # the LLM. All-or-nothing: one non-conforming line sends the whole
     # prompt to the model rather than risking wrong quantities.
     lines = [l.strip().strip('"') for l in p.splitlines() if l.strip().strip('"')]
-    if len(lines) >= 2:
+    # A single line qualifies too when it carries a bracketed model code —
+    # "PRODUCT [WCCE001-SS] 5" is unambiguously a list row, and sending it to
+    # the LLM burns quota to learn nothing (today's 429s came from exactly
+    # this shape).
+    if len(lines) >= 2 or (len(lines) == 1 and re.search(r"\[[^\]\[]+\]", lines[0])):
         items = []
         for line in lines:
             # Trailing qty is optional — a bare product line means qty 1.
-            # A line reading like a sentence sends the prompt to the LLM.
-            if len(line) > 90 or _PROSE_MARKERS.search(line):
+            # A line reading like a sentence sends the prompt to the LLM —
+            # unless it carries a bracketed model code, which outranks any
+            # prose word (product names legitimately contain "with", "for
+            # the", etc.: "caddy with 6 holders [GC002]").
+            if len(line) > 90 or (_PROSE_MARKERS.search(line)
+                                  and not re.search(r"\[[^\]\[]+\]", line)):
                 items = None
                 break
             m = re.match(r"^(.{3,90}?)(?:[\s\-–]+(\d{1,5}))?$", line)
@@ -518,7 +562,16 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         term = (it.get("product") or "").strip()
         if term:
             det_map[term.lower()] = deterministic_match(term)
-    unresolved = [it for it in extracted if not det_map.get((it.get("product") or "").strip().lower())]
+    # Items carrying an explicit model number skip the semantic call — the
+    # model-number gate below refuses lookalike substitutes anyway, so asking
+    # the LLM for one would burn quota to produce a rejected answer.
+    def _has_model(it):
+        if (it.get("model_no") or "").strip():
+            return True
+        return bool(re.search(r"\[[^\]\[]*\d[^\]\[]*\]", it.get("product") or ""))
+    unresolved = [it for it in extracted
+                  if not det_map.get((it.get("product") or "").strip().lower())
+                  and not _has_model(it)]
 
     # Step 2b: LLM semantic mapping — only for items deterministic match missed
     def _shortlist(terms, pool, per_term=12, cap=70):
@@ -567,8 +620,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 candidates = []
             items_str    = ", ".join([f"{i['product']} (qty:{i.get('qty',1)})" for i in batch])
             products_str = "\n".join(candidates)
-            sem_resp = candidates and groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+            sem_resp = candidates and _llm_chat(groq_client,
                 messages=[
                     {"role": "system", "content":
                      "You are a hotel supply product matching assistant. "
@@ -586,7 +638,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 ],
                 max_tokens=500, temperature=0.1
             )
-            sem_raw = sem_resp.choices[0].message.content.strip() if sem_resp else "{}"
+            sem_raw = sem_resp.strip() if sem_resp else "{}"
             sem_raw = re.sub(r"```[a-z]*\n?", "", sem_raw).strip().rstrip("```")
             sem_data = json.loads(sem_raw)
             for m in sem_data.get("mappings", []):
