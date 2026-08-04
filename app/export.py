@@ -430,23 +430,25 @@ def build_company_quotation(quotation: dict, items: list) -> str:
         gst_pct = float(item.get("gst_pct")) if item.get("gst_pct") is not None else 18.0
 
         spec_text = (item.get("specification") or "").replace("\\n", "\n")
-        desc_text = item.get("description") or ""
+        # DESCRIPTION (col D) carries the client's own wording for the item —
+        # the phrase they asked for — not a mirror of the master-table spec.
+        desc_text = item.get("requested") or item.get("description") or ""
 
-        # Row height must fit whichever of spec/description wraps to more
+        # Row height must fit whichever of description/spec wraps to more
         # lines in its (much narrower) column — a fixed height clips long
         # text instead of growing to show it.
-        text_lines = max(_estimate_wrapped_lines(spec_text, spec_col_width),
-                          _estimate_wrapped_lines(desc_text, desc_col_width))
+        text_lines = max(_estimate_wrapped_lines(desc_text, spec_col_width),
+                          _estimate_wrapped_lines(spec_text, desc_col_width))
         row_height = max(item_row_height, min(text_lines * LINE_HEIGHT_PT + ROW_PADDING_PT, MAX_ROW_HEIGHT_PT))
         ws.row_dimensions[r].height = row_height
 
         ws.cell(r, 1, idx + 1)
         ws.cell(r, 2, item.get("product", ""))
         ws.cell(r, 3, qty)
-        ws.cell(r, 4, spec_text)
+        ws.cell(r, 4, desc_text)
         ws.cell(r, 5, item.get("model_no", ""))
         ws.cell(r, 6, item.get("brand", ""))
-        ws.cell(r, 8, desc_text)
+        ws.cell(r, 8, spec_text)
         ws.cell(r, 9, item.get("hsn_code", ""))
         # Plain computed values, not formulas — some Excel installs sit in
         # manual-calc mode and show formula cells blank until F9.
