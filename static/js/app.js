@@ -756,22 +756,23 @@ if (localStorage.getItem('sb-mini') === '1') document.body.classList.add('sb-min
 // Icon-rail tooltips: each nav item's own label, shown on hover when collapsed.
 document.querySelectorAll('.snav').forEach(n => n.title = n.textContent.trim());
 
-// Fill the requirement box from a text PDF — user reviews, then generates.
-async function fillFromPdf(file) {
+// Fill the requirement box from a PDF or Excel — user reviews, then generates.
+function fillFromPdf(file) { return fillFromFile(file, 'pdf'); }
+async function fillFromFile(file, kind) {
   if (!file) return;
   const ta = document.getElementById('req-prompt');
   const st = document.getElementById('gen-status');
   st.innerHTML = `<div class="alert alert-info">Reading '${escHtml(file.name)}'…</div>`;
   try {
     const fd = new FormData(); fd.append('file', file);
-    const res = await fetch(`${API}/api/extract-pdf`, { method: 'POST', body: fd });
+    const res = await fetch(`${API}/api/extract-${kind}`, { method: 'POST', body: fd });
     const d = await res.json();
     if (!res.ok) { st.innerHTML = `<div class="alert alert-error">${apiErr(d)}</div>`; return; }
     let text = (d.lines || []).join('\n');
     const cut = text.length > 1000;
     if (cut) text = text.slice(0, 1000);
     ta.value = text; updateReqCount(); ta.focus();
-    st.innerHTML = `<div class="alert alert-success">Read ${d.lines.length} line(s) from the PDF —
+    st.innerHTML = `<div class="alert alert-success">Read ${d.lines.length} line(s) from the file —
       check the list, then press Generate.${cut ? ' ⚠️ Trimmed to the first 1000 characters.' : ''}</div>`;
   } catch (e) {
     st.innerHTML = `<div class="alert alert-error">${e.message}</div>`;

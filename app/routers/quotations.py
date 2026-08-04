@@ -959,6 +959,41 @@ async def extract_pdf(file: UploadFile = File(...), user: dict = Depends(get_cur
     return {"lines": lines}
 
 
+@router.post("/api/extract-excel")
+async def extract_excel(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    """Turn an Excel requirement sheet into text lines for the requirement
+    box — same parser the BOQ flows use, so taught columns apply here too."""
+    if not (file.filename or "").lower().endswith((".xls", ".xlsx")):
+        raise HTTPException(400, "Only .xls/.xlsx files are supported here.")
+    from app.parser import parse_boq_excel
+    suffix = ".xlsx" if file.filename.lower().endswith(".xlsx") else ".xls"
+    fd, tmp = tempfile.mkstemp(suffix=suffix)
+    os.close(fd)
+    try:
+        with open(tmp, "wb") as f:
+            f.write(await file.read())
+        rows, _ = parse_boq_excel(tmp, file.filename)
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+    lines = []
+    for r in rows:
+        prod = (r.get("product") or "").strip()
+        if not prod:
+            continue
+        model = (r.get("model_no") or "").strip()
+        if model and model.lower() not in prod.lower():
+            prod += f" [{model}]"
+        qty = int(r.get("qty") or 1)
+        lines.append(f"{prod} {qty}")
+    if not lines:
+        raise HTTPException(422, "No product rows could be read — check the sheet's "
+                                 "column headings (they can be taught on the BOQ Coverage page).")
+    return {"lines": lines}
+
+
 @router.get("/api/sales-persons")
 def list_sales_persons(user: dict = Depends(get_current_user)):
     conn = get_db()
