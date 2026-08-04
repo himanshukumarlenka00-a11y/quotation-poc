@@ -2369,7 +2369,9 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing) {
        onchange="setItemField(${idx},'${f}',this.value)" style="width:${w}px;font-size:var(--fs-sm)">`;
 
   return `<tr data-idx="${idx}"${ph ? ' style="background:rgba(232,160,32,.07)"' : ''}>
-    <td style="text-align:center;">${item.sl_no||idx+1}</td>
+    <td style="text-align:center;white-space:nowrap;"><span class="drag-h" title="Drag to reorder"
+      style="cursor:grab;color:var(--muted);user-select:none;letter-spacing:1px;"
+      onmousedown="this.closest('tr').draggable=true">⠿</span> ${item.sl_no||idx+1}</td>
     <td style="width:96px;text-align:center;">${imgCell}</td>
     <td><strong>${item.product||''}</strong>${switchBtn}</td>
     <td><input type="number" class="qty-input" value="${qty}" onchange="recalcRow(${idx})" style="width:60px"></td>
@@ -2398,6 +2400,38 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing) {
     <td class="gst-val-cell num">₹${fmt(gstVal)}</td>
     <td><button class="btn btn-sm btn-danger" onclick="removeRow(${idx})">✕</button></td>
   </tr>`;
+}
+
+// Drag-to-reorder: a row only becomes draggable on mousedown over its ⠿
+// handle (so text/inputs in the row still select normally). Drop moves the
+// item, renumbers SL and silently saves the new order.
+let _dragFrom = null;
+function initRowDrag() {
+  const tb = document.getElementById('items-body');
+  if (!tb) return;
+  tb.querySelectorAll('tr[data-idx]').forEach(tr => {
+    tr.addEventListener('dragstart', () => { _dragFrom = +tr.dataset.idx; tr.style.opacity = '.4'; });
+    tr.addEventListener('dragend', () => {
+      tr.style.opacity = ''; tr.draggable = false;
+      tb.querySelectorAll('tr[data-idx]').forEach(t => t.style.outline = '');
+    });
+    tr.addEventListener('dragover', e => {
+      e.preventDefault();
+      tr.style.outline = '2px solid var(--primary)'; tr.style.outlineOffset = '-2px';
+    });
+    tr.addEventListener('dragleave', () => { tr.style.outline = ''; });
+    tr.addEventListener('drop', e => {
+      e.preventDefault();
+      const to = +tr.dataset.idx;
+      if (_dragFrom === null || _dragFrom === to || !currentQuotation) return;
+      const its = currentQuotation.items;
+      its.splice(to, 0, its.splice(_dragFrom, 1)[0]);
+      its.forEach((it, i) => it.sl_no = i + 1);
+      _dragFrom = null;
+      renderResult(currentQuotation);
+      saveEdits(true);
+    });
+  });
 }
 
 // Placeholder rows: write a hand-typed field straight onto the item.
@@ -2585,6 +2619,7 @@ function renderResult(q) {
 
   document.getElementById('items-body').innerHTML = html;
   document.getElementById('items-foot').innerHTML = '';
+  initRowDrag();
 
   // Update grand total
   const allInrGrand = items.reduce((s,i) => s+(i._amtInr||0)+(i._gstVal||0), 0);
