@@ -2360,15 +2360,24 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing) {
          <input type="file" accept="image/*" style="display:none" onchange="handleRowImage(${idx},this)">
        </label>`;
 
-  return `<tr data-idx="${idx}">
+  // Not-in-catalogue placeholder: the details the master table would have
+  // supplied are typed in by hand instead — each input writes straight back
+  // onto the item, so Save Edits persists them like any price/qty change.
+  const ph = !!item.not_in_catalog;
+  const phInput = (f, v, w) =>
+    `<input type="text" value="${(v||'').replace(/"/g,'&quot;')}" placeholder="fill in"
+       onchange="setItemField(${idx},'${f}',this.value)" style="width:${w}px;font-size:var(--fs-sm)">`;
+
+  return `<tr data-idx="${idx}"${ph ? ' style="background:rgba(232,160,32,.07)"' : ''}>
     <td style="text-align:center;">${item.sl_no||idx+1}</td>
     <td style="width:96px;text-align:center;">${imgCell}</td>
     <td><strong>${item.product||''}</strong>${switchBtn}</td>
     <td><input type="number" class="qty-input" value="${qty}" onchange="recalcRow(${idx})" style="width:60px"></td>
-    <td style="font-size:var(--fs-sm)">${item.model_no||''}</td>
-    <td>${item.brand||''}</td>
-    <td><div class="spec-text">${(item.specification||'').replace(/\\n/g,'\n')}</div></td>
-    <td>${item.hsn_code||''}</td>
+    <td style="font-size:var(--fs-sm)">${ph ? phInput('model_no', item.model_no, 90) : (item.model_no||'')}</td>
+    <td>${ph ? phInput('brand', item.brand, 90) : (item.brand||'')}</td>
+    <td>${ph ? phInput('specification', item.specification, 160)
+             : `<div class="spec-text">${(item.specification||'').replace(/\\n/g,'\n')}</div>`}</td>
+    <td>${ph ? phInput('hsn_code', item.hsn_code, 80) : (item.hsn_code||'')}</td>
     ${show3 ? `<td class="col-3star">
       <div class="tier-price-cell">
         <span class="tier-tick ${activeTier==='3star'?'checked':''}" onclick="setRowTier(${idx},'3star')">${activeTier==='3star'?'✓':''}</span>
@@ -2389,6 +2398,12 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing) {
     <td class="gst-val-cell num">₹${fmt(gstVal)}</td>
     <td><button class="btn btn-sm btn-danger" onclick="removeRow(${idx})">✕</button></td>
   </tr>`;
+}
+
+// Placeholder rows: write a hand-typed field straight onto the item.
+function setItemField(idx, field, val) {
+  const it = currentQuotation && currentQuotation.items && currentQuotation.items[idx];
+  if (it) it[field] = val.trim();
 }
 
 // ── Switch Variant ───────────────────────────────────────────────────────────
