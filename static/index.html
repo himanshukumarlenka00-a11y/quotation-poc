@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=79">
+<link rel="stylesheet" href="/static/css/main.css?v=80">
 </head>
 <body>
 
@@ -74,16 +74,16 @@
   <button class="sb-toggle" onclick="toggleSidebar()" title="Collapse / expand menu" aria-label="Toggle menu">
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
   </button>
-  <div class="snav active" data-tab="dashboard" onclick="show('dashboard')"><span class="sic">▦</span> Dashboard</div>
-  <div class="snav" data-tab="generate" onclick="show('generate')"><span class="sic">⚡</span> Generate Quotation</div>
-  <div class="snav" data-tab="result" onclick="show('result')"><span class="sic">📋</span> Current Quote</div>
-  <div class="snav" data-tab="repository" onclick="show('repository')"><span class="sic">🗂</span> Quotations</div>
-  <div class="snav" data-tab="master" onclick="show('master')"><span class="sic">📦</span> Master Catalogue</div>
-  <div class="snav" data-tab="coverage" onclick="showBoqCoverage()"><span class="sic">☑</span> BOQ Coverage</div>
-  <div class="snav" data-tab="margin" onclick="showMargins()"><span class="sic">◔</span> Margin Analysis</div>
-  <div class="snav" id="tab-upload" data-tab="upload" onclick="show('upload')" style="display:none"><span class="sic">⇪</span> Upload BOQ</div>
-  <div class="snav" id="tab-audit" data-tab="audit" onclick="show('audit')" style="display:none"><span class="sic">◷</span> Activity</div>
-  <div class="snav" id="tab-users" data-tab="users" onclick="show('users')" style="display:none"><span class="sic">◉</span> Users &amp; Roles</div>
+  <div class="snav active" data-tab="dashboard" onclick="show('dashboard')"><span class="sic">▦</span><span class="slbl"> Dashboard</span></div>
+  <div class="snav" data-tab="generate" onclick="show('generate')"><span class="sic">⚡</span><span class="slbl"> Generate Quotation</span></div>
+  <div class="snav" data-tab="result" onclick="show('result')"><span class="sic">📋</span><span class="slbl"> Current Quote</span></div>
+  <div class="snav" data-tab="repository" onclick="show('repository')"><span class="sic">🗂</span><span class="slbl"> Quotations</span></div>
+  <div class="snav" data-tab="master" onclick="show('master')"><span class="sic">📦</span><span class="slbl"> Master Catalogue</span></div>
+  <div class="snav" data-tab="coverage" onclick="showBoqCoverage()"><span class="sic">☑</span><span class="slbl"> BOQ Coverage</span></div>
+  <div class="snav" data-tab="margin" onclick="showMargins()"><span class="sic">◔</span><span class="slbl"> Margin Analysis</span></div>
+  <div class="snav" id="tab-upload" data-tab="upload" onclick="show('upload')" style="display:none"><span class="sic">⇪</span><span class="slbl"> Upload BOQ</span></div>
+  <div class="snav" id="tab-audit" data-tab="audit" onclick="show('audit')" style="display:none"><span class="sic">◷</span><span class="slbl"> Activity</span></div>
+  <div class="snav" id="tab-users" data-tab="users" onclick="show('users')" style="display:none"><span class="sic">◉</span><span class="slbl"> Users &amp; Roles</span></div>
   <div class="side-user" id="side-user"></div>
 </aside>
 <div class="main-col">
@@ -586,6 +586,6 @@
 </div><!--/shell-->
 
 
-<script src="/static/js/app.js?v=79"></script>
+<script src="/static/js/app.js?v=80"></script>
 </body>
 </html>
