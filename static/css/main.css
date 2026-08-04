@@ -1727,3 +1727,22 @@ html[data-theme=dark] .mlg-sweep { background: rgba(255,255,255,.14); }
 .billto-edit::placeholder { color: var(--muted); opacity: .7; }
 .quot-meta-r .quot-mt td { padding: 7px 0; }
 @media print { .billto-edit { border: none; resize: none; } .billto-hint { display: none; } }
+
+/* Gmail-style sidebar: hamburger above Dashboard, mini icon rail on toggle */
+.sb-toggle { width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--card); color: var(--muted); cursor: pointer; display: flex;
+  align-items: center; justify-content: center; margin: 0 0 10px 6px; padding: 0;
+  transition: color .2s, border-color .2s, transform .2s; }
+.sb-toggle:hover { color: var(--primary, #6a4cf0); border-color: var(--primary, #6a4cf0); transform: scale(1.06); }
+.sidebar { transition: width .3s cubic-bezier(.2, .9, .3, 1), padding .3s; }
+.snav { white-space: nowrap; transition: background .18s, color .18s, transform .18s; }
+.snav:hover { transform: translateX(5px); }
+body.sb-mini .sidebar { width: 72px; padding: 20px 10px; }
+body.sb-mini .snav { font-size: 0; gap: 0; justify-content: center; padding: 11px 0; }
+body.sb-mini .snav .sic { font-size: 16px; width: auto; }
+body.sb-mini .snav:hover { transform: none; }
+body.sb-mini .slogo { justify-content: center; padding: 2px 0 12px; }
+body.sb-mini .slogo > div:last-child { display: none; }
+body.sb-mini .sb-toggle { margin: 0 auto 10px; }
+body.sb-mini .side-user { justify-content: center; padding: 8px 4px; }
+body.sb-mini .side-user > div:not(.savatar) { display: none; }

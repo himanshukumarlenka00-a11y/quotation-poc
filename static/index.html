@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=72">
+<link rel="stylesheet" href="/static/css/main.css?v=76">
 </head>
 <body>
 
@@ -71,6 +71,9 @@
 <div class="shell">
 <aside class="sidebar">
   <div class="slogo"><div class="smark">M</div><div><b>Melange</b><span>Quotation POC</span></div></div>
+  <button class="sb-toggle" onclick="toggleSidebar()" title="Collapse / expand menu" aria-label="Toggle menu">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+  </button>
   <div class="snav active" data-tab="dashboard" onclick="show('dashboard')"><span class="sic">▦</span> Dashboard</div>
   <div class="snav" data-tab="generate" onclick="show('generate')"><span class="sic">⚡</span> Generate Quotation</div>
   <div class="snav" data-tab="result" onclick="show('result')"><span class="sic">📋</span> Current Quote</div>
@@ -583,6 +586,6 @@
 </div><!--/shell-->
 
 
-<script src="/static/js/app.js?v=75"></script>
+<script src="/static/js/app.js?v=76"></script>
 </body>
 </html>

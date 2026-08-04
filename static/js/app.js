@@ -747,6 +747,15 @@ function toggleTheme() {
 }
 applyTheme(localStorage.getItem('theme') || 'light');
 
+// Gmail-style sidebar collapse: hamburger shrinks it to an icon rail.
+function toggleSidebar() {
+  const mini = document.body.classList.toggle('sb-mini');
+  localStorage.setItem('sb-mini', mini ? '1' : '');
+}
+if (localStorage.getItem('sb-mini') === '1') document.body.classList.add('sb-mini');
+// Icon-rail tooltips: each nav item's own label, shown on hover when collapsed.
+document.querySelectorAll('.snav').forEach(n => n.title = n.textContent.trim());
+
 function updateReqCount() {
   const ta = document.getElementById('req-prompt');
   const c = document.getElementById('req-count');
