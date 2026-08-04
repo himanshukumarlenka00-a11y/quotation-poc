@@ -1856,7 +1856,7 @@ async function buildQuotation() {
 // ── Generate ─────────────────────────────────────────────────────────────────
 async function generateQuote() {
   const prompt = document.getElementById('req-prompt').value.trim();
-  const client = document.getElementById('client-name').value.trim();
+  const client = document.getElementById('client-name')?.value.trim() || '';
   if (!prompt) { alert('Please enter customer requirements.'); return; }
   if (!selectedTiers.length) {
     alert('Please select a price tier (3 Star or 4 Star) first.');
@@ -2151,7 +2151,7 @@ async function generateFromBoqFile() {
     });
     return;
   }
-  const client = document.getElementById('client-name').value.trim();
+  const client = document.getElementById('client-name')?.value.trim() || '';
   const btn = document.getElementById('gen-boq-btn');
   const status = document.getElementById('gen-boq-status');
   btn.disabled = true;

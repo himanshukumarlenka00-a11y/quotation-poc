@@ -96,6 +96,8 @@ Test user: emplyoee@melangeindia.in / 12345678 (employee; email typo'd).
   ask user if pricing columns are ambiguous.
 - User is highly token-conscious: give a token estimate BEFORE sizeable work
   and get a go-ahead; work one item at a time; no multi-agent workflows.
+  ALSO report the estimated tokens actually used AFTER each completed task
+  (small table or one line; estimates are fine, state they're estimates).
 - No browser-verification theatre: verify cheaply (node --check, targeted JS
   eval), report when done; the user tests visually themselves.
 - After a classifier block on credentials: hand the command to the user.
