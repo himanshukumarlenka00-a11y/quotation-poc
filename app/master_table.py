@@ -424,6 +424,12 @@ def parse_master_excel(filepath: str, filename: str):
     Returns (items, unmatched_fields) — unmatched_fields lists any of our
     expected fields that couldn't be found in the header, so the caller can
     surface a warning rather than silently importing incomplete data."""
+    # The office-app conversion is used for IMAGES ONLY. Cell VALUES are
+    # always read from the ORIGINAL file: formula columns (BARKRAFT's
+    # "PRICES IN INR" is =ROUNDUP(cost+25%)) carry cached results in the
+    # original .xls, but LibreOffice's conversion writes bare formulas that
+    # pandas reads as empty — 1,062 prices vanished that way once.
+    values_path = filepath
     converted_temp_path = None
     if filepath.endswith(".xls"):
         fd, converted_temp_path = tempfile.mkstemp(suffix=".xlsx")
@@ -454,7 +460,7 @@ def parse_master_excel(filepath: str, filename: str):
             pass
 
     try:
-        xl = pd.ExcelFile(filepath)
+        xl = pd.ExcelFile(values_path)
         sheet_name = xl.sheet_names[0]
         xl.close()
     except Exception:
@@ -465,7 +471,7 @@ def parse_master_excel(filepath: str, filename: str):
                 pass
         return [], list(COLUMN_ALIASES.keys())
 
-    df = pd.read_excel(filepath, sheet_name=sheet_name, header=None)
+    df = pd.read_excel(values_path, sheet_name=sheet_name, header=None)
 
     header_row_idx, col_map = _find_header_row(df)
     unmatched = [f for f in COLUMN_ALIASES if f not in col_map]
