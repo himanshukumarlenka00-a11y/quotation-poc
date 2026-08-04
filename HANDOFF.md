@@ -2,7 +2,21 @@
 
 ## LIVE IN PRODUCTION (see memory: ubuntu-server-deployment)
 Server melange@192.168.0.146 (crm-server). App at :8000 + HTTPS :8443
-(nginx, self-signed; cert trusted on user's PC). HEAD 45cd3e7, cache v84.
+(nginx, self-signed; cert trusted on user's PC). HEAD b0ff7f5, cache v88.
+2026-08-04 (later session): feedback card restyled (theme card + SVG pills);
+removed doc footer line, generate hint bar, salutation block, topbar Ctrl+K
+search. Excel export still has its own salutation + footer lines (export.py)
+— user hasn't asked to drop them there. Export writes computed VALUES not
+formulas (user's Excel is in manual-calc mode; told them, unfixed on PC).
+Not-in-catalog items -> in-place placeholder rows (name+qty, amber tint,
+inline model/brand/spec/HSN inputs via setItemField; empty-quote guard
+ignores placeholders). Export DESCRIPTION col = item.requested (client's
+wording), SPECIFICATION = master spec. Drag-to-reorder quote rows via SL
+handle (initRowDrag, renumbers + silent save). Phase 2 paging DONE:
+/api/master-table/summary + /page (limit<=500, q search, cost stripped);
+master page lazy-loads 200/folder + Load more; server-side search cap 500.
+Phase 2 chunked-import half DROPPED — user will split the 3-lakh sheet and
+upload chunks himself (open q: append chunks into one catalogue or not).
 Deploy flow: edit dev → verify → commit → scp files → restart quotegen →
 ASK USER BEFORE EVERY SERVER-CHANGING COMMAND. Report est. tokens after
 each task. RTK proxy corrupts piped grep output — use python for pipes.
