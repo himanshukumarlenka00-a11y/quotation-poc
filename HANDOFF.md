@@ -22,8 +22,18 @@ rule); removed dup grand-total block + edit-hint + amount-in-words lines
 (web only; export keeps its own); action buttons moved BELOW doc, ref badge
 left/buttons right; Amount/GST spacing; placeholder rows got 🔍 Find (live
 search via /api/master-table/page, applyFind fills row); export HSN col
-width 11. HEAD 37f4480, cache v92, server current. Commits NOT pushed to
-GitHub yet — user hasn't said push.
+width 11. Night session (v93+): Revert button on Find-picked rows
+(was_placeholder flag). Explicit model number = HARD GATE in matching
+(never auto-substitute WCCE001->WCCE002; exact model first, else
+placeholder; corrections outrank gate). LLM: _llm_chat helper — Groq
+primary, Cerebras gpt-oss-120b fallback on 429 (CEREBRAS_API_KEY in
+/etc/quotegen/env; org still 402 until user activates free tier in
+Cerebras Billing tab — fallback dormant, fail-safe). Quota savers:
+1-line prompts with [MODEL] parse with no LLM; bracketed model outranks
+prose markers; explicit-model items skip semantic call. USER RULE:
+placeholder-lineage lines NEVER teach match_corrections (Find pick =
+stand-in for that quote only); bad learned row id 273 deleted from prod
+DB. HEAD 4caef3b, cache v93, server current. NOT pushed to GitHub.
 Deploy flow: edit dev → verify → commit → scp files → restart quotegen →
 ASK USER BEFORE EVERY SERVER-CHANGING COMMAND. Report est. tokens after
 each task. RTK proxy corrupts piped grep output — use python for pipes.
