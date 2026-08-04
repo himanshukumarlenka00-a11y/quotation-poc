@@ -144,10 +144,17 @@ async def upload_master_table(file: UploadFile = File(...), force: str = Form(""
         images_exact = sum(1 for it in items if it["image_match"] == "exact")
         log_action(admin, "upload_master_table", target=file.filename,
                    after={"products": len(items), "forced": force == "1"})
+        # The canary: state the priced count in every import result, so a
+        # partial pricing failure can never pass silently again.
+        warn = ""
+        if priced < len(items):
+            warn = f" ⚠️ {len(items) - priced} product(s) came in WITHOUT a price — check the source file."
         return {
             "message": f"Imported '{file.filename}' — {len(items)} products, "
-                       f"{images_exact} with a confirmed image. Master table total: {total} items.",
+                       f"{priced} priced, {images_exact} with a confirmed image. "
+                       f"Master table total: {total} items.{warn}",
             "products_imported": len(items),
+            "priced_products": priced,
             "images_found": images_exact,
             "unmatched_columns": unmatched,
         }
