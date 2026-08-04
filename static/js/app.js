@@ -2434,7 +2434,7 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing) {
       onmousedown="this.closest('tr').draggable=true">⠿</span> ${item.sl_no||idx+1}</td>
     <td style="width:96px;text-align:center;">${imgCell}</td>
     <td><strong>${item.product||''}</strong>${switchBtn}</td>
-    <td><input type="number" class="qty-input" value="${qty}" onchange="recalcRow(${idx})" style="width:60px"></td>
+    <td class="c"><input type="number" class="qty-input" value="${qty}" onchange="recalcRow(${idx})" style="width:60px"></td>
     <td style="font-size:var(--fs-sm)">${ph ? phInput('model_no', item.model_no, 90) : (item.model_no||'')}</td>
     <td>${ph ? phInput('brand', item.brand, 90) : (item.brand||'')}</td>
     <td>${ph ? phInput('specification', item.specification, 160)
@@ -2452,13 +2452,13 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing) {
         <span class="tier-price-text"><span class="tier-price-inr">₹${(item.price_4star||0).toLocaleString('en-IN')}</span><span class="tier-price-usd">$${(item.price_4star_usd||0).toFixed(2)}</span></span>
       </div>
     </td>` : ''}
-    <td><input type="number" step="0.01" class="price-input" value="${(Math.round(priceInr*100)/100)}" onchange="recalcRow(${idx})" style="width:100px"></td>
+    <td class="num"><input type="number" step="0.01" class="price-input" value="${(Math.round(priceInr*100)/100)}" onchange="recalcRow(${idx})" style="width:100px"></td>
     ${hasBoqPricing ? `<td class="boq-price-cell num">₹${fmt(boqPrice, 2)}</td>
     <td class="profit-cell num" style="color:${profit >= 0 ? '#1e9e56' : '#d64545'};font-weight:600;">₹${fmt(profit)}</td>` : ''}
     <td class="amount-cell num">₹${fmt(amtInr)}</td>
-    <td><input type="number" class="gst-input" value="${gst}" onchange="recalcRow(${idx})" style="width:50px"></td>
+    <td class="c"><input type="number" class="gst-input" value="${gst}" onchange="recalcRow(${idx})" style="width:50px"></td>
     <td class="gst-val-cell num">₹${fmt(gstVal)}</td>
-    <td><button class="btn btn-sm btn-danger" onclick="removeRow(${idx})">✕</button></td>
+    <td class="c"><button class="btn btn-sm btn-danger" onclick="removeRow(${idx})">✕</button></td>
   </tr>`;
 }
 
@@ -2640,10 +2640,10 @@ function renderResult(q) {
 
   // Single unified header — all in INR
   const thead = document.querySelector('#items-table thead tr');
-  thead.innerHTML = `<th style="width:40px">SL</th><th style="width:96px">Image</th><th>Product</th><th style="width:56px">QTY</th>
+  thead.innerHTML = `<th style="width:40px">SL</th><th class="c" style="width:96px">Image</th><th>Product</th><th class="c" style="width:56px">QTY</th>
     <th>Model No</th><th>Brand</th><th>Specification</th>
-    <th>HSN</th>${show3 ? '<th class="col-3star" style="width:110px">⭐ 3★ Price</th>' : ''}${show4 ? '<th class="col-4star" style="width:110px">⭐⭐ 4★ Price</th>' : ''}
-    <th class="num" style="width:90px">Price/Pc (₹)</th>${hasBoqPricing ? '<th class="num" style="width:100px">BOQ Price (₹)</th><th class="num" style="width:90px">Profit (₹)</th>' : ''}<th class="num" style="width:100px">Amount (₹)</th><th style="width:56px">GST%</th><th class="num" style="width:100px">GST Val (₹)</th><th style="width:40px"></th>`;
+    <th>HSN</th>${show3 ? '<th class="col-3star c" style="width:110px">⭐ 3★ Price</th>' : ''}${show4 ? '<th class="col-4star c" style="width:110px">⭐⭐ 4★ Price</th>' : ''}
+    <th class="num" style="width:90px">Price/Pc (₹)</th>${hasBoqPricing ? '<th class="num" style="width:100px">BOQ Price (₹)</th><th class="num" style="width:90px">Profit (₹)</th>' : ''}<th class="num" style="width:100px">Amount (₹)</th><th class="c" style="width:56px">GST%</th><th class="num" style="width:100px">GST Val (₹)</th><th style="width:40px"></th>`;
 
   // Cost/Profit are deliberately NOT shown on a typed quotation — that view is
   // for checking what we stock, not for margin analysis. They appear only on a
@@ -2669,21 +2669,23 @@ function renderResult(q) {
 
   html += `<tr class="quot-subrow" style="background:#eaf4fb;font-weight:700;">
     <td colspan="${labelColspan}" ${tdR}>SUB TOTAL</td>
-    ${hasBoqPricing ? `<td id="foot-profit">₹${fmt(profitTotal)}</td>` : ''}
-    <td id="foot-sub">₹${fmt(subTotal)}</td><td></td><td id="foot-gst">₹${fmt(gstTotal)}</td><td></td>
+    ${hasBoqPricing ? `<td class="num" id="foot-profit">₹${fmt(profitTotal)}</td>` : ''}
+    <td class="num" id="foot-sub">₹${fmt(subTotal)}</td><td></td><td class="num" id="foot-gst">₹${fmt(gstTotal)}</td><td></td>
   </tr>`;
   html += `<tr class="quot-grandrow" style="background:#1a3a6b;color:#fff;font-weight:700;">
     <td colspan="${labelColspan}" ${tdR} style="text-align:right;padding-right:16px;font-weight:700;color:#fff;">GRAND TOTAL (incl. GST)</td>
-    <td colspan="${trailingCols}" id="foot-grand" style="font-size:var(--fs-md);color:#fff;">₹${fmt(grandTotal)}</td>
+    <td colspan="${trailingCols}" class="num" id="foot-grand" style="font-size:var(--fs-md);color:#fff;">₹${fmt(grandTotal)}</td>
   </tr>`;
 
   document.getElementById('items-body').innerHTML = html;
   document.getElementById('items-foot').innerHTML = '';
   initRowDrag();
 
-  // Update grand total
+  // Update grand total (stat-total element removed — table's grand row is the
+  // single source now; guard kept in case a cached page still has it)
   const allInrGrand = items.reduce((s,i) => s+(i._amtInr||0)+(i._gstVal||0), 0);
-  document.getElementById('stat-total').textContent = '₹ ' + fmt(allInrGrand);
+  const stEl = document.getElementById('stat-total');
+  if (stEl) stEl.textContent = '₹ ' + fmt(allInrGrand);
   const wEl = document.getElementById('doc-words');
   if (wEl) wEl.textContent = amtWords(allInrGrand);
 
@@ -2756,7 +2758,7 @@ function updateGrandTotal() {
   const fg = document.getElementById('foot-gst');   if (fg) fg.textContent = '₹' + fmt(gstTotal);
   const fp = document.getElementById('foot-profit'); if (fp) fp.textContent = '₹' + fmt(profitTotal);
   const fgr = document.getElementById('foot-grand'); if (fgr) fgr.textContent = '₹' + fmt(grand);
-  document.getElementById('stat-total').textContent = '₹ ' + fmt(grand);
+  const st = document.getElementById('stat-total'); if (st) st.textContent = '₹ ' + fmt(grand);
   const wEl = document.getElementById('doc-words');
   if (wEl) wEl.textContent = amtWords(grand);
 }

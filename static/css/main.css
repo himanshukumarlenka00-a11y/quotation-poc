@@ -1668,7 +1668,11 @@ html[data-theme=dark] .mlg-sweep { background: rgba(255,255,255,.14); }
 .quot-doc td input { width: 78px; text-align: right; padding: 4px 6px !important;
   border-radius: 6px; }
 .quot-doc .table-wrap, .quot-wrap { overflow-x: auto; }
-.quot-doc th:nth-last-child(-n+7), .quot-doc td:nth-last-child(-n+7) { text-align: right; }
+/* Alignment by class, not position — a positional nth-last-child window
+   shifts onto the wrong columns whenever the optional 3★/4★ columns hide. */
+.quot-doc th.c, .quot-doc td.c { text-align: center; }
+.quot-doc .qty-input, .quot-doc .gst-input { text-align: center; }
+.quot-doc .price-input { text-align: right; }
 .quot-doc th:first-child, .quot-doc td:first-child { text-align: center; }
 /* Generate page: single centered column — the BOQ card lives in the
    BOQ Coverage tab (boq-only view) and is hidden here */
