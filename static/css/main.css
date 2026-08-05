@@ -20,6 +20,21 @@
     --shadow-card: 0 1px 2px rgba(23,28,44,.03), 0 10px 30px -22px rgba(23,28,44,.22);
     --radius: 10px;
 
+    /* Type scale, control height and spacing steps. These were referenced
+       ~270 times across the stylesheet (including body's own font-size) but
+       never actually defined — an undefined var() invalidates the whole
+       declaration, so every one of them was silently dropped: body fell back
+       to the browser's 16px, inputs lost their padding and height entirely.
+       Values match the compact scale the CSS was written against. */
+    --fs-xs: 11px;
+    --fs-sm: 12px;
+    --fs-base: 13px;
+    --fs-md: 14px;
+    --fs-lg: 16px;
+    --ctl-h: 40px;
+    --sp-3: 10px;
+    --sp-4: 14px;
+
     /* soft chip tints for the dashboard */
     --accent-soft2: #efeafe; --green-soft2: #e7f8ee; --amber-soft2: #fdf3e0;
     --blue-soft: #e8f1fd;    --pink-soft2: #fdeaf4;
