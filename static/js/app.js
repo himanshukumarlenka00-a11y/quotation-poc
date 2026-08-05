@@ -1423,13 +1423,17 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
 
   el.innerHTML = capNote + Object.entries(groups).map(([fname, g], gIdx) => {
     const prods = g.items;
-    const headerCells = `<th class="num">Original (₹)</th><th class="num">3★ Price (₹)</th><th class="num">3★ Price ($)</th><th class="num">4★ Price (₹)</th><th class="num">4★ Price ($)</th>`;
-
     // A bulk % discount overwrites price_3star/price_4star in place — the
     // ORIGINAL price only survives in orig_price_3star/4star (snapshotted
-    // once, on the first bulk apply). Show it so a discounted catalogue
-    // doesn't read as if that was always the price.
+    // once, on the first bulk apply). Most catalogues have never had a bulk
+    // discount applied, so the column would be nothing but "—" for every
+    // row — hide it entirely rather than show a column of empty dashes;
+    // it appears only for catalogues where it actually has data.
+    const hasOrig = prods.some(i => i.orig_price_3star != null || i.orig_price_4star != null);
+    const headerCells = `${hasOrig ? '<th class="num">Original (₹)</th>' : ''}<th class="num">3★ Price (₹)</th><th class="num">3★ Price ($)</th><th class="num">4★ Price (₹)</th><th class="num">4★ Price ($)</th>`;
+
     const origCell = i => {
+      if (!hasOrig) return '';
       const o3 = i.orig_price_3star, o4 = i.orig_price_4star;
       if (o3 == null && o4 == null) {
         return `<td class="num" style="color:var(--muted);">—</td>`;
@@ -1453,14 +1457,14 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
                  <td class="num">₹${(i.price_4star||0).toLocaleString('en-IN')}</td>
                  <td class="num">$${(i.price_4star_usd||0).toFixed(2)}</td>`;
       }
-      return `${origCell(i)}<td><input id="mt-3star-${i.id}" type="number" step="0.01" class="mt-price-input" value="${i.price_3star||0}"
+      return `${origCell(i)}<td class="num"><input id="mt-3star-${i.id}" type="number" step="0.01" class="mt-price-input" value="${i.price_3star||0}"
                  onchange="updateMasterPrice(${i.id}, this.value, document.getElementById('mt-4star-${i.id}').value)"
                  onkeydown="stopEnterSubmit(event)" style="width:90px"></td>
-               <td>$${(i.price_3star_usd||0).toFixed(2)}</td>
-               <td><input id="mt-4star-${i.id}" type="number" step="0.01" class="mt-price-input" value="${i.price_4star||0}"
+               <td class="num">$${(i.price_3star_usd||0).toFixed(2)}</td>
+               <td class="num"><input id="mt-4star-${i.id}" type="number" step="0.01" class="mt-price-input" value="${i.price_4star||0}"
                  onchange="updateMasterPrice(${i.id}, document.getElementById('mt-3star-${i.id}').value, this.value)"
                  onkeydown="stopEnterSubmit(event)" style="width:90px"></td>
-               <td>$${(i.price_4star_usd||0).toFixed(2)}</td>`;
+               <td class="num">$${(i.price_4star_usd||0).toFixed(2)}</td>`;
     };
 
     const fnameEsc = fname.replace(/'/g, "\\'");

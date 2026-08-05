@@ -221,6 +221,7 @@
   /* Numbers line up on the decimal and read as figures, not text. */
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   td.c, th.c { text-align: center; }
+  .mt-price-input { text-align: right; font-variant-numeric: tabular-nums; }
   td input { width: 100%; border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: var(--fs-base); background:var(--input-bg); color:var(--text); }
   td input:focus { outline: none; border-color: var(--primary); }
 
