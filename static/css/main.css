@@ -674,7 +674,6 @@
   /* ===== LANDING PAGE ===== */
   /* full-bleed: break out of <main>'s max-width + padding */
   .lp { width:100vw; margin-left:calc(50% - 50vw); margin-top:-24px; margin-bottom:-24px; }
-  .lp-wrap { max-width:1180px; margin:0 auto; padding:0 32px; }
 
   /* hero */
   .hero { position:relative; background:
@@ -758,7 +757,6 @@
 
   /* footer */
   .lp-foot { background:#0f2548; color:rgba(255,255,255,.7); padding:40px 0; font-size: var(--fs-base); }
-  .lp-foot .lp-wrap { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; }
   .lp-foot .logo { color:#fff; font-weight:800; font-size: var(--fs-md); }
   .lp-foot .logo span { color:var(--accent); }
 
@@ -773,8 +771,6 @@
   .step-num { width:26px; height:26px; flex:none; border-radius:50%; background:var(--accent); color:#1a1a1a;
               display:flex; align-items:center; justify-content:center; font-weight:700; font-size: var(--fs-base); }
   .step-arrow { color:var(--muted); font-size: var(--fs-lg); }
-  .hint-box { margin-top:16px; font-size: var(--fs-base); color:#bcd6ef; background:#1b2a3c;
-              border:1px solid #2c456a; border-radius:10px; padding:11px 14px; }
 
   /* ── Master Table: expandable folder + bulk tier-pricing panel ──
      Open/close animates grid-template-rows 0fr→1fr rather than toggling
@@ -935,20 +931,6 @@
     border: 2px solid var(--border); border-top-color: var(--primary);
     animation: esSpin .7s linear infinite;
   }
-
-  /* ── "Frequently quoted together" suggestion chips ── */
-  #suggest-strip { display:flex; align-items:center; gap: 8px; flex-wrap:wrap; }
-  .sugg-label { font-size:var(--fs-xs); color:#bcd6ef; font-weight:600; white-space:nowrap; }
-  .sugg-chip {
-    display:inline-flex; align-items:center; gap:6px;
-    height: var(--ctl-h-sm); padding: 0 var(--sp-3);
-    border-radius: 16px; border:1px solid rgba(232,160,32,.45);
-    background: rgba(232,160,32,.1); color: var(--text);
-    font-size: var(--fs-xs); cursor:pointer; font-family:inherit;
-    transition: background .2s ease, border-color .2s ease, transform .15s cubic-bezier(.22,1,.36,1);
-  }
-  .sugg-chip:hover { background: rgba(232,160,32,.22); border-color: var(--accent); transform: translateY(-1px); }
-  .sugg-count { color: var(--accent); font-weight:700; }
 
   /* ── Quotation margin panel (motive 2) ── */
   .margin-panel {
@@ -1533,19 +1515,6 @@
   flex-wrap: wrap; margin-bottom: 12px; }
 .boq-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .dz-cloud { width: 34px; height: 34px; color: var(--primary, #6366f1); margin-bottom: 6px; }
-/* Hint bar keyword colours */
-.hint-box .hk-price { color: #a5b4fc; }
-.hint-box .hk-qty { color: #6ee7b7; }
-/* Topbar search v2 */
-.tsearch2 { display: flex; align-items: center; gap: 9px; flex: 0 1 380px;
-  background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
-  padding: 8px 12px; color: var(--muted); cursor: text; transition: border-color .15s, box-shadow .15s; }
-.tsearch2:focus-within { border-color: var(--primary, #6366f1); box-shadow: 0 0 0 3px rgba(99,102,241,.15); }
-.tsearch2 svg { width: 16px; height: 16px; flex: none; }
-.tsearch2 input { flex: 1; border: none !important; background: transparent !important;
-  padding: 0 !important; height: auto !important; font-size: var(--fs-base) !important; outline: none; min-width: 0; }
-.tsearch2 kbd { font-size: 10px; font-weight: 700; color: var(--muted); border: 1px solid var(--border);
-  border-bottom-width: 2px; border-radius: 5px; padding: 2px 6px; background: var(--card); white-space: nowrap; }
 /* Customer name: comfortable width, not a full-page ribbon */
 .input-ico { max-width: 460px; }
 .input-ico input { height: 44px; border-radius: 10px; font-size: var(--fs-base); }
@@ -1580,7 +1549,6 @@ html[data-theme=dark] .drop-zone:hover, html[data-theme=dark] .drop-zone.drag { 
 .card-alt .section-head::before { background: linear-gradient(135deg, rgba(99,102,241,.20), rgba(99,102,241,.07)); }
 /* Generate page: two-column layout so everything fits without scrolling */
 #sec-generate.active { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 0 18px; align-items: start; }
-#sec-generate .gen-head, #sec-generate .steps-strip, #sec-generate .hint-box { grid-column: 1 / -1; }
 #sec-generate .or-divider { display: none; }
 #sec-generate .card-alt { margin-top: 0; }
 #sec-generate .gen-head { margin-bottom: 14px; }
@@ -1589,7 +1557,6 @@ html[data-theme=dark] .drop-zone:hover, html[data-theme=dark] .drop-zone.drag { 
 #sec-generate .step-mini { padding: 10px 14px; }
 #sec-generate .card { padding: 16px 18px; }
 #sec-generate #req-prompt { min-height: 96px; }
-#sec-generate .hint-box { margin-top: 14px; }
 @media (max-width: 1100px) {
   #sec-generate.active { display: block; }
   #sec-generate .or-divider { display: flex; }
@@ -1602,7 +1569,6 @@ html[data-theme=dark] .drop-zone:hover, html[data-theme=dark] .drop-zone.drag { 
 #sec-generate #req-prompt { flex: 1; min-height: 96px; height: 100%; }
 #sec-generate .card-alt { display: flex; flex-direction: column; }
 #sec-generate .card-alt .drop-zone { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; }
-#sec-generate .hint-box { align-self: end; }
 @media (max-width: 1100px) {
   #sec-generate.active { min-height: 0; }
   #sec-generate .card, #sec-generate .card-alt { height: auto; }
@@ -1788,7 +1754,6 @@ html[data-theme=dark] .mlg-sweep { background: rgba(255,255,255,.14); }
 #sec-generate.active { grid-template-columns: 1fr; max-width: 1280px; margin: 0 auto; min-height: 0; }
 #sec-generate .card { height: auto; }
 #sec-generate .gen-head { margin-bottom: 18px; }
-#sec-generate .hint-box { margin-top: 18px; align-self: auto; }
 
 /* Quote action buttons: themed pills with motion */
 .quot-actions .btn, #add-item-btn { display: inline-flex; align-items: center; gap: 8px;

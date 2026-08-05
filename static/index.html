@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=105">
+<link rel="stylesheet" href="/static/css/main.css?v=106">
 </head>
 <body>
 
@@ -100,96 +100,6 @@
   <h1 class="dash-hello" id="dash-hello">Dashboard</h1>
   <p class="dash-sub">Every number on this page is live from the database.</p>
   <div id="dash-view"><div class="loading-state">Loading...</div></div>
-</section>
-
-<!-- ── SECTION 0: Home / Landing ── -->
-<section id="sec-home" class="section lp">
-
-  <!-- HERO -->
-  <div class="hero">
-    <div class="lp-wrap hero-inner">
-      <div>
-        <span class="hero-eyebrow">⚡ AI-Powered Quotation Engine</span>
-        <h1>Turn a one-line request into a <span class="hl">professional quotation</span> in seconds.</h1>
-        <p class="sub">QuoteGen AI reads your product catalog, understands plain-English requirements, and builds an accurate, itemised quotation — with images, INR pricing &amp; GST — instantly.</p>
-        <div class="hero-cta">
-          <button class="btn btn-xl btn-glow" onclick="show('generate')">✨ Generate a Quote</button>
-          <button class="btn btn-xl btn-ghost" onclick="show('upload')">📤 Upload Catalog</button>
-        </div>
-        <div class="hero-stats">
-          <div class="s"><div class="n" id="hs-products">400+</div><div class="l">Catalog products</div></div>
-          <div class="s"><div class="n">~3s</div><div class="l">Per quotation</div></div>
-          <div class="s"><div class="n">99%</div><div class="l">Match accuracy</div></div>
-        </div>
-      </div>
-      <div>
-        <div class="hero-card">
-          <div class="bar"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i></div>
-          <div class="row"><div class="thumb">🧺</div><div class="info"><b>Housekeeping Trolley</b><span>Qty 5 · HSN 9403</span></div><div class="amt">₹2,250</div></div>
-          <div class="row"><div class="thumb">🔥</div><div class="info"><b>Electric Iron</b><span>Qty 30 · WALTHR</span></div><div class="amt">₹46,500</div></div>
-          <div class="row"><div class="thumb">💨</div><div class="info"><b>Hair Dryer</b><span>Qty 30 · IR-HR024</span></div><div class="amt">₹540</div></div>
-          <div class="total"><span>Grand Total (incl. GST)</span><span>₹57,684</span></div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- FEATURES -->
-  <div class="lp-section alt">
-    <div class="lp-wrap">
-      <div class="lp-head reveal">
-        <span class="kick">Why QuoteGen AI</span>
-        <h2>Everything you need to quote faster</h2>
-        <p>Built for sales teams who turn enquiries into polished quotations — without manual catalog hunting or spreadsheet wrangling.</p>
-      </div>
-      <div class="feat-grid">
-        <div class="feat reveal"><div class="ic">🧠</div><h3>Understands plain English</h3><p>Type “5 housekeeping trolleys and 10 clothes hangers” — it parses items, quantities and qualifiers automatically.</p></div>
-        <div class="feat reveal"><div class="ic">🎯</div><h3>Exact catalog matching</h3><p>Deterministic matching maps every request to the right product &amp; price — no wrong substitutions, 99% accuracy.</p></div>
-        <div class="feat reveal"><div class="ic">🖼️</div><h3>Product images included</h3><p>Pulls embedded images from your Excel catalog into both the on-screen quote and the downloadable XLS.</p></div>
-        <div class="feat reveal"><div class="ic">🇮🇳</div><h3>INR pricing &amp; GST</h3><p>Automatic INR pricing, per-item GST and grand totals — formatted and ready to send to the client.</p></div>
-        <div class="feat reveal"><div class="ic">🔄</div><h3>Variant switching</h3><p>Multiple options for the same item? Switch between catalog variants with one click before finalising.</p></div>
-        <div class="feat reveal"><div class="ic">📄</div><h3>Export &amp; print ready</h3><p>One click to download a branded XLS or print a clean PDF quotation for your customer.</p></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- HOW IT WORKS -->
-  <div class="lp-section">
-    <div class="lp-wrap">
-      <div class="lp-head reveal">
-        <span class="kick">How it works</span>
-        <h2>Three steps to a finished quote</h2>
-        <p>From raw catalog to a client-ready quotation in under a minute.</p>
-      </div>
-      <div class="steps">
-        <div class="step reveal"><h3>Upload your catalog</h3><p>Drop in your existing quotation / BOQ Excel files. QuoteGen learns every product, price and image.</p></div>
-        <div class="step reveal"><h3>Describe the requirement</h3><p>Write what the customer needs in plain language. The AI extracts items and quantities instantly.</p></div>
-        <div class="step reveal"><h3>Generate &amp; send</h3><p>Get an itemised quote with images, pricing &amp; GST. Tweak, then export to XLS or PDF.</p></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- CTA BAND -->
-  <div class="lp-section alt">
-    <div class="lp-wrap">
-      <div class="cta-band reveal">
-        <h2>Ready to build your first quote?</h2>
-        <p>Upload a catalog or jump straight in and describe what your customer needs.</p>
-        <div class="hero-cta" style="justify-content:center;">
-          <button class="btn btn-xl btn-glow" onclick="show('generate')">✨ Generate a Quote</button>
-          <button class="btn btn-xl btn-ghost" style="border-color:rgba(255,255,255,.4)" onclick="show('upload')">📤 Upload Catalog</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- FOOTER -->
-  <div class="lp-foot">
-    <div class="lp-wrap">
-      <div class="logo">Quote<span>Gen</span> AI</div>
-      <div>AI-powered quotation generation · Demo build</div>
-    </div>
-  </div>
 </section>
 
 <!-- ── SECTION 1: Upload BOQ ── -->
@@ -584,6 +494,6 @@
 </div><!--/shell-->
 
 
-<script src="/static/js/app.js?v=109"></script>
+<script src="/static/js/app.js?v=110"></script>
 </body>
 </html>
