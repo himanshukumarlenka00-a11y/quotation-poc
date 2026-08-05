@@ -1512,17 +1512,17 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
         ${bulkPricingBar}
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Image</th><th>Product</th><th>Brand</th><th>Model</th>${headerCells}<th>GST%</th><th>HSN</th></tr></thead>
+            <thead><tr><th class="c">Image</th><th>Product</th><th>Brand</th><th>Model</th>${headerCells}<th class="c">GST%</th><th class="c">HSN</th></tr></thead>
             <tbody>${prods.map(i => `<tr>
-              <td style="text-align:center;">${i.has_image
+              <td class="c">${i.has_image
                 ? `<img src="${API}/api/image/${i.image_path}" style="width:64px;height:52px;object-fit:contain;border-radius:4px;border:1px solid #ddd;cursor:zoom-in;" onclick="showImageLightbox('${API}/api/image/${i.image_path}')" title="Click to enlarge" onerror="this.style.display='none'">`
                 : `<span style="color:#ccc;font-size:var(--fs-xs);">—</span>`}</td>
               <td><strong>${i.product}</strong></td>
               <td>${i.brand||'—'}</td>
               <td style="font-size:var(--fs-sm)">${i.original_model||'—'}</td>
               ${priceCells(i)}
-              <td>${i.gst_pct||0}%</td>
-              <td>${i.hsn_code||'—'}</td>
+              <td class="c">${i.gst_pct||0}%</td>
+              <td class="c">${i.hsn_code||'—'}</td>
             </tr>`).join('')}</tbody>
           </table>
         </div>
