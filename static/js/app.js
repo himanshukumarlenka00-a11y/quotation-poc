@@ -2455,6 +2455,13 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing, showOrig) {
     `<input type="text" value="${(v||'').replace(/"/g,'&quot;')}" placeholder="fill in"
        onchange="setItemField(${idx},'${f}',this.value)" style="width:${w}px;font-size:var(--fs-sm)">`;
 
+  // "Original" merges two distinct snapshots into one number per tier: a
+  // price refresh (prev_price_*, set the first time refreshQuotePrices()
+  // ever changes this line) takes priority when present; otherwise fall
+  // back to the master table's pre-bulk-discount snapshot (orig_price_*).
+  const orig3 = item.prev_price_3star != null ? item.prev_price_3star : item.orig_price_3star;
+  const orig4 = item.prev_price_4star != null ? item.prev_price_4star : item.orig_price_4star;
+
   return `<tr data-idx="${idx}"${ph ? ' style="background:rgba(232,160,32,.07)"' : ''}>
     <td style="text-align:center;white-space:nowrap;"><span class="drag-h" title="Drag to reorder"
       style="cursor:grab;color:var(--muted);user-select:none;letter-spacing:1px;"
@@ -2468,12 +2475,6 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing, showOrig) {
              : `<div class="spec-text">${(item.specification||'').replace(/\\n/g,'\n')}</div>`}</td>
     <td>${ph ? phInput('hsn_code', item.hsn_code, 80) : (item.hsn_code||'')}</td>
     ${(() => {
-      // "Original" merges two distinct snapshots under one toggle: a price
-      // refresh (prev_price_*, set the first time refreshQuotePrices() ever
-      // changes this line) takes priority when present; otherwise fall back
-      // to the master table's pre-bulk-discount snapshot (orig_price_*).
-      const orig3 = item.prev_price_3star != null ? item.prev_price_3star : item.orig_price_3star;
-      const orig4 = item.prev_price_4star != null ? item.prev_price_4star : item.orig_price_4star;
       const cell3 = `<td class="col-3star">
         <div class="tier-price-cell">
           <span class="tier-tick ${activeTier==='3star'?'checked':''}" onclick="setRowTier(${idx},'3star')">${activeTier==='3star'?'✓':''}</span>
@@ -2499,9 +2500,11 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing, showOrig) {
     <td class="num">
       <input type="number" step="0.01" class="price-input" value="${(Math.round(priceInr*100)/100)}" onchange="recalcRow(${idx})" style="width:100px">
       ${(item.price_3star || item.price_4star) ? `
-      <select class="price-tier-pick" title="Which tier this price comes from" onchange="setRowTier(${idx}, this.value)" style="display:block;margin:4px auto 0;width:100px;font-size:var(--fs-xs);">
-        <option value="3star" ${activeTier==='3star'?'selected':''}>⭐ 3★ price</option>
-        <option value="4star" ${activeTier==='4star'?'selected':''}>⭐⭐ 4★ price</option>
+      <select class="price-tier-pick" title="Set this line's price" onchange="setRowTier(${idx}, this.value); this.value='';" style="display:block;margin:4px auto 0;width:100px;font-size:var(--fs-xs);">
+        <option value="" selected disabled hidden>Set price…</option>
+        <option value="3star">⭐ 3★ price — ₹${(item.price_3star||0).toLocaleString('en-IN')}</option>
+        <option value="4star">⭐⭐ 4★ price — ₹${(item.price_4star||0).toLocaleString('en-IN')}</option>
+        ${(orig3 != null || orig4 != null) ? `<option value="orig">↩ Original price — ₹${(activeTier==='4star' ? (orig4??orig3) : (orig3??orig4)).toLocaleString('en-IN')}</option>` : ''}
       </select>` : ''}
     </td>
     ${hasBoqPricing ? `<td class="boq-price-cell num">₹${fmt(boqPrice, 2)}</td>
@@ -2897,12 +2900,23 @@ function toggleTierColumn() {
 }
 
 function setRowTier(idx, tier) {
-  if (!currentQuotation) return;
+  if (!currentQuotation || !tier) return;
   const item = currentQuotation.items[idx];
   if (!item) return;
-  item.active_tier = tier;
-  item.price_per_pc = tier === '3star' ? (item.price_3star||0) : (item.price_4star||0);
-  item.price_currency = 'INR';
+  if (tier === 'orig') {
+    // A one-off action, not a persistent tier — applies the Original price
+    // to this line without changing which tier tick stays checked.
+    const orig3 = item.prev_price_3star != null ? item.prev_price_3star : item.orig_price_3star;
+    const orig4 = item.prev_price_4star != null ? item.prev_price_4star : item.orig_price_4star;
+    const activeTier = item.active_tier || (item.tiers && item.tiers[0]) || '3star';
+    const orig = activeTier === '4star' ? (orig4 ?? orig3) : (orig3 ?? orig4);
+    if (orig != null) item.price_per_pc = orig;
+    item.price_currency = 'INR';
+  } else {
+    item.active_tier = tier;
+    item.price_per_pc = tier === '3star' ? (item.price_3star||0) : (item.price_4star||0);
+    item.price_currency = 'INR';
+  }
   renderResult(currentQuotation);
 }
 
