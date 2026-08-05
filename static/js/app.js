@@ -2390,7 +2390,7 @@ async function addToQuote() {
 // ── Result ───────────────────────────────────────────────────────────────────
 function fmt(n, dec=0) { return n.toLocaleString('en-IN', {maximumFractionDigits: dec}); }
 
-function renderItemRow(item, idx, show3, show4, hasBoqPricing) {
+function renderItemRow(item, idx, show3, show4, hasBoqPricing, showOrig) {
   const isINR   = (item.price_currency || 'INR') === 'INR';
   const qty     = item.qty || 0;
   const price   = item.price_per_pc || 0;
@@ -2467,26 +2467,35 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing) {
     <td>${ph ? phInput('specification', item.specification, 160)
              : `<div class="spec-text">${(item.specification||'').replace(/\\n/g,'\n')}</div>`}</td>
     <td>${ph ? phInput('hsn_code', item.hsn_code, 80) : (item.hsn_code||'')}</td>
-    ${show3 ? `<td class="col-3star">
-      <div class="tier-price-cell">
-        <span class="tier-tick ${activeTier==='3star'?'checked':''}" onclick="setRowTier(${idx},'3star')">${activeTier==='3star'?'✓':''}</span>
-        <span class="tier-price-text">
-          ${(item.orig_price_3star != null && item.orig_price_3star !== item.price_3star)
-            ? `<span class="tier-price-orig">₹${item.orig_price_3star.toLocaleString('en-IN')}</span>` : ''}
-          <span class="tier-price-inr">₹${(item.price_3star||0).toLocaleString('en-IN')}</span><span class="tier-price-usd">$${(item.price_3star_usd||0).toFixed(2)}</span>
-        </span>
-      </div>
-    </td>` : ''}
-    ${show4 ? `<td class="col-4star">
-      <div class="tier-price-cell">
-        <span class="tier-tick ${activeTier==='4star'?'checked':''}" onclick="setRowTier(${idx},'4star')">${activeTier==='4star'?'✓':''}</span>
-        <span class="tier-price-text">
-          ${(item.orig_price_4star != null && item.orig_price_4star !== item.price_4star)
-            ? `<span class="tier-price-orig">₹${item.orig_price_4star.toLocaleString('en-IN')}</span>` : ''}
-          <span class="tier-price-inr">₹${(item.price_4star||0).toLocaleString('en-IN')}</span><span class="tier-price-usd">$${(item.price_4star_usd||0).toFixed(2)}</span>
-        </span>
-      </div>
-    </td>` : ''}
+    ${(() => {
+      // "Original" merges two distinct snapshots under one toggle: a price
+      // refresh (prev_price_*, set the first time refreshQuotePrices() ever
+      // changes this line) takes priority when present; otherwise fall back
+      // to the master table's pre-bulk-discount snapshot (orig_price_*).
+      const orig3 = item.prev_price_3star != null ? item.prev_price_3star : item.orig_price_3star;
+      const orig4 = item.prev_price_4star != null ? item.prev_price_4star : item.orig_price_4star;
+      const cell3 = `<td class="col-3star">
+        <div class="tier-price-cell">
+          <span class="tier-tick ${activeTier==='3star'?'checked':''}" onclick="setRowTier(${idx},'3star')">${activeTier==='3star'?'✓':''}</span>
+          <span class="tier-price-text">
+            ${(showOrig && orig3 != null && orig3 !== item.price_3star)
+              ? `<span class="tier-price-orig">₹${orig3.toLocaleString('en-IN')}</span>` : ''}
+            <span class="tier-price-inr">₹${(item.price_3star||0).toLocaleString('en-IN')}</span><span class="tier-price-usd">$${(item.price_3star_usd||0).toFixed(2)}</span>
+          </span>
+        </div>
+      </td>`;
+      const cell4 = `<td class="col-4star">
+        <div class="tier-price-cell">
+          <span class="tier-tick ${activeTier==='4star'?'checked':''}" onclick="setRowTier(${idx},'4star')">${activeTier==='4star'?'✓':''}</span>
+          <span class="tier-price-text">
+            ${(showOrig && orig4 != null && orig4 !== item.price_4star)
+              ? `<span class="tier-price-orig">₹${orig4.toLocaleString('en-IN')}</span>` : ''}
+            <span class="tier-price-inr">₹${(item.price_4star||0).toLocaleString('en-IN')}</span><span class="tier-price-usd">$${(item.price_4star_usd||0).toFixed(2)}</span>
+          </span>
+        </div>
+      </td>`;
+      return (show3 ? cell3 : '') + (show4 ? cell4 : '');
+    })()}
     <td class="num"><input type="number" step="0.01" class="price-input" value="${(Math.round(priceInr*100)/100)}" onchange="recalcRow(${idx})" style="width:100px"></td>
     ${hasBoqPricing ? `<td class="boq-price-cell num">₹${fmt(boqPrice, 2)}</td>
     <td class="profit-cell num" style="color:${profit >= 0 ? '#1e9e56' : '#d64545'};font-weight:600;">₹${fmt(profit)}</td>` : ''}
@@ -2784,6 +2793,7 @@ function renderResult(q) {
   // doesn't exist in the markup when it's toggled off.
   const show3 = document.getElementById('show-3star-col') ? document.getElementById('show-3star-col').checked : true;
   const show4 = document.getElementById('show-4star-col') ? document.getElementById('show-4star-col').checked : true;
+  const showOrig = document.getElementById('show-orig-col') ? document.getElementById('show-orig-col').checked : false;
 
   // BOQ Price / Profit columns only appear for a quotation generated from an
   // uploaded client BOQ that actually had its own pricing — a manually typed
@@ -2803,7 +2813,7 @@ function renderResult(q) {
   const colSpan = 13 + (show3?1:0) + (show4?1:0) + (hasBoqPricing?2:0);
   let html = '';
 
-  items.forEach(item => { html += renderItemRow(item, items.indexOf(item), show3, show4, hasBoqPricing); });
+  items.forEach(item => { html += renderItemRow(item, items.indexOf(item), show3, show4, hasBoqPricing, showOrig); });
 
   // Totals
   const subTotal = items.reduce((s,i) => s+(i._amtInr||0), 0);
@@ -2846,6 +2856,32 @@ function renderResult(q) {
   document.getElementById('btn-bad').classList.remove('selected');
   document.getElementById('feedback-details').style.display = 'none';
   document.getElementById('feedback-status').innerHTML = '';
+}
+
+// Pull the current master-table 3star/4star prices into an already-saved
+// quote — the line items only snapshot prices at generation time, so a
+// price change in the Master Catalogue afterward never shows up here on
+// its own.
+async function refreshQuotePrices() {
+  if (!currentQuotation || !currentQuotation.id) return;
+  const btn = document.getElementById('refresh-prices-btn');
+  if (btn) { btn.disabled = true; btn.classList.add('spinning'); }
+  try {
+    const res = await fetch(`${API}/api/quotations/${currentQuotation.id}/refresh-prices`, { method: 'POST' });
+    const d = await res.json();
+    if (!res.ok) { alert(apiErr(d)); return; }
+    currentQuotation.items = d.items;
+    document.getElementById('show-orig-col').checked = d.updated > 0;
+    renderResult(currentQuotation);
+    const msg = d.updated
+      ? `${d.updated} price(s) updated from the master table${d.skipped ? `, ${d.skipped} skipped (not found in master)` : ''}.`
+      : 'Already up to date — no price changes found in the master table.';
+    alert(msg);
+  } catch (e) {
+    alert('Refresh failed: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.classList.remove('spinning'); }
+  }
 }
 
 function toggleTierColumn() {

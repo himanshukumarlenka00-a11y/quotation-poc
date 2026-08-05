@@ -1209,6 +1209,60 @@ def update_quotation(qid: int, req: UpdateItemsRequest, user: dict = Depends(get
     return data
 
 
+@router.post("/api/quotations/{qid}/refresh-prices")
+def refresh_quotation_prices(qid: int, user: dict = Depends(get_current_user)):
+    """Pull each line's CURRENT master-table 3star/4star price into an
+    already-generated quote — for when prices moved in the Master Catalogue
+    after this quote was made. Matches by exact (product, model_no); a line
+    that no longer resolves (renamed/removed from master) is left untouched
+    and counted as skipped, never guessed at.
+
+    The pre-refresh value is kept as prev_price_3star/4star, but ONLY the
+    first time a line is ever refreshed — a second refresh must not overwrite
+    that reference point, or "Original" would drift to mean "yesterday"
+    instead of "when this quote was generated"."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM quotations WHERE id=?", (qid,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(404, "Not found")
+    _check_quote_access(row, user)
+    data = json.loads(row["items_json"])
+    items = data.get("items", [])
+    updated = skipped = 0
+    for item in items:
+        product = (item.get("product") or "").strip()
+        if not product:
+            skipped += 1
+            continue
+        m = conn.execute(
+            "SELECT price_3star, price_3star_usd, price_4star, price_4star_usd "
+            "FROM master_products WHERE LOWER(TRIM(product))=LOWER(TRIM(?)) "
+            "AND LOWER(TRIM(COALESCE(original_model,'')))=LOWER(TRIM(?)) LIMIT 1",
+            (product, (item.get("model_no") or "").strip())
+        ).fetchone()
+        if not m:
+            skipped += 1
+            continue
+        new3, new4 = float(m["price_3star"] or 0), float(m["price_4star"] or 0)
+        old3, old4 = float(item.get("price_3star") or 0), float(item.get("price_4star") or 0)
+        if new3 == old3 and new4 == old4:
+            continue   # already current — not an error, just nothing to do
+        if item.get("prev_price_3star") is None:
+            item["prev_price_3star"] = old3
+            item["prev_price_4star"] = old4
+        item["price_3star"], item["price_3star_usd"] = new3, float(m["price_3star_usd"] or 0)
+        item["price_4star"], item["price_4star_usd"] = new4, float(m["price_4star_usd"] or 0)
+        updated += 1
+    data["items"] = items
+    conn.execute("UPDATE quotations SET items_json=? WHERE id=?", (json.dumps(data), qid))
+    conn.commit()
+    conn.close()
+    log_action(user, "refresh_quotation_prices", target=row["ref_no"],
+               after={"updated": updated, "skipped": skipped})
+    return {"items": items, "updated": updated, "skipped": skipped}
+
+
 @router.get("/api/download/{qid}")
 def download_quotation(qid: int, user: dict = Depends(get_current_user)):
     conn = get_db()

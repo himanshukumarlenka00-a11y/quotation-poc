@@ -486,7 +486,13 @@
   .quot-co-addr { font-size: var(--fs-xs); color:#555; margin-top:2px; }
 
   /* Title bar */
-  .quot-title { background:var(--primary); color:#fff; text-align:center; padding:9px; font-size: var(--fs-md); font-weight:800; letter-spacing:6px; }
+  .quot-title { background:var(--primary); color:#fff; text-align:center; padding:9px; font-size: var(--fs-md); font-weight:800; letter-spacing:6px; position:relative; }
+  .quot-refresh-btn { position:absolute; right:12px; top:50%; transform:translateY(-50%);
+    background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.3); border-radius:7px;
+    color:#fff; width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center;
+    cursor:pointer; letter-spacing:0; transition:background .15s; }
+  .quot-refresh-btn:hover { background:rgba(255,255,255,.26); }
+  .quot-refresh-btn.spinning svg { animation: esSpin .7s linear infinite; }
 
   /* Meta row */
   .quot-meta { display:grid; grid-template-columns:1fr 1fr; border-bottom:1px solid var(--border); }
