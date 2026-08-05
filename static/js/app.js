@@ -1423,25 +1423,24 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
 
   el.innerHTML = capNote + Object.entries(groups).map(([fname, g], gIdx) => {
     const prods = g.items;
-    // A bulk % discount overwrites price_3star/price_4star in place — the
-    // ORIGINAL price only survives in orig_price_3star/4star (snapshotted
-    // once, on the first bulk apply). Most catalogues have never had a bulk
-    // discount applied, so the column would be nothing but "—" for every
-    // row — hide it entirely rather than show a column of empty dashes;
-    // it appears only for catalogues where it actually has data.
-    const hasOrig = prods.some(i => i.orig_price_3star != null || i.orig_price_4star != null);
-    const headerCells = `${hasOrig ? '<th class="num">Original (₹)</th>' : ''}<th class="num">3★ Price (₹)</th><th class="num">3★ Price ($)</th><th class="num">4★ Price (₹)</th><th class="num">4★ Price ($)</th>`;
+    const headerCells = `<th class="num">Original (₹)</th><th class="num">3★ Price (₹)</th><th class="num">3★ Price ($)</th><th class="num">4★ Price (₹)</th><th class="num">4★ Price ($)</th>`;
 
+    // The original price always exists — it's the pre-bulk-discount snapshot
+    // (orig_price_*) when one was taken, or simply today's price when the
+    // catalogue has never been bulk-discounted (nothing has changed it yet,
+    // so current IS original). Struck-through only when it actually differs
+    // from the current price — a plain, unchanged number otherwise.
     const origCell = i => {
-      if (!hasOrig) return '';
-      const o3 = i.orig_price_3star, o4 = i.orig_price_4star;
-      if (o3 == null && o4 == null) {
-        return `<td class="num" style="color:var(--muted);">—</td>`;
-      }
+      const o3 = i.orig_price_3star != null ? i.orig_price_3star : i.price_3star;
+      const o4 = i.orig_price_4star != null ? i.orig_price_4star : i.price_4star;
+      const changed = i.orig_price_3star != null || i.orig_price_4star != null;
       const parts = [];
-      if (o3 != null) parts.push(`₹${o3.toLocaleString('en-IN')}`);
-      if (o4 != null && o4 !== o3) parts.push(`₹${o4.toLocaleString('en-IN')} (4★)`);
-      return `<td class="num" style="color:var(--muted);text-decoration:line-through;font-size:var(--fs-sm);">${parts.join(' / ')}</td>`;
+      if (o3 != null) parts.push(`₹${(o3||0).toLocaleString('en-IN')}`);
+      if (o4 != null && o4 !== o3) parts.push(`₹${(o4||0).toLocaleString('en-IN')} (4★)`);
+      const style = changed
+        ? 'color:var(--muted);text-decoration:line-through;font-size:var(--fs-sm);'
+        : 'color:var(--muted);';
+      return `<td class="num" style="${style}">${parts.join(' / ') || '—'}</td>`;
     };
 
     // Every catalog gets independent 3★/4★ fields now — a catalog that
