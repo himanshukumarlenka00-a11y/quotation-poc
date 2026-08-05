@@ -1259,6 +1259,11 @@ async function forceImportMaster(idx) {
   }
 }
 
+function toggleImportedFiles() {
+  document.getElementById('master-files-body').classList.toggle('collapsed');
+  document.getElementById('imported-files-toggle').classList.toggle('collapsed');
+}
+
 async function loadMasterFiles() {
   const res = await fetch(`${API}/api/master-table/files`);
   const files = await res.json();

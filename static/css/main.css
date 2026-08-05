@@ -466,6 +466,16 @@
   .tier-price-inr { font-size: var(--fs-base); }
   .tier-price-usd { font-size: var(--fs-xs); color:var(--muted); }
   .tier-price-orig { font-size: var(--fs-xs); color:var(--muted); text-decoration: line-through; }
+  .collapse-head { display:flex; align-items:center; gap:10px; cursor:pointer; }
+  .collapse-toggle { margin-left:auto; width:28px; height:28px; flex:none; border-radius:50%;
+    border:1px solid var(--border); background:var(--card); display:inline-flex; align-items:center;
+    justify-content:center; cursor:pointer; color:var(--muted); transition:border-color .15s, color .15s; }
+  .collapse-toggle:hover { border-color:var(--primary); color:var(--primary); }
+  .collapse-toggle svg { transition: transform .25s ease; }
+  .collapse-toggle.collapsed svg { transform: rotate(-90deg); }
+  .collapse-body { overflow:hidden; max-height:4000px; opacity:1; margin-top:12px;
+    transition: max-height .3s ease, opacity .25s ease, margin-top .3s ease; }
+  .collapse-body.collapsed { max-height:0; opacity:0; margin-top:0; }
   .tier-tick {
     flex-shrink:0; display:inline-flex; align-items:center; justify-content:center;
     width:16px; height:16px; border-radius:50%; border:1.5px solid #c3d2e8;
