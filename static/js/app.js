@@ -2693,7 +2693,17 @@ function switchVariant(idx) {
   if (!row) return;
   const colCount = row.cells.length;
 
-  const cards = item._variants.map((v, vi) => {
+  // Cheapest first. Sorted for DISPLAY only — a copy carrying each variant's
+  // original index, because applySwitch() indexes into item._variants and the
+  // matcher's own pick (_variants[0]) must stay the matched product. Sorting
+  // the underlying array would silently re-point every quote at the cheapest
+  // unrelated row. Unpriced variants (0) sink to the bottom: "no price" isn't
+  // cheap.
+  const ordered = item._variants
+    .map((v, i) => ({ v, i }))
+    .sort((a, b) => ((a.v.price || Infinity) - (b.v.price || Infinity)));
+
+  const cards = ordered.map(({ v, i: vi }, pos) => {
     const isCur    = v.product === item.product && String(v.price) === String(item.price_per_pc);
     const priceInr = v.price||0;   // USD column removed — show as-is in INR
     const priceStr = `₹${priceInr.toLocaleString('en-IN', {maximumFractionDigits:2})}`;
@@ -2706,7 +2716,7 @@ function switchVariant(idx) {
       ? `onclick="event.stopPropagation(); showImageLightbox('${thumbSrc}')" title="Click to enlarge"`
       : '';
     return `
-      <div class="switch-card ${isCur?'active':''}" onclick="applySwitch(${idx},${vi},this)" style="animation-delay:${vi * 35}ms">
+      <div class="switch-card ${isCur?'active':''}" onclick="applySwitch(${idx},${vi},this)" style="animation-delay:${pos * 35}ms">
         <div class="sc-thumb" ${thumbClick}>${thumb}</div>
         <div class="sc-body">
           <div class="sc-name">${v.product||''}</div>
