@@ -108,6 +108,15 @@ async def upload_master_table(file: UploadFile = File(...), force: str = Form(""
     'master-table-access-control': employees may only ever read this data."""
     if not file.filename.endswith((".xls", ".xlsx")):
         raise HTTPException(400, "Only .xls/.xlsx files allowed")
+    if force != "1":
+        conn = get_db()
+        exists = conn.execute("SELECT 1 FROM master_products WHERE file_name=? LIMIT 1",
+                              (file.filename,)).fetchone()
+        conn.close()
+        if exists:
+            raise HTTPException(409,
+                f"A catalogue named '{file.filename}' is already in the master table. "
+                f"Re-importing it will delete and replace all its existing products.")
     dest = MASTER_UPLOADS_DIR / file.filename
     try:
         _save_upload_validated(file, dest)

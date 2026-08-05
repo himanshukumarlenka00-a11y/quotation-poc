@@ -1219,12 +1219,14 @@ async function uploadMasterFile() {
       const res = await fetch(`${API}/api/master-table/upload`, { method: 'POST', body: fd });
       const data = await res.json();
       if (res.status === 409) {
-        // Phase D gate: the import would land every product without a price.
-        // Not an error to hide behind — show why, and let the admin either
-        // teach the price column (re-scan) or knowingly force it through.
+        // Two distinct 409 gates share this handler: no-price (Phase D) and
+        // duplicate filename (below) — both need the admin to knowingly
+        // force it through, so both get the same retry button, worded for
+        // whichever this response actually is.
+        const isDup = apiErr(data).includes('already in the master table');
         results.push(`<div class="alert alert-error">⛔ '${file.name}': ${apiErr(data)}
           <div style="margin-top:8px;"><button class="btn btn-sm btn-danger"
-            onclick="forceImportMaster(${i})">Import anyway (no prices)</button></div></div>`);
+            onclick="forceImportMaster(${i})">${isDup ? 'Replace existing catalogue' : 'Import anyway (no prices)'}</button></div></div>`);
       } else {
         results.push(`<div class="alert alert-${res.ok ? 'success' : 'error'}">${res.ok ? data.message : apiErr(data)}</div>`);
       }
