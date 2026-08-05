@@ -228,7 +228,26 @@
     transition:border-color .15s, color .15s; }
   .btn-manual-add:hover { border-color:var(--primary); color:var(--primary); }
   .manual-add-row td { border-top:none !important; }
-  #manual-add-form textarea, #manual-add-form input { font-size:var(--fs-sm); }
+  @keyframes manualAddIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+  .manual-add-card { animation:manualAddIn .22s ease; background:var(--card-soft); border:1px solid var(--border);
+    border-radius:12px; padding:18px 20px; }
+  .manual-add-head { display:flex; align-items:center; gap:9px; font-weight:700; color:var(--primary);
+    font-size:var(--fs-md); margin-bottom:14px; }
+  .manual-add-ico { width:30px; height:30px; flex:none; border-radius:8px; background:rgba(106,76,240,.12);
+    color:var(--primary); display:inline-flex; align-items:center; justify-content:center; }
+  .manual-add-row1 { display:flex; gap:16px; margin-bottom:16px; }
+  .man-img-box { width:76px; height:76px; flex:none; border:1.5px dashed var(--border); border-radius:10px;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--muted);
+    font-size:var(--fs-xs); text-align:center; overflow:hidden; transition:border-color .15s; }
+  .man-img-box:hover { border-color:var(--primary); color:var(--primary); }
+  .manual-add-top-fields { flex:1; display:grid; grid-template-columns:2fr 1fr 1fr; gap:14px; }
+  .manual-add-row2 { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:14px; margin-bottom:16px; }
+  .man-field { display:flex; flex-direction:column; gap:4px; }
+  .man-field label { font-size:var(--fs-xs); font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.3px; }
+  .man-field input, #manual-add-form textarea { width:100%; box-sizing:border-box; padding:8px 10px;
+    border:1px solid var(--border); border-radius:7px; font-size:var(--fs-sm); background:var(--card); color:var(--text); }
+  .man-field input:focus, #manual-add-form textarea:focus { outline:none; border-color:var(--primary);
+    box-shadow:0 0 0 3px rgba(106,76,240,.14); }
   td input { width: 100%; border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: var(--fs-base); background:var(--input-bg); color:var(--text); }
   td input:focus { outline: none; border-color: var(--primary); }
 

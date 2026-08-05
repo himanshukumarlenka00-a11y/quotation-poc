@@ -3030,30 +3030,41 @@ function toggleManualAdd() {
   const opening = form.style.display === 'none';
   if (opening) {
     _manualImageData = '';
+    const field = (id, label, extra) =>
+      `<div class="man-field"><label>${label}</label><input id="${id}" ${extra||''} onkeydown="stopEnterSubmit(event)"></div>`;
     form.innerHTML = `
-      <div style="display:flex;gap:12px;background:var(--card-soft);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-top:6px;flex-wrap:wrap;">
-        <label id="man-img-box" style="width:64px;height:64px;flex:none;border:1.5px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--muted);font-size:var(--fs-xs);text-align:center;overflow:hidden;">
-          📷 Add<br>image
-          <input type="file" accept="image/*" style="display:none" onchange="handleManualImage(this)">
-        </label>
-        <div style="flex:1;min-width:260px;">
-          <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-bottom:8px;">
-            <input id="man-product" placeholder="Product name" onkeydown="stopEnterSubmit(event)">
-            <input id="man-model" placeholder="Model no" onkeydown="stopEnterSubmit(event)">
-            <input id="man-brand" placeholder="Brand" onkeydown="stopEnterSubmit(event)">
-          </div>
-          <textarea id="man-spec" placeholder="Specification" style="min-height:44px;width:100%;margin-bottom:8px;"></textarea>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;">
-            <input id="man-qty" type="number" value="1" placeholder="Qty" onkeydown="stopEnterSubmit(event)">
-            <input id="man-price" type="number" step="0.01" placeholder="Price/pc (₹)" onkeydown="stopEnterSubmit(event)">
-            <input id="man-hsn" placeholder="HSN" onkeydown="stopEnterSubmit(event)">
-            <input id="man-gst" type="number" value="18" placeholder="GST %" onkeydown="stopEnterSubmit(event)">
+      <div class="manual-add-card">
+        <div class="manual-add-head">
+          <span class="manual-add-ico">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          </span>
+          <span>Add a product manually</span>
+        </div>
+        <div class="manual-add-row1">
+          <label id="man-img-box" class="man-img-box">
+            📷<br>Add image
+            <input type="file" accept="image/*" style="display:none" onchange="handleManualImage(this)">
+          </label>
+          <div class="manual-add-top-fields">
+            ${field('man-product', 'Product name', 'placeholder="e.g. Copper carafe 500ml"')}
+            ${field('man-model', 'Model no')}
+            ${field('man-brand', 'Brand')}
           </div>
         </div>
-      </div>
-      <div style="margin-top:8px;display:flex;gap:8px;">
-        <button type="button" class="btn btn-primary btn-sm" onclick="addManualItem()">Add to quote</button>
-        <button type="button" class="btn btn-sm" onclick="toggleManualAdd()">Cancel</button>
+        <div class="man-field" style="margin-bottom:14px;">
+          <label>Specification</label>
+          <textarea id="man-spec" style="min-height:52px;width:100%;"></textarea>
+        </div>
+        <div class="manual-add-row2">
+          ${field('man-qty', 'Qty', 'type="number" value="1"')}
+          ${field('man-price', 'Price/pc (₹)', 'type="number" step="0.01"')}
+          ${field('man-hsn', 'HSN')}
+          ${field('man-gst', 'GST %', 'type="number" value="18"')}
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="btn btn-primary btn-sm" onclick="addManualItem()">Add to quote</button>
+          <button type="button" class="btn btn-sm" onclick="toggleManualAdd()">Cancel</button>
+        </div>
       </div>`;
   } else {
     form.innerHTML = '';
