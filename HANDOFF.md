@@ -1,42 +1,71 @@
-# HANDOFF — quotation-poc session state (2026-08-04)
+# HANDOFF — quotation-poc session state (2026-08-05)
 
 ## LIVE IN PRODUCTION (see memory: ubuntu-server-deployment)
-Server melange@192.168.0.146 (crm-server). App at :8000 + HTTPS :8443
-(nginx, self-signed; cert trusted on user's PC). HEAD b0ff7f5, cache v88.
-2026-08-04 (later session): feedback card restyled (theme card + SVG pills);
-removed doc footer line, generate hint bar, salutation block, topbar Ctrl+K
-search. Excel export still has its own salutation + footer lines (export.py)
-— user hasn't asked to drop them there. Export writes computed VALUES not
-formulas (user's Excel is in manual-calc mode; told them, unfixed on PC).
-Not-in-catalog items -> in-place placeholder rows (name+qty, amber tint,
-inline model/brand/spec/HSN inputs via setItemField; empty-quote guard
-ignores placeholders). Export DESCRIPTION col = item.requested (client's
-wording), SPECIFICATION = master spec. Drag-to-reorder quote rows via SL
-handle (initRowDrag, renumbers + silent save). Phase 2 paging DONE:
-/api/master-table/summary + /page (limit<=500, q search, cost stripped);
-master page lazy-loads 200/folder + Load more; server-side search cap 500.
-Phase 2 chunked-import half DROPPED — user will split the 3-lakh sheet and
-upload chunks himself (open q: append chunks into one catalogue or not).
-Later (v89-v92): class-based column alignment (killed nth-last-child(-n+7)
-rule); removed dup grand-total block + edit-hint + amount-in-words lines
-(web only; export keeps its own); action buttons moved BELOW doc, ref badge
-left/buttons right; Amount/GST spacing; placeholder rows got 🔍 Find (live
-search via /api/master-table/page, applyFind fills row); export HSN col
-width 11. Night session (v93+): Revert button on Find-picked rows
-(was_placeholder flag). Explicit model number = HARD GATE in matching
-(never auto-substitute WCCE001->WCCE002; exact model first, else
-placeholder; corrections outrank gate). LLM: _llm_chat helper — Groq
-primary, Cerebras gpt-oss-120b fallback on 429 (CEREBRAS_API_KEY in
-/etc/quotegen/env; org still 402 until user activates free tier in
-Cerebras Billing tab — fallback dormant, fail-safe). Quota savers:
-1-line prompts with [MODEL] parse with no LLM; bracketed model outranks
-prose markers; explicit-model items skip semantic call. USER RULE:
-placeholder-lineage lines NEVER teach match_corrections (Find pick =
-stand-in for that quote only); bad learned row id 273 deleted from prod
-DB. HEAD 4caef3b, cache v93, server current. NOT pushed to GitHub.
-Deploy flow: edit dev → verify → commit → scp files → restart quotegen →
-ASK USER BEFORE EVERY SERVER-CHANGING COMMAND. Report est. tokens after
-each task. RTK proxy corrupts piped grep output — use python for pipes.
+Server melange@192.168.0.146 (crm-server). App :8000 + HTTPS :8443 (nginx,
+self-signed, cert trusted on user's PC). HEAD b8704da, cache css v105 /
+js v109. Master table now 51,938 products. NOT pushed to GitHub (47 commits
+local only).
+
+Deploy flow: edit dev → verify cheaply → commit → tar-pipe to /opt/quotegen
+→ restart quotegen if Python changed. ASK BEFORE EVERY SERVER-CHANGING
+COMMAND. Report est. tokens after each task. RTK proxy corrupts piped grep —
+use python for pipes.
+
+## Standing behaviour rules (don't relearn these)
+- Explicit model number = HARD GATE. "[WCCE001-SS]" never becomes WCCE002.
+  Exact model wins; no match → placeholder row, never a substitute.
+  Human corrections still outrank the gate.
+- Model lookup is brand-prefix tolerant: sheets say "[KMW-TB770]", master
+  stores original_model='TB770' with the brand in the product name.
+- Placeholder-lineage lines NEVER teach match_corrections (a Find pick is a
+  stand-in for that one quote). Bad learned row id 273 was deleted from prod.
+- Empty-quote guard ignores placeholders (all-placeholder → nothing saved).
+- Switch panel sorts cheapest-first for DISPLAY ONLY — _variants[0] stays the
+  matcher's pick, sorting the array would re-point every quote.
+
+## Built 2026-08-05
+- CSS TOKENS FIXED (big one): --fs-xs/sm/base/md/lg, --ctl-h, --sp-3, --sp-4
+  were used ~270× but never defined, so every one of those declarations was
+  dropped — body fell back to 16px, inputs had zero padding and auto height.
+  Now defined 11/12/13/14/16px, 40px, 10px, 14px in :root.
+- Manual product entry (v105-108): "Enter a product manually" row above SUB
+  TOTAL — image upload, name/model/brand/spec/qty/price/HSN/GST. Visible
+  validation (silent focus() read as a dead button). Its CSS is ID-scoped:
+  ".quot-doc td input{width:78px}" and "td:first-child{text-align:center}"
+  hijack it otherwise, since the form lives in one colspan <td>.
+- Refresh prices: ⟳ in the QUOTATION bar → POST /api/quotations/{id}/
+  refresh-prices. Keeps pre-refresh value in prev_price_3star/4star, only on
+  the FIRST refresh. "Original price" checkbox shows it; "Set price" dropdown
+  in Price/Pc offers 3★/4★/Orig (deferred via setTimeout — the select
+  destroyed itself mid-change-event otherwise).
+- Uploaded photos now decode to disk at save (update_quotation) instead of
+  living as base64 in items_json — export only reads image_path, so they used
+  to come out blank in the XLS.
+- images.py raw-XML fallback: openpyxl returns ZERO images for a sheet whose
+  drawing mixes <xdr:pic> with shapes (BOROSIL: 628 pics + 70 lines → 0).
+  Reads the drawing XML directly. BOROSIL re-imported: 624/639 images.
+- Uploads raised to 200MB (nginx client_max_body_size + MAX_UPLOAD_BYTES);
+  MARTELLATO is 148MB. Re-uploading an existing filename now 409s with a
+  "Replace existing catalogue" override.
+- Master catalogue: Original column always shows a real price (falls back to
+  current when never bulk-discounted); .c/.num alignment classes; Imported
+  Files collapse toggle. Removed the "Frequently quoted together" strip.
+- _lookup_by_model has an indexed fast path (was a full scan: ~95ms per line
+  at 52k rows ≈ 60s on a 700-row BOQ; now ~0.05ms).
+
+## Known gaps / next
+1. Cleanup: dead sec-home section, stale static/demo.html, unused .hint-box /
+   .tsearch2 / suggestion-strip CSS.
+2. Phase 6 hardening: tracebacks still leak to the browser in several
+   endpoints; no pricing/GST test in the repo.
+3. Page redesigns left: Quotations list, Margin Analysis, Upload BOQ,
+   Activity, Users & Roles. Dashboard empty-space plan approved, not built.
+4. UI logic audit areas 3-8 (areas 1-2 done).
+5. BLOCKED on user: OPM GST rates (both catalogues still 0%); the real
+   3-lakh sheet; Cerebras free tier (key is in /etc/quotegen/env and the
+   fallback is live but the org 402s until Billing is activated).
+6. Excel export still carries its own salutation + footer lines — user
+   removed them from the web view only, hasn't asked about the XLS.
 
 ## Built 2026-08-03/04 (all deployed)
 - Sales person picker (region-first, auto-select single-region); editable
