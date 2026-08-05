@@ -1,4 +1,4 @@
-import os, re, json, tempfile
+import os, re, json, base64, tempfile
 from pathlib import Path
 from datetime import datetime
 from fastapi import APIRouter, Depends, Request, HTTPException, UploadFile, File, Form
@@ -10,6 +10,7 @@ from app.db import get_db
 from app.auth import get_current_user, require_role, _check_quote_access, log_action
 from app.matching import get_boq_context, get_feedback_context, generate_ref_no, get_latest_template
 from app.export import build_company_quotation
+from app.images import _save_image_to_disk
 from app.parser import parse_boq_excel
 from app.routers.catalog import _save_upload_validated
 
@@ -195,6 +196,26 @@ def _lookup_by_model(conn, req_model):
     rm = re.sub(r"[^a-z0-9]", "", (req_model or "").lower())
     if len(rm) < 3:
         return []
+    # Indexed fast path first: the normalising REPLACE() below can't use
+    # idx_master_model, so it scans every row — ~95ms per item at 52k rows,
+    # i.e. a minute of pure scanning on a 700-row BOQ. Plain equality on the
+    # obvious candidates ("KMW-TB770" -> also try "TB770") does use the index
+    # and settles the overwhelming majority of lines in microseconds.
+    raw = (req_model or "").strip()
+    cands = {raw, raw.upper()}
+    if "-" in raw:
+        for part in (raw.split("-", 1)[1], raw.rsplit("-", 1)[-1]):
+            if len(re.sub(r"[^a-z0-9]", "", part.lower())) >= 3:
+                cands |= {part.strip(), part.strip().upper()}
+    cands = [c for c in cands if c]
+    try:
+        hit = conn.execute(
+            f"SELECT * FROM master_products WHERE original_model IN "
+            f"({','.join('?' * len(cands))})", cands).fetchall()
+        if hit:
+            return [dict(r) for r in hit]
+    except Exception as e:
+        print(f"Model fast-path failed (non-fatal, falling back to scan): {e}")
     try:
         rows = conn.execute(
             f"""SELECT * FROM master_products
@@ -1153,6 +1174,24 @@ def update_quotation(qid: int, req: UpdateItemsRequest, user: dict = Depends(get
         raise HTTPException(404, "Not found")
     _check_quote_access(row, user)
     data = json.loads(row["items_json"])
+
+    # A hand-uploaded photo arrives as a base64 data URL in local_image. Park
+    # it on disk like every catalogue image instead of embedding it in the
+    # quote row: a 2MB photo is ~2.7MB of base64 inside items_json, and the
+    # Excel export only ever reads image_path — so an uploaded image looked
+    # fine on screen and then came out blank in the XLS. Done here because
+    # every save routes through this endpoint, so it covers the manual-entry
+    # form and the per-row "Add Image" alike.
+    for it in (req.items or []):
+        li = it.get("local_image") or ""
+        if li.startswith("data:image") and "," in li:
+            try:
+                h = _save_image_to_disk(base64.b64decode(li.split(",", 1)[1]))
+                if h:
+                    it["image_path"] = h
+                    it["local_image"] = ""
+            except Exception as e:
+                print(f"Inline image save skipped (non-fatal): {e}")
 
     # Learn from what the human changed, BEFORE the old state is overwritten.
     # Diffing server-side (rather than trusting the frontend to report edits)
