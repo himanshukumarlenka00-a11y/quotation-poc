@@ -2510,7 +2510,7 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing, showOrig) {
     <td class="num">
       <input type="number" step="0.01" class="price-input" value="${(Math.round(priceInr*100)/100)}" onchange="recalcRow(${idx})" style="width:100px">
       ${(item.price_3star || item.price_4star) ? `
-      <select class="price-tier-pick" title="Set this line's price" onchange="setRowTier(${idx}, this.value); this.value='';" style="display:block;margin:4px auto 0;width:100px;font-size:var(--fs-xs);">
+      <select class="price-tier-pick" title="Set this line's price" onchange="const v=this.value; this.value=''; setTimeout(()=>setRowTier(${idx}, v));" style="display:block;margin:4px auto 0;width:100px;font-size:var(--fs-xs);">
         <option value="" selected disabled hidden>Set price</option>
         <option value="3star">3★ ₹${(item.price_3star||0).toLocaleString('en-IN')}</option>
         <option value="4star">4★ ₹${(item.price_4star||0).toLocaleString('en-IN')}</option>
