@@ -175,6 +175,42 @@ def _norm_phrase(s):
     return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", str(s or "").lower())).strip()
 
 
+_SQL_NORM_MODEL = ("REPLACE(REPLACE(REPLACE(REPLACE(LOWER(original_model),'-',''),' ',''),'.',''),'/','')")
+
+
+def _lookup_by_model(conn, req_model):
+    """Master rows whose model matches `req_model`, brand-prefix tolerant.
+
+    Clients write the model the way it reads on their sheet — "[KMW-TB770]" —
+    while the master table stores original_model='TB770' and keeps the brand
+    in the product name. A plain equality check therefore misses every
+    branded model code, which is exactly how a list of 8 real KMW products
+    came back as "nothing matched".
+
+    So: exact normalised equality first, then rows whose model is a SUFFIX of
+    what was asked (kmwtb770 ends with tb770). The suffix arm needs >=3 chars
+    to avoid a two-character model swallowing everything, and it can't create
+    the substitution the model gate exists to prevent — wcce001 does not end
+    with wcce002. Exact matches are returned first so they always win."""
+    rm = re.sub(r"[^a-z0-9]", "", (req_model or "").lower())
+    if len(rm) < 3:
+        return []
+    try:
+        rows = conn.execute(
+            f"""SELECT * FROM master_products
+                 WHERE original_model IS NOT NULL AND TRIM(original_model) != ''
+                   AND ( {_SQL_NORM_MODEL} = ?
+                         OR ( LENGTH({_SQL_NORM_MODEL}) >= 3
+                              AND ? LIKE '%' || {_SQL_NORM_MODEL} ) )
+                 ORDER BY CASE WHEN {_SQL_NORM_MODEL} = ? THEN 0 ELSE 1 END,
+                          LENGTH({_SQL_NORM_MODEL}) DESC""",
+            (rm, rm, rm)).fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        print(f"Model lookup failed (non-fatal): {e}")
+        return []
+
+
 def _lookup_correction(conn, phrase):
     """A master-table row a human previously said this phrase means, or None.
 
@@ -744,14 +780,17 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         if not req_model:
             brackets = re.findall(r"\[([^\]\[]{2,40})\]", item.get("product", ""))
             req_model = brackets[-1].strip() if brackets else ""
-        if variants and req_model and matched_by != "learned" \
-                and any(c.isdigit() for c in req_model):
-            norm = lambda s: re.sub(r"[^a-z0-9]", "", (s or "").lower())
-            rm = norm(req_model)
-            exact = [v for v in variants if norm(v.get("original_model")) == rm]
-            if exact:
-                exact_ids = {id(v) for v in exact}
-                variants = exact + [v for v in variants if id(v) not in exact_ids]
+        # Runs whether or not the NAME search found anything: the model is the
+        # stronger signal, and the client's label often describes the product
+        # differently than our catalogue does ("1/4-Segment colander" vs
+        # "Triangle Pasta Basket") while naming the very same model code.
+        if req_model and matched_by != "learned" and any(c.isdigit() for c in req_model):
+            by_model = _lookup_by_model(conn, req_model)
+            if by_model:
+                key = lambda v: ((v.get("product") or "").strip().lower(),
+                                 (v.get("original_model") or "").strip().lower())
+                seen_m = {key(v) for v in by_model}
+                variants = by_model + [v for v in variants if key(v) not in seen_m]
             else:
                 not_found.append(f"{original_kw} (model {req_model} not in master — nothing substituted)")
                 _add_placeholder(original_kw, qty)
