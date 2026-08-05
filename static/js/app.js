@@ -2497,15 +2497,18 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing, showOrig) {
       </td>`;
       return (show3 ? cell3 : '') + (show4 ? cell4 : '');
     })()}
-    <td class="num">
+    <td class="num" style="position:relative;">
       <input type="number" step="0.01" class="price-input" value="${(Math.round(priceInr*100)/100)}" onchange="recalcRow(${idx})" style="width:100px">
       ${(item.price_3star || item.price_4star) ? `
-      <select class="price-tier-pick" title="Set this line's price" onchange="setRowTier(${idx}, this.value); this.value='';" style="display:block;margin:4px auto 0;width:100px;font-size:var(--fs-xs);">
-        <option value="" selected disabled hidden>Set price…</option>
-        <option value="3star">⭐ 3★ price — ₹${(item.price_3star||0).toLocaleString('en-IN')}</option>
-        <option value="4star">⭐⭐ 4★ price — ₹${(item.price_4star||0).toLocaleString('en-IN')}</option>
-        ${(orig3 != null || orig4 != null) ? `<option value="orig">↩ Original price — ₹${(activeTier==='4star' ? (orig4??orig3) : (orig3??orig4)).toLocaleString('en-IN')}</option>` : ''}
-      </select>` : ''}
+      <button type="button" class="price-tier-pick" onclick="togglePricePick(event, ${idx})">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.58 3H4a1 1 0 0 0-1 1v5.59a2 2 0 0 0 .59 1.41l9.59 9.59a2 2 0 0 0 2.82 0l4.59-4.59a2 2 0 0 0 0-2.82z"/><circle cx="7.5" cy="7.5" r="1.2" fill="currentColor" stroke="none"/></svg>
+        Set price
+      </button>
+      <div class="price-pick-menu" id="price-pick-${idx}" style="display:none;">
+        <div class="ppm-row" onclick="setRowTier(${idx},'3star')">3★ price <span>₹${(item.price_3star||0).toLocaleString('en-IN')}</span></div>
+        <div class="ppm-row" onclick="setRowTier(${idx},'4star')">4★ price <span>₹${(item.price_4star||0).toLocaleString('en-IN')}</span></div>
+        ${(orig3 != null || orig4 != null) ? `<div class="ppm-row" onclick="setRowTier(${idx},'orig')">Original price <span>₹${(activeTier==='4star' ? (orig4??orig3) : (orig3??orig4)).toLocaleString('en-IN')}</span></div>` : ''}
+      </div>` : ''}
     </td>
     ${hasBoqPricing ? `<td class="boq-price-cell num">₹${fmt(boqPrice, 2)}</td>
     <td class="profit-cell num" style="color:${profit >= 0 ? '#1e9e56' : '#d64545'};font-weight:600;">₹${fmt(profit)}</td>` : ''}
@@ -2898,6 +2901,20 @@ function toggleTierColumn() {
   if (!currentQuotation) return;
   renderResult(currentQuotation);
 }
+
+// Custom price-pick popover (not a native <select>) — browsers render
+// <option> hover/selected colors from the OS, not CSS, so a themed menu
+// needs real divs instead.
+function togglePricePick(e, idx) {
+  e.stopPropagation();
+  const menu = document.getElementById(`price-pick-${idx}`);
+  const wasOpen = menu.style.display === 'block';
+  document.querySelectorAll('.price-pick-menu').forEach(m => m.style.display = 'none');
+  menu.style.display = wasOpen ? 'none' : 'block';
+}
+document.addEventListener('click', () => {
+  document.querySelectorAll('.price-pick-menu').forEach(m => m.style.display = 'none');
+});
 
 function setRowTier(idx, tier) {
   if (!currentQuotation || !tier) return;
