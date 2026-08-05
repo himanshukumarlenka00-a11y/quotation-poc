@@ -1,6 +1,6 @@
-import os, secrets
+import os, secrets, traceback, uuid
 from pathlib import Path
-from fastapi import Request
+from fastapi import Request, HTTPException
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -67,3 +67,18 @@ def _rate_limit_key(request: Request) -> str:
 # app.state) and the routers (@limiter.limit(...) decorators) can import it
 # without a circular import.
 limiter = Limiter(key_func=_rate_limit_key)
+
+
+def server_error(e: Exception, what: str = "Request") -> HTTPException:
+    """Log the traceback here; hand the client only a short error id.
+
+    Every 500 used to inline traceback.format_exc() straight into the HTTP
+    body, so absolute file paths and source lines were published to anyone
+    who could make an endpoint fail. The trace still goes to the journal
+    (journalctl -u quotegen), keyed by the same id the user is shown, so
+    debugging costs one grep instead of a screenshot."""
+    eid = uuid.uuid4().hex[:8]
+    print(f"[error {eid}] {what}: {type(e).__name__}: {e}")
+    traceback.print_exc()
+    return HTTPException(500, f"{what} failed — please try again. "
+                              f"Quote error id {eid} if it keeps happening.")

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Request, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from groq import Groq
-from app.config import limiter, GROQ_API_KEY_DEFAULT, CEREBRAS_API_KEY, CEREBRAS_MODEL
+from app.config import limiter, GROQ_API_KEY_DEFAULT, CEREBRAS_API_KEY, CEREBRAS_MODEL, server_error
 from app.db import get_db
 from app.auth import get_current_user, require_role, _check_quote_access, log_action
 from app.matching import get_boq_context, get_feedback_context, generate_ref_no, get_latest_template
@@ -41,7 +41,7 @@ def smart_generate(request: Request, req: GenerateRequest, user: dict = Depends(
         raise
     except Exception as e:
         import traceback
-        raise HTTPException(500, f"{type(e).__name__}: {e}\n{traceback.format_exc()[-600:]}")
+        raise server_error(e, "Request")
 
 def _llm_chat(groq_client, messages, max_tokens, temperature):
     """One LLM chat call: Groq first; if Groq is rate-limited and a Cerebras
@@ -944,7 +944,7 @@ def smart_generate_from_boq(
         raise
     except Exception as e:
         import traceback
-        raise HTTPException(500, f"{type(e).__name__}: {e}\n{traceback.format_exc()[-600:]}")
+        raise server_error(e, "Request")
 
 
 def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str, user: dict):

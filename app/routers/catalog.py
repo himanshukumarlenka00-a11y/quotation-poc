@@ -3,7 +3,7 @@ from pathlib import Path
 from datetime import datetime
 from fastapi import APIRouter, UploadFile, File, HTTPException, Response, Depends
 import pandas as pd
-from app.config import UPLOADS_DIR
+from app.config import UPLOADS_DIR, server_error
 from app.db import get_db
 from app.auth import get_current_user, require_role, log_action
 from app.images import _image_file_path
@@ -41,7 +41,7 @@ async def scan_boq(file: UploadFile = File(...), admin: dict = Depends(require_r
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(500, f"Scan error: {type(e).__name__}: {e}\n{traceback.format_exc()[-300:]}")
+        raise server_error(e, "Scan")
 
 
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # 200MB — matches nginx's client_max_body_size; a real
@@ -87,7 +87,7 @@ async def upload_boq(file: UploadFile = File(...), admin: dict = Depends(require
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(500, f"Upload error: {type(e).__name__}: {e}\n{traceback.format_exc()[-400:]}")
+        raise server_error(e, "Upload")
 
 async def _upload_boq(file: UploadFile):
 

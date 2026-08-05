@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from pydantic import BaseModel
-from app.config import MASTER_UPLOADS_DIR
+from app.config import MASTER_UPLOADS_DIR, server_error
 from app.db import get_db, rebuild_master_fts
 from app.auth import get_current_user, require_role, log_action
 from app.images import _image_file_path
@@ -98,7 +98,7 @@ async def scan_master_table(file: UploadFile = File(...), admin: dict = Depends(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(500, f"Scan error: {type(e).__name__}: {e}\n{traceback.format_exc()[-400:]}")
+        raise server_error(e, "Scan")
 
 
 @router.post("/api/master-table/upload")
@@ -170,7 +170,7 @@ async def upload_master_table(file: UploadFile = File(...), force: str = Form(""
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(500, f"Import error: {type(e).__name__}: {e}\n{traceback.format_exc()[-400:]}")
+        raise server_error(e, "Import")
 
 
 @router.post("/api/master-table/scan-matched-boq")
@@ -209,7 +209,7 @@ async def scan_matched_boq(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(500, f"Scan error: {type(e).__name__}: {e}\n{traceback.format_exc()[-400:]}")
+        raise server_error(e, "Scan")
 
 
 @router.post("/api/master-table/upload-matched-boq")
@@ -253,7 +253,7 @@ async def upload_matched_boq(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(500, f"Import error: {type(e).__name__}: {e}\n{traceback.format_exc()[-400:]}")
+        raise server_error(e, "Import")
 
 
 @router.get("/api/master-table/files")
