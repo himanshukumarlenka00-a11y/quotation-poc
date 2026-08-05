@@ -3030,40 +3030,51 @@ function toggleManualAdd() {
   const opening = form.style.display === 'none';
   if (opening) {
     _manualImageData = '';
-    const field = (id, label, extra) =>
-      `<div class="man-field"><label>${label}</label><input id="${id}" ${extra||''} onkeydown="stopEnterSubmit(event)"></div>`;
+    const field = (id, label, ph, extra, required) =>
+      `<div class="man-field"><label>${label}${required ? ' <span class="man-req">*</span>' : ''}</label>
+         <input id="${id}" placeholder="${ph||''}" ${extra||''} onkeydown="stopEnterSubmit(event)"></div>`;
     form.innerHTML = `
       <div class="manual-add-card">
         <div class="manual-add-head">
           <span class="manual-add-ico">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
           </span>
-          <span>Add a product manually</span>
+          <span>Add Product Manually</span>
         </div>
         <div class="manual-add-row1">
-          <label id="man-img-box" class="man-img-box">
-            📷<br>Add image
-            <input type="file" accept="image/*" style="display:none" onchange="handleManualImage(this)">
-          </label>
+          <div>
+            <label class="man-field-label">Product Image</label>
+            <label id="man-img-box" class="man-img-box">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <span class="man-img-label">Upload</span>
+              <span class="man-img-hint">JPG, PNG (Max. 2MB)</span>
+              <input type="file" accept="image/*" style="display:none" onchange="handleManualImage(this)">
+            </label>
+          </div>
           <div class="manual-add-top-fields">
-            ${field('man-product', 'Product name', 'placeholder="e.g. Copper carafe 500ml"')}
-            ${field('man-model', 'Model no')}
-            ${field('man-brand', 'Brand')}
+            ${field('man-product', 'Product Name', 'e.g. Cup Dispenser', '', true)}
+            ${field('man-model', 'Model No', 'e.g. PCD01')}
+            ${field('man-brand', 'Brand', 'e.g. KMW')}
           </div>
         </div>
-        <div class="man-field" style="margin-bottom:14px;">
+        <div class="man-field" style="margin-bottom:16px;">
           <label>Specification</label>
-          <textarea id="man-spec" style="min-height:52px;width:100%;"></textarea>
+          <textarea id="man-spec" placeholder="e.g. Cup Dispenser (Disposable Cup, Cone, Glass Dispenser 16in W/SS Flip Cap...)" style="min-height:60px;width:100%;"></textarea>
         </div>
         <div class="manual-add-row2">
-          ${field('man-qty', 'Qty', 'type="number" value="1"')}
-          ${field('man-price', 'Price/pc (₹)', 'type="number" step="0.01"')}
-          ${field('man-hsn', 'HSN')}
-          ${field('man-gst', 'GST %', 'type="number" value="18"')}
+          <div class="man-field"><label>Qty <span class="man-req">*</span></label>
+            <input id="man-qty" type="number" value="1" onkeydown="stopEnterSubmit(event)"></div>
+          ${field('man-price', 'Price/PC (₹)', 'e.g. 679', 'type="number" step="0.01"', true)}
+          <div class="man-field"><label>GST % <span class="man-req">*</span></label>
+            <select id="man-gst">
+              <option value="0">0</option><option value="5">5</option><option value="12">12</option>
+              <option value="18" selected>18</option><option value="28">28</option>
+            </select></div>
+          ${field('man-hsn', 'HSN Code', 'e.g. 73239390')}
         </div>
-        <div style="display:flex;gap:8px;">
-          <button type="button" class="btn btn-primary btn-sm" onclick="addManualItem()">Add to quote</button>
-          <button type="button" class="btn btn-sm" onclick="toggleManualAdd()">Cancel</button>
+        <div class="manual-add-actions">
+          <button type="button" class="btn-manual-cancel" onclick="toggleManualAdd()">Cancel</button>
+          <button type="button" class="btn-manual-submit" onclick="addManualItem()">Add Product</button>
         </div>
       </div>`;
   } else {
@@ -3080,7 +3091,7 @@ function handleManualImage(input) {
   reader.onload = e => {
     _manualImageData = e.target.result;
     const box = document.getElementById('man-img-box');
-    if (box) box.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover;">`;
+    if (box) box.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">`;
   };
   reader.readAsDataURL(file);
 }
