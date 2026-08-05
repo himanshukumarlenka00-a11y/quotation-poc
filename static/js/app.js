@@ -2835,6 +2835,11 @@ function renderResult(q) {
 
   items.forEach(item => { html += renderItemRow(item, items.indexOf(item), show3, show4, hasBoqPricing, showOrig); });
 
+  html += `<tr class="manual-add-row"><td colspan="${colSpan}" style="padding:10px 14px;">
+    <button type="button" class="btn-manual-add" id="manual-add-btn" onclick="toggleManualAdd()">✎ + Enter a product manually</button>
+    <div id="manual-add-form" style="display:none;"></div>
+  </td></tr>`;
+
   // Totals
   const subTotal = items.reduce((s,i) => s+(i._amtInr||0), 0);
   const gstTotal = items.reduce((s,i) => s+(i._gstVal||0), 0);
@@ -3014,6 +3019,85 @@ function handleRowImage(idx, input) {
     }
   };
   reader.readAsDataURL(file);
+}
+
+// ── Manual line item (not in the catalogue, typed in from scratch) ─────────
+let _manualImageData = '';
+
+function toggleManualAdd() {
+  const form = document.getElementById('manual-add-form');
+  const btn = document.getElementById('manual-add-btn');
+  const opening = form.style.display === 'none';
+  if (opening) {
+    _manualImageData = '';
+    form.innerHTML = `
+      <div style="display:flex;gap:12px;background:var(--card-soft);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-top:6px;flex-wrap:wrap;">
+        <label id="man-img-box" style="width:64px;height:64px;flex:none;border:1.5px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--muted);font-size:var(--fs-xs);text-align:center;overflow:hidden;">
+          📷 Add<br>image
+          <input type="file" accept="image/*" style="display:none" onchange="handleManualImage(this)">
+        </label>
+        <div style="flex:1;min-width:260px;">
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-bottom:8px;">
+            <input id="man-product" placeholder="Product name" onkeydown="stopEnterSubmit(event)">
+            <input id="man-model" placeholder="Model no" onkeydown="stopEnterSubmit(event)">
+            <input id="man-brand" placeholder="Brand" onkeydown="stopEnterSubmit(event)">
+          </div>
+          <textarea id="man-spec" placeholder="Specification" style="min-height:44px;width:100%;margin-bottom:8px;"></textarea>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;">
+            <input id="man-qty" type="number" value="1" placeholder="Qty" onkeydown="stopEnterSubmit(event)">
+            <input id="man-price" type="number" step="0.01" placeholder="Price/pc (₹)" onkeydown="stopEnterSubmit(event)">
+            <input id="man-hsn" placeholder="HSN" onkeydown="stopEnterSubmit(event)">
+            <input id="man-gst" type="number" value="18" placeholder="GST %" onkeydown="stopEnterSubmit(event)">
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:8px;display:flex;gap:8px;">
+        <button type="button" class="btn btn-primary btn-sm" onclick="addManualItem()">Add to quote</button>
+        <button type="button" class="btn btn-sm" onclick="toggleManualAdd()">Cancel</button>
+      </div>`;
+  } else {
+    form.innerHTML = '';
+  }
+  form.style.display = opening ? 'block' : 'none';
+  btn.style.display = opening ? 'none' : 'inline-flex';
+}
+
+function handleManualImage(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    _manualImageData = e.target.result;
+    const box = document.getElementById('man-img-box');
+    if (box) box.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover;">`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function addManualItem() {
+  if (!currentQuotation) return;
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  const product = val('man-product');
+  if (!product) { document.getElementById('man-product').focus(); return; }
+  const qty = parseInt(val('man-qty')) || 1;
+  const price = parseFloat(val('man-price')) || 0;
+  const gst = val('man-gst') === '' ? 18 : parseFloat(val('man-gst'));
+
+  currentQuotation.items.push({
+    sl_no: currentQuotation.items.length + 1,
+    product, qty,
+    description: val('man-spec'), specification: val('man-spec'),
+    model_no: val('man-model'), brand: val('man-brand'), hsn_code: val('man-hsn'),
+    price_per_pc: price, price_currency: 'INR', cost: 0, gst_pct: gst,
+    image_path: '', local_image: _manualImageData,
+    tiers: (currentQuotation.tiers && currentQuotation.tiers.length) ? currentQuotation.tiers : ['3star'],
+    price_3star: 0, price_3star_usd: 0, price_4star: 0, price_4star_usd: 0,
+    _variants: [], _requested: product, requested: product,
+    matched_by: 'manual', not_in_catalog: false, boq_price: 0,
+  });
+  _manualImageData = '';
+  renderResult(currentQuotation);
+  saveEdits(true);
 }
 
 function reAddImage(idx) {

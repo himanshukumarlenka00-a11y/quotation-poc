@@ -222,6 +222,13 @@
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   td.c, th.c { text-align: center; }
   .mt-price-input { text-align: right; font-variant-numeric: tabular-nums; }
+  .btn-manual-add { display:inline-flex; align-items:center; gap:6px; background:none;
+    border:1px dashed var(--border); color:var(--muted); border-radius:8px; padding:8px 16px;
+    font-size:var(--fs-sm); font-weight:600; cursor:pointer; width:100%; text-align:left;
+    transition:border-color .15s, color .15s; }
+  .btn-manual-add:hover { border-color:var(--primary); color:var(--primary); }
+  .manual-add-row td { border-top:none !important; }
+  #manual-add-form textarea, #manual-add-form input { font-size:var(--fs-sm); }
   td input { width: 100%; border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: var(--fs-base); background:var(--input-bg); color:var(--text); }
   td input:focus { outline: none; border-color: var(--primary); }
 
