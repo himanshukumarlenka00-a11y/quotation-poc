@@ -466,23 +466,6 @@
   .tier-price-inr { font-size: var(--fs-base); }
   .tier-price-usd { font-size: var(--fs-xs); color:var(--muted); }
   .tier-price-orig { font-size: var(--fs-xs); color:var(--muted); text-decoration: line-through; }
-  .price-tier-pick { display:flex; align-items:center; justify-content:center; gap:5px;
-    margin:6px auto 0; width:104px; font-size:var(--fs-xs); font-weight:700;
-    color:var(--primary); background:rgba(106,76,240,.12);
-    border:1px solid rgba(106,76,240,.35); border-radius:999px; padding:6px 10px; cursor:pointer;
-    transition:background .15s, box-shadow .15s; }
-  .price-tier-pick svg { flex:none; }
-  .price-tier-pick:hover, .price-tier-pick:focus { outline:none; background:rgba(106,76,240,.2); }
-  [data-theme="dark"] .price-tier-pick { color:#a89bf5; background:rgba(106,76,240,.18); border-color:rgba(168,155,245,.4); }
-  [data-theme="dark"] .price-tier-pick:hover, [data-theme="dark"] .price-tier-pick:focus { background:rgba(106,76,240,.28); }
-  .price-pick-menu { position:absolute; z-index:5; top:100%; left:50%; transform:translateX(-50%);
-    margin-top:4px; background:var(--card); border:1px solid var(--border); border-radius:8px;
-    box-shadow:0 6px 20px rgba(0,0,0,.14); overflow:hidden; min-width:160px; text-align:left; }
-  .ppm-row { display:flex; justify-content:space-between; gap:10px; padding:8px 12px;
-    font-size:var(--fs-sm); color:var(--text); cursor:pointer; white-space:nowrap; }
-  .ppm-row:hover { background:var(--card-soft); color:var(--primary); }
-  .ppm-row span { color:var(--muted); }
-  .ppm-row:hover span { color:var(--primary); }
   .tier-tick {
     flex-shrink:0; display:inline-flex; align-items:center; justify-content:center;
     width:16px; height:16px; border-radius:50%; border:1.5px solid #c3d2e8;
