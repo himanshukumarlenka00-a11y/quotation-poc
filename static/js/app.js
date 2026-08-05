@@ -3052,7 +3052,7 @@ function toggleManualAdd() {
             </label>
           </div>
           <div class="manual-add-top-fields">
-            ${field('man-product', 'Product Name', 'e.g. Cup Dispenser', '', true)}
+            ${field('man-product', 'Product Name', 'e.g. Cup Dispenser', 'oninput="this.style.borderColor=\'\';manualAddError(\'\')"', true)}
             ${field('man-model', 'Model No', 'e.g. PCD01')}
             ${field('man-brand', 'Brand', 'e.g. KMW')}
           </div>
@@ -3072,6 +3072,7 @@ function toggleManualAdd() {
             </select></div>
           ${field('man-hsn', 'HSN Code', 'e.g. 73239390')}
         </div>
+        <div id="man-error" class="man-error" style="display:none;"></div>
         <div class="manual-add-actions">
           <button type="button" class="btn-manual-cancel" onclick="toggleManualAdd()">Cancel</button>
           <button type="button" class="btn-manual-submit" onclick="addManualItem()">Add Product</button>
@@ -3096,15 +3097,29 @@ function handleManualImage(input) {
   reader.readAsDataURL(file);
 }
 
+function manualAddError(msg) {
+  const box = document.getElementById('man-error');
+  if (box) { box.textContent = msg; box.style.display = msg ? 'block' : 'none'; }
+}
+
 function addManualItem() {
-  if (!currentQuotation) return;
+  manualAddError('');
+  if (!currentQuotation) { manualAddError('No quotation is open — generate or open one first.'); return; }
+  if (!Array.isArray(currentQuotation.items)) currentQuotation.items = [];
   const val = id => (document.getElementById(id)?.value || '').trim();
   const product = val('man-product');
-  if (!product) { document.getElementById('man-product').focus(); return; }
+  // Silent focus() alone read as "the button does nothing" — say why.
+  if (!product) {
+    manualAddError('Product Name is required.');
+    const el = document.getElementById('man-product');
+    if (el) { el.style.borderColor = 'var(--danger)'; el.focus(); }
+    return;
+  }
   const qty = parseInt(val('man-qty')) || 1;
   const price = parseFloat(val('man-price')) || 0;
   const gst = val('man-gst') === '' ? 18 : parseFloat(val('man-gst'));
 
+  try {
   currentQuotation.items.push({
     sl_no: currentQuotation.items.length + 1,
     product, qty,
@@ -3120,6 +3135,10 @@ function addManualItem() {
   _manualImageData = '';
   renderResult(currentQuotation);
   saveEdits(true);
+  } catch (e) {
+    // Never fail silently — a thrown error here looked identical to a dead button.
+    manualAddError('Could not add the product: ' + e.message);
+  }
 }
 
 function reAddImage(idx) {

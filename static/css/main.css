@@ -248,11 +248,19 @@
   .man-field { display:flex; flex-direction:column; gap:6px; }
   .man-field label { font-size:var(--fs-sm); font-weight:600; color:var(--text); }
   .man-req { color:#e0453c; }
-  .man-field input, .man-field select, #manual-add-form textarea { width:100%; box-sizing:border-box; padding:9px 12px;
-    border:1px solid var(--border); border-radius:8px; font-size:var(--fs-sm); background:var(--card); color:var(--text); }
-  .man-field input::placeholder, #manual-add-form textarea::placeholder { color:var(--muted); }
-  .man-field input:focus, .man-field select:focus, #manual-add-form textarea:focus { outline:none; border-color:var(--primary);
-    box-shadow:0 0 0 3px rgba(106,76,240,.14); }
+  /* ID-scoped: the quotation table's own ".quot-doc td input {width:78px;
+     padding:4px 6px !important}" and ".quot-doc td:first-child{text-align:
+     center}" both outrank plain class rules here — this form lives inside a
+     single colspan <td>, which IS that first child. */
+  #manual-add-form, .manual-add-row td { text-align: left !important; }
+  #manual-add-form input, #manual-add-form select, #manual-add-form textarea {
+    width:100%; box-sizing:border-box; padding:9px 12px !important; text-align:left;
+    border:1px solid var(--border); border-radius:8px; font-size:var(--fs-sm);
+    background:var(--card); color:var(--text); }
+  #manual-add-form input::placeholder, #manual-add-form textarea::placeholder { color:var(--muted); }
+  #manual-add-form input:focus, #manual-add-form select:focus, #manual-add-form textarea:focus {
+    outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(106,76,240,.14); }
+  .man-error { color:var(--danger); font-size:var(--fs-sm); font-weight:600; margin-bottom:10px; }
   .manual-add-actions { display:flex; justify-content:flex-end; gap:10px; }
   .btn-manual-cancel { background:var(--card); border:1px solid var(--border); color:var(--text);
     border-radius:8px; padding:10px 22px; font-size:var(--fs-sm); font-weight:600; cursor:pointer; }
