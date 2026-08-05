@@ -1416,7 +1416,22 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
 
   el.innerHTML = capNote + Object.entries(groups).map(([fname, g], gIdx) => {
     const prods = g.items;
-    const headerCells = `<th class="num">3★ Price (₹)</th><th class="num">3★ Price ($)</th><th class="num">4★ Price (₹)</th><th class="num">4★ Price ($)</th>`;
+    const headerCells = `<th class="num">Original (₹)</th><th class="num">3★ Price (₹)</th><th class="num">3★ Price ($)</th><th class="num">4★ Price (₹)</th><th class="num">4★ Price ($)</th>`;
+
+    // A bulk % discount overwrites price_3star/price_4star in place — the
+    // ORIGINAL price only survives in orig_price_3star/4star (snapshotted
+    // once, on the first bulk apply). Show it so a discounted catalogue
+    // doesn't read as if that was always the price.
+    const origCell = i => {
+      const o3 = i.orig_price_3star, o4 = i.orig_price_4star;
+      if (o3 == null && o4 == null) {
+        return `<td class="num" style="color:var(--muted);">—</td>`;
+      }
+      const parts = [];
+      if (o3 != null) parts.push(`₹${o3.toLocaleString('en-IN')}`);
+      if (o4 != null && o4 !== o3) parts.push(`₹${o4.toLocaleString('en-IN')} (4★)`);
+      return `<td class="num" style="color:var(--muted);text-decoration:line-through;font-size:var(--fs-sm);">${parts.join(' / ')}</td>`;
+    };
 
     // Every catalog gets independent 3★/4★ fields now — a catalog that
     // started as single-price (e.g. a matched-BOQ import, where both tiers
@@ -1426,12 +1441,12 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
     // so editing it isn't part of this.
     const priceCells = i => {
       if (!isAdminView) {
-        return `<td class="num">₹${(i.price_3star||0).toLocaleString('en-IN')}</td>
+        return `${origCell(i)}<td class="num">₹${(i.price_3star||0).toLocaleString('en-IN')}</td>
                  <td class="num">$${(i.price_3star_usd||0).toFixed(2)}</td>
                  <td class="num">₹${(i.price_4star||0).toLocaleString('en-IN')}</td>
                  <td class="num">$${(i.price_4star_usd||0).toFixed(2)}</td>`;
       }
-      return `<td><input id="mt-3star-${i.id}" type="number" step="0.01" class="mt-price-input" value="${i.price_3star||0}"
+      return `${origCell(i)}<td><input id="mt-3star-${i.id}" type="number" step="0.01" class="mt-price-input" value="${i.price_3star||0}"
                  onchange="updateMasterPrice(${i.id}, this.value, document.getElementById('mt-4star-${i.id}').value)"
                  onkeydown="stopEnterSubmit(event)" style="width:90px"></td>
                <td>$${(i.price_3star_usd||0).toFixed(2)}</td>
@@ -2455,13 +2470,21 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing) {
     ${show3 ? `<td class="col-3star">
       <div class="tier-price-cell">
         <span class="tier-tick ${activeTier==='3star'?'checked':''}" onclick="setRowTier(${idx},'3star')">${activeTier==='3star'?'✓':''}</span>
-        <span class="tier-price-text"><span class="tier-price-inr">₹${(item.price_3star||0).toLocaleString('en-IN')}</span><span class="tier-price-usd">$${(item.price_3star_usd||0).toFixed(2)}</span></span>
+        <span class="tier-price-text">
+          ${(item.orig_price_3star != null && item.orig_price_3star !== item.price_3star)
+            ? `<span class="tier-price-orig">₹${item.orig_price_3star.toLocaleString('en-IN')}</span>` : ''}
+          <span class="tier-price-inr">₹${(item.price_3star||0).toLocaleString('en-IN')}</span><span class="tier-price-usd">$${(item.price_3star_usd||0).toFixed(2)}</span>
+        </span>
       </div>
     </td>` : ''}
     ${show4 ? `<td class="col-4star">
       <div class="tier-price-cell">
         <span class="tier-tick ${activeTier==='4star'?'checked':''}" onclick="setRowTier(${idx},'4star')">${activeTier==='4star'?'✓':''}</span>
-        <span class="tier-price-text"><span class="tier-price-inr">₹${(item.price_4star||0).toLocaleString('en-IN')}</span><span class="tier-price-usd">$${(item.price_4star_usd||0).toFixed(2)}</span></span>
+        <span class="tier-price-text">
+          ${(item.orig_price_4star != null && item.orig_price_4star !== item.price_4star)
+            ? `<span class="tier-price-orig">₹${item.orig_price_4star.toLocaleString('en-IN')}</span>` : ''}
+          <span class="tier-price-inr">₹${(item.price_4star||0).toLocaleString('en-IN')}</span><span class="tier-price-usd">$${(item.price_4star_usd||0).toFixed(2)}</span>
+        </span>
       </div>
     </td>` : ''}
     <td class="num"><input type="number" step="0.01" class="price-input" value="${(Math.round(priceInr*100)/100)}" onchange="recalcRow(${idx})" style="width:100px"></td>

@@ -809,6 +809,11 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 "price_3star_usd": float(v.get("price_3star_usd") or 0),
                 "price_4star": float(v.get("price_4star") or 0),
                 "price_4star_usd": float(v.get("price_4star_usd") or 0),
+                # Pre-bulk-discount snapshot (see master_table.py) — None
+                # unless this catalogue has ever had a bulk % applied, so the
+                # frontend can tell "never discounted" from "discounted to 0".
+                "orig_price_3star": v.get("orig_price_3star"),
+                "orig_price_4star": v.get("orig_price_4star"),
             }
 
         # Deduplicate by product + model so the switcher shows distinct options
@@ -843,6 +848,8 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             "price_3star_usd":  best.get("price_3star_usd", 0),
             "price_4star":      best.get("price_4star", 0),
             "price_4star_usd":  best.get("price_4star_usd", 0),
+            "orig_price_3star": best.get("orig_price_3star"),
+            "orig_price_4star": best.get("orig_price_4star"),
             "_variants":    variants_sorted,
             "_requested":   item.get("product", ""),
             # Persisted (no underscore) — the learning loop needs to know, at
