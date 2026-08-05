@@ -44,9 +44,10 @@ async def scan_boq(file: UploadFile = File(...), admin: dict = Depends(require_r
         raise HTTPException(500, f"Scan error: {type(e).__name__}: {e}\n{traceback.format_exc()[-300:]}")
 
 
-MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100MB — a real multi-category catalog with hundreds of
-                                       # embedded product photos (e.g. one observed at 35MB
-                                       # across 700+ products) comfortably exceeds the old 25MB cap
+MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # 200MB — matches nginx's client_max_body_size; a real
+                                       # multi-category catalog with hundreds of embedded product
+                                       # photos (e.g. MARTELLATO PRICE LIST.xls at ~148MB) can
+                                       # comfortably exceed the old 100MB cap
 
 
 def _save_upload_validated(file: UploadFile, dest: Path):
