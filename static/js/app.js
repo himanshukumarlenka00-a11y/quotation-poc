@@ -2496,7 +2496,14 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing, showOrig) {
       </td>`;
       return (show3 ? cell3 : '') + (show4 ? cell4 : '');
     })()}
-    <td class="num"><input type="number" step="0.01" class="price-input" value="${(Math.round(priceInr*100)/100)}" onchange="recalcRow(${idx})" style="width:100px"></td>
+    <td class="num">
+      <input type="number" step="0.01" class="price-input" value="${(Math.round(priceInr*100)/100)}" onchange="recalcRow(${idx})" style="width:100px">
+      ${(item.price_3star || item.price_4star) ? `
+      <select class="price-tier-pick" title="Which tier this price comes from" onchange="setRowTier(${idx}, this.value)" style="display:block;margin:4px auto 0;width:100px;font-size:var(--fs-xs);">
+        <option value="3star" ${activeTier==='3star'?'selected':''}>⭐ 3★ price</option>
+        <option value="4star" ${activeTier==='4star'?'selected':''}>⭐⭐ 4★ price</option>
+      </select>` : ''}
+    </td>
     ${hasBoqPricing ? `<td class="boq-price-cell num">₹${fmt(boqPrice, 2)}</td>
     <td class="profit-cell num" style="color:${profit >= 0 ? '#1e9e56' : '#d64545'};font-weight:600;">₹${fmt(profit)}</td>` : ''}
     <td class="amount-cell num">₹${fmt(amtInr)}</td>
