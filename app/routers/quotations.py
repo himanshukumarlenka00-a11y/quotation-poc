@@ -575,6 +575,45 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
     # (e.g. "housekeeping trolley" → "Airport Trolley"). If every significant
     # word of the requested phrase appears in a catalog product NAME, that name
     # is an unambiguous match and we use it directly instead of guessing.
+    _pool_cache = {}
+
+    def _line_pool(term):
+        """Candidate rows for ONE line, ranked by relevance.
+
+        The shared rows_pool is a single FTS query for the WHOLE request:
+        sorted(words)[:40] then LIMIT 4000. Measured on a 40-line batch it
+        saw 147 distinct words, kept 40 of them alphabetically, matched
+        30,199 rows and kept 4,000 — and all 17 lines that failed were simply
+        absent from it, every one of which matched when sent alone. Both caps
+        get worse as the request grows, so a big BOQ was mostly guesswork.
+
+        One query per line removes both caps, and is cheaper: scoring 40
+        lines against 4,000 shared rows is 160k comparisons, against ~400
+        of their own is 16k. Cached per term so repeats cost nothing.
+        """
+        key = (term or "").lower().strip()
+        if key in _pool_cache:
+            return _pool_cache[key]
+        words = {w.lower() for w in re.findall(r"[A-Za-z0-9]{2,}", key)}
+        pool = []
+        if words:
+            match = " OR ".join(f'"{w}"*' for w in sorted(words)[:24])
+            try:
+                if catalogs:
+                    ph = ",".join("?" * len(catalogs))
+                    pool = [dict(r) for r in conn.execute(
+                        f"SELECT m.* FROM master_fts f JOIN master_products m ON m.id = f.rowid "
+                        f"WHERE master_fts MATCH ? AND m.file_name IN ({ph}) "
+                        f"ORDER BY f.rank LIMIT 400", [match, *catalogs]).fetchall()]
+                else:
+                    pool = [dict(r) for r in conn.execute(
+                        "SELECT m.* FROM master_fts f JOIN master_products m ON m.id = f.rowid "
+                        "WHERE master_fts MATCH ? ORDER BY f.rank LIMIT 400", (match,)).fetchall()]
+            except Exception:
+                pool = []
+        _pool_cache[key] = pool
+        return pool
+
     def search_catalog(term):
         """Find catalog rows matching a request by product NAME, MODEL NO, or
         SPECIFICATION. Returns all candidates ranked best-first — used both to
@@ -603,8 +642,11 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         # drag in an unrelated model 500.
         numtoks = [w for w in re.findall(r"\d{3,}", t)]
         t_ns = t.replace(" ", "")
+        # this line's own candidates; rows_pool only as a fallback when FTS
+        # is unavailable, so a missing index still cannot fail a quotation
+        pool = _line_pool(t) or rows_pool
         scored = []
-        for r in rows_pool:
+        for r in pool:
             name = (r.get('product') or '').lower(); name_ns = name.replace(' ', '')
             # Significant words of the PRODUCT name, for the reverse test
             # below — but only of its HUMAN part. Catalogue names are written
