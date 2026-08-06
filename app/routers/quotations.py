@@ -730,8 +730,32 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         core = [w for w in toks if len(w) >= 3 and w.isalpha() and w not in units]
         if not core:
             return []
+        # Query for THIS line's words rather than reusing rows_pool. That pool
+        # is one FTS match for every requested phrase at once, capped at
+        # LIMIT 4000 with no ordering — for a long list the right product is
+        # simply not in it. Measured: reusing the pool returned "WALL DRYER"
+        # for "Hair Dryer, Color - Black…" because "HAIR DRYER" never made the
+        # 4000. This runs only when a line already failed to match, so one
+        # narrow query per failure is affordable.
+        pool = []
+        try:
+            match = " OR ".join(f'"{w}"*' for w in core[:12])
+            if catalogs:
+                ph = ",".join("?" * len(catalogs))
+                pool = [dict(r) for r in conn.execute(
+                    f"SELECT m.* FROM master_fts f JOIN master_products m ON m.id = f.rowid "
+                    f"WHERE master_fts MATCH ? AND m.file_name IN ({ph}) LIMIT 600",
+                    [match, *catalogs]).fetchall()]
+            else:
+                pool = [dict(r) for r in conn.execute(
+                    "SELECT m.* FROM master_fts f JOIN master_products m ON m.id = f.rowid "
+                    "WHERE master_fts MATCH ? LIMIT 600", (match,)).fetchall()]
+        except Exception:
+            pass
+        if not pool:
+            pool = rows_pool          # FTS unavailable — better than nothing
         out = []
-        for r in rows_pool:
+        for r in pool:
             name = (r.get("product") or "").lower()
             name_ns = name.replace(" ", "")
             # Earlier words carry more weight: these descriptions are written
