@@ -2592,6 +2592,26 @@ function findProduct(idx) {
   </td>`;
   row.insertAdjacentElement('afterend', panel);
   document.getElementById(`find-input-${idx}`).focus();
+
+  // A reopened quote has no _suggestions — underscore keys are stripped
+  // before the quotation is saved — so fetch them rather than leaving the
+  // panel empty on every quote that wasn't generated seconds ago.
+  if (!(item._suggestions || []).length) {
+    const term = (item.requested || item.product || '').trim();
+    if (term.length >= 2) {
+      fetch(`${API}/api/suggest-products?q=${encodeURIComponent(term)}`)
+        .then(r => r.json())
+        .then(d => {
+          const box = document.getElementById(`find-results-${idx}`);
+          const inp = document.getElementById(`find-input-${idx}`);
+          // don't stomp on results the user has already typed for
+          if (!box || (inp && inp.value.trim())) return;
+          item._suggestions = d.items || [];
+          box.innerHTML = _findCards(idx, item._suggestions, true);
+        })
+        .catch(() => {});
+    }
+  }
 }
 
 function findProductSearch(idx) {

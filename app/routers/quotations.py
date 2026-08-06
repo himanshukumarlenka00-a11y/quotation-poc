@@ -395,6 +395,106 @@ def _strip_cost(data, user):
     return data
 
 
+# Hoisted out of _resolve_master_matches so the suggestion endpoint can use
+# the same vocabulary and word test the matcher does — two copies would drift.
+_UNITS = {"inch", "inches", "cm", "mm", "mtr", "mtrs", "meter", "metre",
+          "meters", "kg", "kgs", "ltr", "litre", "liter", "size", "set",
+          "nos", "pcs", "pc"}
+
+
+def _covered(word, s, s_ns):
+    """Is `word` present in a product name as a WORD (not a substring)?
+
+    Plain substring matching silently produced nonsense matches: "pin" is
+    inside "chop-pin-g", so "rolling pin" scored against "Wire Stand For
+    Chopping Board". Anchoring on word boundaries kills that whole class of
+    false positive. The space-stripped form is still consulted, but only for
+    words long enough to be a real compound (bedsheet vs bed sheet) rather
+    than short fragments that hit by accident.
+    """
+    forms = {word}
+    if word.endswith('s') and len(word) > 3:
+        forms.add(word[:-1])
+    else:
+        forms.add(word + 's')
+    for f in forms:
+        if re.search(r"\b" + re.escape(f) + r"\b", s):
+            return True
+        if len(f) >= 5 and f in s_ns:
+            return True
+    return False
+
+
+def suggest_products(conn, term, catalogs=None, limit=6):
+    """Loose candidates for a request that nothing matched confidently.
+
+    search_catalog() refuses to guess: it needs most of the request's
+    words present in the product name, so "Hair Dryer, Color - Black /
+    Grey Wall-Mounted" scores 2/7 against "HAIR DRYER" and returns
+    nothing at all. That refusal is right for auto-selecting — it is what
+    stops "waste bin" becoming "Ice bin module" — but the row it discards
+    is often exactly what the user wanted, and an empty Find box makes
+    them retype what we already knew.
+
+    Ranks by how many of the request's significant words appear in the
+    name. Shown as suggestions only; the line stays a placeholder until a
+    human picks one."""
+    toks = re.findall(r"[a-z0-9]+", (term or "").lower())
+    core = [w for w in toks if len(w) >= 3 and w.isalpha() and w not in _UNITS]
+    if not core:
+        return []
+    # Query for THIS line's words rather than reusing rows_pool. That pool
+    # is one FTS match for every requested phrase at once, capped at
+    # LIMIT 4000 with no ordering — for a long list the right product is
+    # simply not in it. Measured: reusing the pool returned "WALL DRYER"
+    # for "Hair Dryer, Color - Black…" because "HAIR DRYER" never made the
+    # 4000. This runs only when a line already failed to match, so one
+    # narrow query per failure is affordable.
+    pool = []
+    try:
+        match = " OR ".join(f'"{w}"*' for w in core[:12])
+        if catalogs:
+            ph = ",".join("?" * len(catalogs))
+            pool = [dict(r) for r in conn.execute(
+                f"SELECT m.* FROM master_fts f JOIN master_products m ON m.id = f.rowid "
+                f"WHERE master_fts MATCH ? AND m.file_name IN ({ph}) "
+                f"ORDER BY f.rank LIMIT 600",
+                [match, *catalogs]).fetchall()]
+        else:
+            pool = [dict(r) for r in conn.execute(
+                "SELECT m.* FROM master_fts f JOIN master_products m ON m.id = f.rowid "
+                "WHERE master_fts MATCH ? ORDER BY f.rank LIMIT 600", (match,)).fetchall()]
+    except Exception:
+        pass
+    if not pool:
+        return []                 # FTS unavailable — no guesses
+    out = []
+    for r in pool:
+        name = (r.get("product") or "").lower()
+        name_ns = name.replace(" ", "")
+        # Earlier words carry more weight: these descriptions are written
+        # "<product>, <qualifiers>", so "hair"/"dryer" identify the item
+        # while "black"/"wall"/"mounted" merely describe it. Weighting by
+        # position is what keeps "WALL-MOUNTED ASHTRAY" out of the results
+        # for "Hair Dryer, Color - Black / Grey Wall-Mounted" — verified
+        # against the real 52k catalogue.
+        hits = sum((len(core) - i) for i, w in enumerate(core)
+                   if _covered(w, name, name_ns))
+        if not hits:
+            continue
+        # shorter names break ties, so a bare "HAIR DRYER" outranks
+        # "HAIR DRYER BAG"
+        score = hits * 1000 - min(len(name), 120)
+        if (r.get("price_3star") or 0) > 0:
+            score += 50
+        if r.get("image_path"):
+            score += 10
+        out.append((score, r))
+    out.sort(key=lambda x: -x[0])
+    return [dict(r) for _, r in out[:limit]]
+
+
+
 def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, prompt=""):
     """Match extracted {product, qty} items against the Master Table only —
     shared by both the free-text prompt flow and the client-BOQ-file-upload
@@ -475,30 +575,6 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
     # (e.g. "housekeeping trolley" → "Airport Trolley"). If every significant
     # word of the requested phrase appears in a catalog product NAME, that name
     # is an unambiguous match and we use it directly instead of guessing.
-    units = {"inch", "inches", "cm", "mm", "mtr", "mtrs", "meter", "metre",
-             "meters", "kg", "kgs", "ltr", "litre", "liter", "size", "set",
-             "nos", "pcs", "pc"}
-
-    def _covered(word, s, s_ns):
-        """Is `word` present in a product name as a WORD (not a substring)?
-
-        Plain substring matching silently produced nonsense matches: "pin"
-        is inside "chop-pin-g", so "rolling pin" scored against "Wire Stand
-        For Chopping Board". Anchoring on word boundaries kills that whole
-        class of false positive. The space-stripped form is still consulted,
-        but only for words long enough to be a real compound (bedsheet vs
-        bed sheet) rather than short fragments that hit by accident.
-        """
-        forms = {word}
-        if word.endswith('s') and len(word) > 3: forms.add(word[:-1])
-        else: forms.add(word + 's')
-        for f in forms:
-            if re.search(r"\b" + re.escape(f) + r"\b", s):
-                return True
-            if len(f) >= 5 and f in s_ns:
-                return True
-        return False
-
     def search_catalog(term):
         """Find catalog rows matching a request by product NAME, MODEL NO, or
         SPECIFICATION. Returns all candidates ranked best-first — used both to
@@ -508,14 +584,14 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         if not t:
             return []
         toks = re.findall(r"[a-z0-9]+", t)
-        core = [w for w in toks if len(w) >= 3 and w.isalpha() and w not in units]
+        core = [w for w in toks if len(w) >= 3 and w.isalpha() and w not in _UNITS]
         # Two-letter designators like the "GN" in "GN pan" are real product
         # qualifiers, but too short for `core` (which needs 3+ chars to avoid
         # noise). Dropping them left "GN pan" as bare "pan", which matched
         # "Pan, Roasting Large" (Rs 19,380) over the actual GN PAN (Rs 845).
         # Scored as a bonus rather than a requirement, so they can only
         # promote the right row, never exclude a legitimate one.
-        short = [w for w in toks if len(w) == 2 and w.isalpha() and w not in units]
+        short = [w for w in toks if len(w) == 2 and w.isalpha() and w not in _UNITS]
         # model-number-like tokens in the request (mix of letters+digits, codes)
         mtoks = [w for w in re.findall(r"[a-z0-9][a-z0-9\-/\.]+", t)
                  if any(c.isdigit() for c in w) and any(c.isalpha() for c in w)]
@@ -544,7 +620,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 segs.pop(0)
             human = " ".join(segs) if segs else name
             name_core = [w for w in re.findall(r"[a-z]+", human)
-                         if len(w) >= 3 and w not in units]
+                         if len(w) >= 3 and w not in _UNITS]
             model = (r.get('original_model') or '').lower()
             spec  = (r.get('specification') or '').lower()
             score = 0
@@ -636,7 +712,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
 
     def deterministic_match(term):
         raw = re.findall(r"[a-z0-9]+", term.lower())
-        core = [t for t in raw if len(t) >= 3 and t.isalpha() and t not in units]
+        core = [t for t in raw if len(t) >= 3 and t.isalpha() and t not in _UNITS]
         spec = [t for t in raw if any(c.isdigit() for c in t) or (t.isalpha() and len(t) < 3)]
         if not core:
             return None
@@ -755,72 +831,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
     not_found    = []
 
     def suggest_catalog(term, limit=6):
-        """Loose candidates for a request that nothing matched confidently.
-
-        search_catalog() refuses to guess: it needs most of the request's
-        words present in the product name, so "Hair Dryer, Color - Black /
-        Grey Wall-Mounted" scores 2/7 against "HAIR DRYER" and returns
-        nothing at all. That refusal is right for auto-selecting — it is what
-        stops "waste bin" becoming "Ice bin module" — but the row it discards
-        is often exactly what the user wanted, and an empty Find box makes
-        them retype what we already knew.
-
-        Ranks by how many of the request's significant words appear in the
-        name. Shown as suggestions only; the line stays a placeholder until a
-        human picks one."""
-        toks = re.findall(r"[a-z0-9]+", (term or "").lower())
-        core = [w for w in toks if len(w) >= 3 and w.isalpha() and w not in units]
-        if not core:
-            return []
-        # Query for THIS line's words rather than reusing rows_pool. That pool
-        # is one FTS match for every requested phrase at once, capped at
-        # LIMIT 4000 with no ordering — for a long list the right product is
-        # simply not in it. Measured: reusing the pool returned "WALL DRYER"
-        # for "Hair Dryer, Color - Black…" because "HAIR DRYER" never made the
-        # 4000. This runs only when a line already failed to match, so one
-        # narrow query per failure is affordable.
-        pool = []
-        try:
-            match = " OR ".join(f'"{w}"*' for w in core[:12])
-            if catalogs:
-                ph = ",".join("?" * len(catalogs))
-                pool = [dict(r) for r in conn.execute(
-                    f"SELECT m.* FROM master_fts f JOIN master_products m ON m.id = f.rowid "
-                    f"WHERE master_fts MATCH ? AND m.file_name IN ({ph}) "
-                    f"ORDER BY f.rank LIMIT 600",
-                    [match, *catalogs]).fetchall()]
-            else:
-                pool = [dict(r) for r in conn.execute(
-                    "SELECT m.* FROM master_fts f JOIN master_products m ON m.id = f.rowid "
-                    "WHERE master_fts MATCH ? ORDER BY f.rank LIMIT 600", (match,)).fetchall()]
-        except Exception:
-            pass
-        if not pool:
-            pool = rows_pool          # FTS unavailable — better than nothing
-        out = []
-        for r in pool:
-            name = (r.get("product") or "").lower()
-            name_ns = name.replace(" ", "")
-            # Earlier words carry more weight: these descriptions are written
-            # "<product>, <qualifiers>", so "hair"/"dryer" identify the item
-            # while "black"/"wall"/"mounted" merely describe it. Weighting by
-            # position is what keeps "WALL-MOUNTED ASHTRAY" out of the results
-            # for "Hair Dryer, Color - Black / Grey Wall-Mounted" — verified
-            # against the real 52k catalogue.
-            hits = sum((len(core) - i) for i, w in enumerate(core)
-                       if _covered(w, name, name_ns))
-            if not hits:
-                continue
-            # shorter names break ties, so a bare "HAIR DRYER" outranks
-            # "HAIR DRYER BAG"
-            score = hits * 1000 - min(len(name), 120)
-            if (r.get("price_3star") or 0) > 0:
-                score += 50
-            if r.get("image_path"):
-                score += 10
-            out.append((score, r))
-        out.sort(key=lambda x: -x[0])
-        return [dict(r) for _, r in out[:limit]]
+        return suggest_products(conn, term, catalogs, limit) or []
 
     def _add_placeholder(label, qty, suggestions=None):
         # Not-in-catalogue rows keep their place in the quote (name + qty from
@@ -887,9 +898,9 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             # ("dustbin" -> "Trash Bin") while rejecting free association.
             if sem_match:
                 req_words = {w for w in re.findall(r"[a-z]+", original_kw.lower())
-                             if len(w) >= 3 and w not in units}
+                             if len(w) >= 3 and w not in _UNITS}
                 sug_words = {w for w in re.findall(r"[a-z]+", str(sem_match).lower())
-                             if len(w) >= 3 and w not in units}
+                             if len(w) >= 3 and w not in _UNITS}
                 # Check the HEAD noun — the last significant word, which
                 # carries the product type ("waste BIN", "chef KNIFE"). An
                 # adjective in common is not enough: "waste bin" vs
@@ -897,7 +908,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 # "waste bin" vs "DUSTBIN" shares the head as a compound.
                 head = next((w for w in reversed(
                     [w for w in re.findall(r"[a-z]+", original_kw.lower())
-                     if len(w) >= 3 and w not in units])), None)
+                     if len(w) >= 3 and w not in _UNITS])), None)
                 related = head is not None and any(
                     head == b or head in b or b in head for b in sug_words)
                 if not req_words or related:
@@ -1412,6 +1423,32 @@ def update_quotation(qid: int, req: UpdateItemsRequest, user: dict = Depends(get
         log_action(user, "learned_correction", target=phrase,
                    after={"from": was, "to": now})
     return data
+
+
+@router.get("/api/suggest-products")
+def suggest_products_endpoint(q: str = "", limit: int = 6,
+                              user: dict = Depends(get_current_user)):
+    """Closest catalogue products for a line nothing matched.
+
+    The generate response carries these as _suggestions, but underscore keys
+    are stripped before the quotation is saved, so a reopened quote had none
+    and the Find panel opened empty. Fetching on demand costs one narrow FTS
+    query and works for any line at any time, rather than persisting six raw
+    master rows per placeholder inside items_json.
+    """
+    term = (q or "").strip()
+    if len(term) < 2:
+        return {"items": []}
+    conn = get_db()
+    try:
+        rows = suggest_products(conn, term, None, max(1, min(int(limit or 6), 20)))
+    finally:
+        conn.close()
+    # Same rule as everywhere else: employees never see purchase cost.
+    if (user or {}).get("role") != "admin":
+        for r in rows:
+            r.pop("cost", None)
+    return {"items": rows}
 
 
 @router.post("/api/quotations/{qid}/refresh-prices")
