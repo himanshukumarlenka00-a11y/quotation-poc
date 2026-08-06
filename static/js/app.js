@@ -1050,7 +1050,7 @@ async function deleteFile(filename) {
   if (!confirm(`Remove '${filename}' from catalog?`)) return;
   const res = await fetch(`${API}/api/boq-files/${encodeURIComponent(filename)}`, { method: 'DELETE' });
   const d = await res.json();
-  alert(d.message);
+  toast(d.message, 'success');
   loadUploadedFiles();
   loadCatalog();
 }
@@ -1284,7 +1284,7 @@ async function deleteMasterFile(filename) {
   if (!confirm(`Remove '${filename}' from the master table?`)) return;
   const res = await fetch(`${API}/api/master-table/${encodeURIComponent(filename)}`, { method: 'DELETE' });
   const d = await res.json();
-  alert(d.message);
+  toast(d.message, 'success');
   loadMasterFiles();
   loadMasterTable();
 }
@@ -1544,7 +1544,7 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
 async function updateMasterPrice(id, price3, price4) {
   const p3 = parseFloat(price3), p4 = parseFloat(price4);
   if (isNaN(p3) || isNaN(p4) || p3 < 0 || p4 < 0) {
-    alert('Enter a valid, non-negative price.');
+    toast('Enter a valid, non-negative price.', 'error');
     loadMasterTable();
     return;
   }
@@ -1555,11 +1555,11 @@ async function updateMasterPrice(id, price3, price4) {
     });
     if (!res.ok) {
       const d = await res.json();
-      alert(d.detail || 'Update failed');
+      toast(d.detail || 'Update failed', 'error');
       loadMasterTable();
     }
   } catch (e) {
-    alert('Update failed: ' + e.message);
+    toast('Update failed: ' + e.message, 'error');
     loadMasterTable();
   }
 }
@@ -1933,7 +1933,7 @@ async function buildQuotation() {
     });
   });
 
-  if (!selectedItems.length) { alert('Please select at least one variant.'); return; }
+  if (!selectedItems.length) { toast('Please select at least one variant.', 'error'); return; }
 
   const btn = document.querySelector('#sec-variants .btn-primary');
   btn.disabled = true; btn.textContent = '⏳ Building...';
@@ -1945,12 +1945,12 @@ async function buildQuotation() {
       body: JSON.stringify({ client_name: vpClient, items: selectedItems })
     });
     const q = await res.json();
-    if (!res.ok) { alert(q.detail || 'Build failed'); return; }
+    if (!res.ok) { toast(q.detail || 'Build failed', 'error'); return; }
     currentQuotation = q;
     renderResult(q);
     show('result');
   } catch(e) {
-    alert('Error: ' + e.message);
+    toast(e.message, 'error');
   } finally {
     btn.disabled = false; btn.textContent = '📋 Build Quotation →';
   }
@@ -1960,7 +1960,7 @@ async function buildQuotation() {
 async function generateQuote() {
   const prompt = document.getElementById('req-prompt').value.trim();
   const client = document.getElementById('client-name')?.value.trim() || '';
-  if (!prompt) { alert('Please enter customer requirements.'); return; }
+  if (!prompt) { toast('Please enter customer requirements.', 'error'); return; }
   // No tier picked is fine: the quote prices off the base price and shows a
   // single PRICE column (no star columns) — never a roadblock.
   const tiersToUse = selectedTiers;
@@ -2215,7 +2215,7 @@ async function teachBoqCol(i, header) {
     body: JSON.stringify({ header, field: sel.value })
   });
   row.style.opacity = res.ok ? '.55' : '1';
-  if (!res.ok) alert('Could not save that mapping.');
+  if (!res.ok) toast('Could not save that mapping.', 'error');
 }
 
 function renderBoqCoverage(d) {
@@ -2522,6 +2522,28 @@ function initRowDrag() {
       saveEdits(true);
     });
   });
+}
+
+// Non-blocking replacement for alert(). The app had 18 of them: a native
+// alert freezes the page and demands a click to acknowledge "Changes saved!",
+// which is a lot of ceremony for a confirmation. Errors linger longer than
+// successes; clicking a toast dismisses it early. textContent, never
+// innerHTML — these carry server messages.
+function toast(msg, type = 'info') {
+  let host = document.getElementById('toast-host');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'toast-host';
+    document.body.appendChild(host);
+  }
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.textContent = msg;
+  const kill = () => { el.classList.remove('in'); setTimeout(() => el.remove(), 220); };
+  el.onclick = kill;
+  host.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('in'));
+  setTimeout(kill, type === 'error' ? 5200 : 3200);
 }
 
 // Placeholder rows: write a hand-typed field straight onto the item.
@@ -2914,16 +2936,16 @@ async function refreshQuotePrices() {
   try {
     const res = await fetch(`${API}/api/quotations/${currentQuotation.id}/refresh-prices`, { method: 'POST' });
     const d = await res.json();
-    if (!res.ok) { alert(apiErr(d)); return; }
+    if (!res.ok) { toast(apiErr(d), 'error'); return; }
     currentQuotation.items = d.items;
     document.getElementById('show-orig-col').checked = d.updated > 0;
     renderResult(currentQuotation);
     const msg = d.updated
       ? `${d.updated} price(s) updated from the master table${d.skipped ? `, ${d.skipped} skipped (not found in master)` : ''}.`
       : 'Already up to date — no price changes found in the master table.';
-    alert(msg);
+    toast(msg, 'success');
   } catch (e) {
-    alert('Refresh failed: ' + e.message);
+    toast('Refresh failed: ' + e.message, 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.classList.remove('spinning'); }
   }
@@ -3269,7 +3291,7 @@ async function saveEdits(silent) {
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({items: currentQuotation.items, client_name: currentQuotation.client_name})
   });
-  if (!silent) { if (res.ok) alert('Changes saved!'); else alert('Save failed.'); }
+  if (!silent) { if (res.ok) toast('Changes saved', 'success'); else toast('Save failed', 'error'); }
   return res.ok;
 }
 
@@ -3417,7 +3439,7 @@ async function deleteQuote(id) {
   if (!confirm('Delete this quotation?')) return;
   const res = await fetch(`${API}/api/quotations/${id}`, { method: 'DELETE' });
   if (res.ok) loadRepository();
-  else alert('Delete failed.');
+  else toast('Delete failed', 'error');
 }
 
 async function clearAllQuotations() {
@@ -3425,9 +3447,9 @@ async function clearAllQuotations() {
   const res = await fetch(`${API}/api/quotations/clear-all`, { method: 'DELETE' });
   if (res.ok) {
     loadRepository();
-    alert('All quotations cleared.');
+    toast('All quotations cleared', 'success');
   } else {
-    alert('Failed to clear.');
+    toast('Failed to clear', 'error');
   }
 }
 
