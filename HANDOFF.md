@@ -1,10 +1,9 @@
-# HANDOFF — quotation-poc session state (2026-08-05)
+# HANDOFF — quotation-poc session state (2026-08-06)
 
 ## LIVE IN PRODUCTION (see memory: ubuntu-server-deployment)
 Server melange@192.168.0.146 (crm-server). App :8000 + HTTPS :8443 (nginx,
-self-signed, cert trusted on user's PC). HEAD b8704da, cache css v105 /
-js v109. Master table now 51,938 products. NOT pushed to GitHub (47 commits
-local only).
+self-signed, cert trusted on user's PC). HEAD afb5085, cache css v108 /
+js v112. Master table 51,938 products. Pushed to GitHub through afb5085.
 
 Deploy flow: edit dev → verify cheaply → commit → tar-pipe to /opt/quotegen
 → restart quotegen if Python changed. ASK BEFORE EVERY SERVER-CHANGING
@@ -17,11 +16,76 @@ use python for pipes.
   Human corrections still outrank the gate.
 - Model lookup is brand-prefix tolerant: sheets say "[KMW-TB770]", master
   stores original_model='TB770' with the brand in the product name.
-- Placeholder-lineage lines NEVER teach match_corrections (a Find pick is a
-  stand-in for that one quote). Bad learned row id 273 was deleted from prod.
+- Teaching match_corrections is OPT-IN. Switch/Find carry a "Remember this
+  choice" checkbox, OFF by default, and only a ticked box writes a
+  correction. Supersedes the old blanket "placeholders never teach" rule.
+  Reason: switching means either "the matcher was wrong" or "this client
+  wants something else once", and treating the second as the first is how
+  "[WCCE001-SS]" got pinned to WCCE002. The `remember` flag is stripped
+  before save — it is an instruction, not a property of the line.
+  Bad learned row id 273 was deleted from prod.
 - Empty-quote guard ignores placeholders (all-placeholder → nothing saved).
 - Switch panel sorts cheapest-first for DISPLAY ONLY — _variants[0] stays the
   matcher's pick, sorting the array would re-point every quote.
+
+## Matching overhaul 2026-08-06 (accuracy 86% -> 94%, audited)
+Four separate root causes, all found by measuring against the live 52k
+catalogue rather than reasoning from screenshots:
+
+1. FTS pools used LIMIT with NO ORDER BY, so SQLite returned rowid order and
+   the cap discarded the NEWEST imports. A real 20-line request matched
+   16,518 rows, kept 4,000, threw away 12,518 — IRON ORGANISER (id 61220),
+   HAIR DRYER (61215), IRON BOARD (61219) all sat outside it, so the matcher
+   never saw them. Manual search found them because it LIKEs
+   master_products directly and never touches the pool. Any recently
+   imported catalogue was systematically invisible. Fixed with
+   ORDER BY f.rank (bm25) on all four pool queries.
+2. Coverage was only measured request->name, so every qualifier the client
+   typed counted AGAINST the product: "Hair Dryer, Color - Black / Grey
+   Wall-Mounted" was 2/7 = 29% against "HAIR DRYER" and got rejected. Added
+   a reverse test — the product's whole name appearing inside the request
+   (2/2). The old guard survives because it turns on words never asked for:
+   "waste bin" vs "Ice bin module" is 1/3, so the Rs65,082 mismatch stays
+   blocked. Scored 400 + 20/word: under the forward full match, longer names
+   win, so IRON ORGANISER beats IRON and "Cup Dispenser" beats bare "CUP".
+3. That reverse test ignores the brand/code prefix, or it would demand
+   "melange"/"smle" be typed for MELANGE-SMLE0054-Pillow Twin Feather.
+4. Bare numbers are model codes. mtoks needed letters AND digits, so
+   "WCCE001-SS" counted but "2688" did not, and "ARDACAM 2688 Plate" tied
+   with ARDACAM-2447-Plate on name alone. Now a tie-breaker (+300) on rows
+   that already match, so a size like "500" cannot drag in model 500.
+   Fixed 7 of 12 audit failures on its own.
+Also: spec-only matches now need >1 significant word ("SAFE" was returning
+"GLOVE LARGE" because the word sits in that glove's spec).
+
+A failed line is no longer a dead end: suggest_catalog() runs a loose
+second pass (its OWN per-line FTS query — reusing the shared pool returned
+"WALL DRYER" because HAIR DRYER was outside the 4000) and the Find panel
+opens pre-loaded with candidates. Nothing is auto-applied. NOTE
+_suggestions is underscore-prefixed so it is stripped before save — it only
+exists in the fresh generate response, NOT on a quote reloaded from the DB.
+That gap is still open.
+
+DATA ISSUE for the user, not code: 349 product names are duplicated within
+a single catalogue. e.g. "ROUND DAMPING HINGED  CHAFING DISH  LARGE
+CAPACITY" (8060C, Rs21,812) vs the same name with one less space (8040C,
+Rs20,482) — indistinguishable by name, only a model code separates them.
+
+## UI 2026-08-06
+- Global interaction feedback: press-dip on buttons that are not .btn,
+  :focus-visible ring (there were ZERO app-wide), and a
+  prefers-reduced-motion block retiring all 37 animations. The press rule is
+  deliberately low specificity (button:active = 0,1,1) so .btn:active and
+  .mbp-reset:active (spins 180deg) still win.
+- Manual product entry, uploaded images now saved to disk at save time
+  (were base64 inside items_json, and the XLS only reads image_path so they
+  came out blank).
+- Deleted the unreachable sec-home landing page, static/demo.html and the
+  dead suggestion-strip code/CSS: -478 lines.
+- 8 endpoints stopped returning tracebacks to the browser; they now log the
+  trace with a short error id (config.server_error).
+- test_pricing.py guards the money maths, force-added past the test_*.py
+  gitignore, mutation-checked both ways.
 
 ## Built 2026-08-05
 - CSS TOKENS FIXED (big one): --fs-xs/sm/base/md/lg, --ctl-h, --sp-3, --sp-4
@@ -54,10 +118,9 @@ use python for pipes.
   at 52k rows ≈ 60s on a 700-row BOQ; now ~0.05ms).
 
 ## Known gaps / next
-1. Cleanup: dead sec-home section, stale static/demo.html, unused .hint-box /
-   .tsearch2 / suggestion-strip CSS.
-2. Phase 6 hardening: tracebacks still leak to the browser in several
-   endpoints; no pricing/GST test in the repo.
+1. DONE (2026-08-06): cleanup, traceback leak, pricing test.
+2. _suggestions does not survive a save/reload (underscore key is stripped).
+   Find opens empty on a reopened quote. Fix: fetch suggestions on demand.
 3. Page redesigns left: Quotations list, Margin Analysis, Upload BOQ,
    Activity, Users & Roles. Dashboard empty-space plan approved, not built.
 4. UI logic audit areas 3-8 (areas 1-2 done).
