@@ -444,12 +444,13 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             if catalogs:
                 ph = ",".join("?" * len(catalogs))
                 sql = (f"SELECT m.* FROM master_fts f JOIN master_products m ON m.id = f.rowid "
-                       f"WHERE master_fts MATCH ? AND m.file_name IN ({ph}) LIMIT 4000")
+                       f"WHERE master_fts MATCH ? AND m.file_name IN ({ph}) "
+                       f"ORDER BY f.rank LIMIT 4000")
                 rows_pool = [dict(r) for r in conn.execute(sql, [match, *catalogs]).fetchall()]
             else:
                 rows_pool = [dict(r) for r in conn.execute(
                     "SELECT m.* FROM master_fts f JOIN master_products m ON m.id = f.rowid "
-                    "WHERE master_fts MATCH ? LIMIT 4000", (match,)).fetchall()]
+                    "WHERE master_fts MATCH ? ORDER BY f.rank LIMIT 4000", (match,)).fetchall()]
             used_fts = True
     except Exception:
         rows_pool = []          # FTS missing or query rejected — fall through
@@ -744,12 +745,13 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 ph = ",".join("?" * len(catalogs))
                 pool = [dict(r) for r in conn.execute(
                     f"SELECT m.* FROM master_fts f JOIN master_products m ON m.id = f.rowid "
-                    f"WHERE master_fts MATCH ? AND m.file_name IN ({ph}) LIMIT 600",
+                    f"WHERE master_fts MATCH ? AND m.file_name IN ({ph}) "
+                    f"ORDER BY f.rank LIMIT 600",
                     [match, *catalogs]).fetchall()]
             else:
                 pool = [dict(r) for r in conn.execute(
                     "SELECT m.* FROM master_fts f JOIN master_products m ON m.id = f.rowid "
-                    "WHERE master_fts MATCH ? LIMIT 600", (match,)).fetchall()]
+                    "WHERE master_fts MATCH ? ORDER BY f.rank LIMIT 600", (match,)).fetchall()]
         except Exception:
             pass
         if not pool:
