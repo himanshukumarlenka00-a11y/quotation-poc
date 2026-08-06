@@ -519,9 +519,13 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         # model-number-like tokens in the request (mix of letters+digits, codes)
         mtoks = [w for w in re.findall(r"[a-z0-9][a-z0-9\-/\.]+", t)
                  if any(c.isdigit() for c in w) and any(c.isalpha() for c in w)]
+        t_ns = t.replace(" ", "")
         scored = []
         for r in rows_pool:
             name = (r.get('product') or '').lower(); name_ns = name.replace(' ', '')
+            # significant words of the PRODUCT name, for the reverse test below
+            name_core = [w for w in re.findall(r"[a-z]+", name)
+                         if len(w) >= 3 and w not in units]
             model = (r.get('original_model') or '').lower()
             spec  = (r.get('specification') or '').lower()
             score = 0
@@ -529,6 +533,18 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 score = 1000                                   # model-number match (most specific)
             elif core and all(_covered(w, name, name_ns) for w in core):
                 score = 600 - min(len(name), 120)              # full name match; tighter ranks higher
+            elif name_core and all(_covered(w, t, t_ns) for w in name_core):
+                # Reverse coverage: the product's ENTIRE name appears inside
+                # the request. Measuring request->name punishes the user for
+                # being specific — "Hair Dryer, Color - Black / Grey
+                # Wall-Mounted" covers only 2 of its 7 words in "HAIR DRYER"
+                # (29%) and was rejected, while the catalogue plainly had it.
+                # Measured the other way it is 2/2, and the guard still holds:
+                # "waste bin" vs "Ice bin module" is 1/3, because ice and
+                # module were never asked for. Longer names score higher so
+                # "Cup Dispenser" beats a bare "CUP", and this sits below the
+                # forward full match so IRON ORGANISER still outranks IRON.
+                score = 400 + 20 * len(name_core)
             elif core and (lambda hits: hits and hits / len(core) >= 0.6)(
                     sum(1 for w in core if _covered(w, name, name_ns))):
                 # Partial name — but only if MOST of the request is accounted
