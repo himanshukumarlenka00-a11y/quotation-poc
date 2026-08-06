@@ -234,6 +234,38 @@
   tbody tr:nth-child(even) td { background: var(--row-zebra); }
   tbody tr:hover td { background: var(--row-hover); }
   /* Numbers line up on the decimal and read as figures, not text. */
+  /* ── Global interaction feedback ────────────────────────────────────────
+     .btn already dips on :active, but the icon and pill buttons added since
+     (.btn-switch, .collapse-toggle, .theme-btn, .mf-dl, .find-close, the
+     manual-form buttons) never got it. Deliberately LOW specificity —
+     plain `button:active` is (0,1,1), so `.btn:active` (0,3,1) and
+     `.mbp-reset:active` (0,2,0), which spins 180°, both still win. */
+  button:active { transform: scale(.97); transition-duration: .08s; }
+  button:disabled:active { transform: none; }
+  .snav:active, .master-folder-head:active { transform: scale(.995); }
+
+  /* Keyboard focus was invisible everywhere: inputs recolour their border on
+     :focus, but buttons, nav items and links showed nothing at all — the app
+     had zero :focus-visible rules. :focus-visible (not :focus) so a mouse
+     click doesn't leave a ring behind. */
+  button:focus-visible, a:focus-visible, .snav:focus-visible,
+  input:focus-visible, select:focus-visible, textarea:focus-visible,
+  [tabindex]:focus-visible, [onclick]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(106,76,240,.35);
+  }
+
+  /* 37 keyframe animations fired regardless of the OS "reduce motion"
+     setting. One block retires all of them rather than auditing each. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   td.c, th.c { text-align: center; }
   .mt-price-input { text-align: right; font-variant-numeric: tabular-nums; }
