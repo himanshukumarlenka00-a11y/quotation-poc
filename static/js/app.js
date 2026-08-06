@@ -2536,6 +2536,31 @@ function setItemField(idx, field, val) {
 let _findResults = [];
 let _findTimer = null;
 
+// Shared card renderer for both the pre-loaded suggestions and live search
+// results, so a suggestion behaves exactly like something you typed to find.
+function _findCards(idx, list, isSuggestion) {
+  _findResults = list;
+  if (!list.length) {
+    return `<p class="find-empty">Start typing — matching products appear here; click one to fill this row.</p>`;
+  }
+  const head = isSuggestion
+    ? `<p class="find-empty" style="width:100%">Closest matches in the catalogue — click one, or search above:</p>` : '';
+  return head + list.map((v, ri) => {
+    const price = v.price_3star || v.price_4star || 0;
+    const thumb = v.image_path ? `<img class="sc-thumb-img" src="${API}/api/image/${v.image_path}" alt="">`
+                               : '<div class="sc-thumb-placeholder">📦</div>';
+    return `
+      <div class="switch-card" onclick="applyFind(${idx},${ri})" style="animation-delay:${ri * 35}ms">
+        <div class="sc-thumb">${thumb}</div>
+        <div class="sc-body">
+          <div class="sc-name">${escHtml(v.product || '')}</div>
+          <div class="sc-price">₹${price.toLocaleString('en-IN', {maximumFractionDigits: 2})}</div>
+          <div class="sc-file">📁 ${escHtml((v.file_name || '').substring(0, 28))}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
 function findProduct(idx) {
   document.querySelectorAll('.switch-panel').forEach(p => p.remove());
   const item = currentQuotation && currentQuotation.items[idx];
@@ -2558,9 +2583,7 @@ function findProduct(idx) {
         <input type="text" id="find-input-${idx}" placeholder="Search by product, brand or model no…"
           oninput="findProductSearch(${idx})" onkeydown="stopEnterSubmit(event)">
       </div>
-      <div class="switch-cards" id="find-results-${idx}">
-        <p class="find-empty">Start typing — matching products appear here; click one to fill this row.</p>
-      </div>
+      <div class="switch-cards" id="find-results-${idx}">${_findCards(idx, item._suggestions || [], true)}</div>
       <label class="remember-choice" title="Off = this quote only. On = the matcher learns this phrase for good.">
         <input type="checkbox" id="remember-${idx}">
         Remember this choice for "<b>${escHtml(item.product || '')}</b>" in future quotations
@@ -2579,31 +2602,21 @@ function findProductSearch(idx) {
     if (!inp || !box) return;
     const term = inp.value.trim();
     if (term.length < 2) {
-      box.innerHTML = '<p class="find-empty">Start typing — matching products appear here; click one to fill this row.</p>';
+      // back to the suggestions we opened with, rather than an empty box
+      const it = currentQuotation && currentQuotation.items[idx];
+      box.innerHTML = _findCards(idx, (it && it._suggestions) || [], true);
       return;
     }
     const r = await fetch(`${API}/api/master-table/page?q=${encodeURIComponent(term)}&limit=12`);
     const d = await r.json();
     const cur = document.getElementById(`find-input-${idx}`);
     if (!cur || cur.value.trim() !== term) return;   // superseded by a newer keystroke
-    _findResults = d.items || [];
-    if (!_findResults.length) {
+    if (!(d.items || []).length) {
+      _findResults = [];
       box.innerHTML = `<p class="find-empty">No match for “${escHtml(term)}” — try fewer or different words.</p>`;
       return;
     }
-    box.innerHTML = _findResults.map((v, ri) => {
-      const price = v.price_3star || v.price_4star || 0;
-      const thumbSrc = v.image_path ? `${API}/api/image/${v.image_path}` : '';
-      return `
-      <div class="switch-card" onclick="applyFind(${idx},${ri})" style="animation-delay:${ri * 35}ms">
-        <div class="sc-thumb">${thumbSrc ? `<img class="sc-thumb-img" src="${thumbSrc}" alt="">` : '<div class="sc-thumb-placeholder">📦</div>'}</div>
-        <div class="sc-body">
-          <div class="sc-name">${escHtml(v.product || '')}</div>
-          <div class="sc-price">₹${price.toLocaleString('en-IN', {maximumFractionDigits: 2})}</div>
-          <div class="sc-file">📁 ${escHtml((v.file_name || '').substring(0, 28))}</div>
-        </div>
-      </div>`;
-    }).join('');
+    box.innerHTML = _findCards(idx, d.items, false);
   }, 300);
 }
 

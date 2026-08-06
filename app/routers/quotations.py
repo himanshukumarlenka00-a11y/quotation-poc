@@ -386,9 +386,12 @@ def _strip_cost(data, user):
     for item in data.get("items") or []:
         if isinstance(item, dict):
             item.pop("cost", None)
-            for v in item.get("_variants") or []:
-                if isinstance(v, dict):
-                    v.pop("cost", None)
+            # _suggestions carries raw master rows too — the same devtools
+            # exposure the _variants strip exists to prevent.
+            for key in ("_variants", "_suggestions"):
+                for v in item.get(key) or []:
+                    if isinstance(v, dict):
+                        v.pop("cost", None)
     return data
 
 
@@ -709,7 +712,50 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
     result_items = []
     not_found    = []
 
-    def _add_placeholder(label, qty):
+    def suggest_catalog(term, limit=6):
+        """Loose candidates for a request that nothing matched confidently.
+
+        search_catalog() refuses to guess: it needs most of the request's
+        words present in the product name, so "Hair Dryer, Color - Black /
+        Grey Wall-Mounted" scores 2/7 against "HAIR DRYER" and returns
+        nothing at all. That refusal is right for auto-selecting — it is what
+        stops "waste bin" becoming "Ice bin module" — but the row it discards
+        is often exactly what the user wanted, and an empty Find box makes
+        them retype what we already knew.
+
+        Ranks by how many of the request's significant words appear in the
+        name. Shown as suggestions only; the line stays a placeholder until a
+        human picks one."""
+        toks = re.findall(r"[a-z0-9]+", (term or "").lower())
+        core = [w for w in toks if len(w) >= 3 and w.isalpha() and w not in units]
+        if not core:
+            return []
+        out = []
+        for r in rows_pool:
+            name = (r.get("product") or "").lower()
+            name_ns = name.replace(" ", "")
+            # Earlier words carry more weight: these descriptions are written
+            # "<product>, <qualifiers>", so "hair"/"dryer" identify the item
+            # while "black"/"wall"/"mounted" merely describe it. Weighting by
+            # position is what keeps "WALL-MOUNTED ASHTRAY" out of the results
+            # for "Hair Dryer, Color - Black / Grey Wall-Mounted" — verified
+            # against the real 52k catalogue.
+            hits = sum((len(core) - i) for i, w in enumerate(core)
+                       if _covered(w, name, name_ns))
+            if not hits:
+                continue
+            # shorter names break ties, so a bare "HAIR DRYER" outranks
+            # "HAIR DRYER BAG"
+            score = hits * 1000 - min(len(name), 120)
+            if (r.get("price_3star") or 0) > 0:
+                score += 50
+            if r.get("image_path"):
+                score += 10
+            out.append((score, r))
+        out.sort(key=lambda x: -x[0])
+        return [dict(r) for _, r in out[:limit]]
+
+    def _add_placeholder(label, qty, suggestions=None):
         # Not-in-catalogue rows keep their place in the quote (name + qty from
         # the client, everything else blank) so the sequence order survives —
         # the user fills the price inline or swaps the product later.
@@ -722,6 +768,9 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             "price_3star": 0, "price_3star_usd": 0, "price_4star": 0, "price_4star_usd": 0,
             "_variants": [], "_requested": label, "requested": label,
             "matched_by": "not_found", "not_in_catalog": True, "boq_price": 0,
+            # Best-effort candidates so the Find panel opens with something
+            # instead of an empty box. Suggestions only — never auto-applied.
+            "_suggestions": suggestions or [],
         })
 
     for item in extracted:
@@ -814,12 +863,12 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 variants = by_model + [v for v in variants if key(v) not in seen_m]
             else:
                 not_found.append(f"{original_kw} (model {req_model} not in master — nothing substituted)")
-                _add_placeholder(original_kw, qty)
+                _add_placeholder(original_kw, qty, suggest_catalog(search_term))
                 continue
 
         if not variants:
             not_found.append(original_kw)
-            _add_placeholder(original_kw, qty)
+            _add_placeholder(original_kw, qty, suggest_catalog(search_term))
             continue
 
         tiers = [t for t in (tiers_req or ["3star"]) if t in ("3star", "4star")] or ["3star"]
