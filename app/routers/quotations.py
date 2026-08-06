@@ -519,12 +519,31 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         # model-number-like tokens in the request (mix of letters+digits, codes)
         mtoks = [w for w in re.findall(r"[a-z0-9][a-z0-9\-/\.]+", t)
                  if any(c.isdigit() for c in w) and any(c.isalpha() for c in w)]
+        # Bare numbers are model codes too. mtoks needs letters AND digits, so
+        # "WCCE001-SS" counted but "2688" did not — and "ARDACAM 2688 Plate"
+        # then tied with ARDACAM-2447-Plate on name alone and picked whichever
+        # came first. Used only as a tie-breaker below: it promotes a row that
+        # already matched, never conjures one, so a size like "500" cannot
+        # drag in an unrelated model 500.
+        numtoks = [w for w in re.findall(r"\d{3,}", t)]
         t_ns = t.replace(" ", "")
         scored = []
         for r in rows_pool:
             name = (r.get('product') or '').lower(); name_ns = name.replace(' ', '')
-            # significant words of the PRODUCT name, for the reverse test below
-            name_core = [w for w in re.findall(r"[a-z]+", name)
+            # Significant words of the PRODUCT name, for the reverse test
+            # below — but only of its HUMAN part. Catalogue names are written
+            # "BRAND-CODE-Real Name" ("MELANGE-SMLE0054-Pillow Twin Feather"),
+            # and demanding "melange"/"smle" appear in the request made the
+            # reverse test fail for almost every branded row: it only ever
+            # worked for bare names like "HAIR DRYER". Leading segments that
+            # carry a digit, or repeat the brand, are packaging — drop them.
+            segs = [s for s in re.split(r"\s*-\s*", name) if s.strip()]
+            brand_l = (r.get('brand') or '').strip().lower()
+            while len(segs) > 1 and (any(c.isdigit() for c in segs[0])
+                                      or segs[0].strip() == brand_l):
+                segs.pop(0)
+            human = " ".join(segs) if segs else name
+            name_core = [w for w in re.findall(r"[a-z]+", human)
                          if len(w) >= 3 and w not in units]
             model = (r.get('original_model') or '').lower()
             spec  = (r.get('specification') or '').lower()
@@ -551,12 +570,18 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 # for. Accepting a single shared word made "waste bin" match
                 # "Ice bin module" (₹65,082) with full confidence.
                 score = 200 + 10 * sum(1 for w in core if _covered(w, name, name_ns))
-            elif core and all(w in spec for w in core):
+            elif len(core) > 1 and all(w in spec for w in core):
+                # Spec-only match needs at least TWO significant words. On one
+                # word it fired on any product whose specification happened to
+                # contain it — a request for "SAFE" returned "GLOVE LARGE"
+                # because the word sits in that glove's spec text.
                 score = 120                                    # specification match
             if score:
                 if short:
                     score += 100 * sum(1 for w in short
                                        if re.search(r"\b" + re.escape(w) + r"\b", name))
+                if numtoks and model and any(nt in model for nt in numtoks):
+                    score += 300                               # the request named this model number
                 if (r.get('price_3star') or 0) > 0: score += 30  # prefer rows that have a price
                 if r.get('image_path'):       score += 5       # prefer rows that have an image
                 scored.append((score, r))
