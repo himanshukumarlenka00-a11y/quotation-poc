@@ -2561,6 +2561,10 @@ function findProduct(idx) {
       <div class="switch-cards" id="find-results-${idx}">
         <p class="find-empty">Start typing — matching products appear here; click one to fill this row.</p>
       </div>
+      <label class="remember-choice" title="Off = this quote only. On = the matcher learns this phrase for good.">
+        <input type="checkbox" id="remember-${idx}">
+        Remember this choice for "<b>${escHtml(item.product || '')}</b>" in future quotations
+      </label>
     </div>
   </td>`;
   row.insertAdjacentElement('afterend', panel);
@@ -2621,6 +2625,7 @@ function applyFind(idx, ri) {
   item.price_4star    = v.price_4star || 0;
   item.price_per_pc   = (tier === '4star' ? v.price_4star : v.price_3star) || v.price_3star || v.price_4star || 0;
   item.price_currency = 'INR';
+  item.remember       = !!document.getElementById(`remember-${idx}`)?.checked;
   item.matched_by     = 'manual';
   item.not_in_catalog = false;
   item.was_placeholder = true;   // persisted — enables Revert after reload too
@@ -2699,6 +2704,10 @@ function switchVariant(idx) {
     <div class="switch-panel-inner">
       <div class="switch-panel-title">🔄 Switch Variant — "${item._requested || item.product}"</div>
       <div class="switch-cards">${cards}</div>
+      <label class="remember-choice" title="Off = this quote only. On = the matcher learns this phrase for good.">
+        <input type="checkbox" id="remember-${idx}">
+        Remember this choice for "<b>${escHtml(item._requested || item.product || '')}</b>" in future quotations
+      </label>
       <button onclick="document.querySelectorAll('.switch-panel').forEach(p=>p.remove())"
         style="margin-top:10px;background:none;border:none;cursor:pointer;font-size:var(--fs-sm);color:var(--muted);">
         ✕ Close
@@ -2713,6 +2722,9 @@ function applySwitch(idx, vi, cardEl) {
   if (!item || !item._variants) return;
   const v = item._variants[vi];
   if (!v) return;
+  // Opt-in teaching: unticked (the default) means this quote only, so a
+  // client's one-time preference can't re-point the mapping for everyone.
+  item.remember = !!document.getElementById(`remember-${idx}`)?.checked;
   // Apply selected variant to item
   item.product       = v.product      || item.product;
   item.price_per_pc  = v.price        || 0;

@@ -1767,6 +1767,10 @@ html[data-theme=dark] .mlg-sweep { background: rgba(255,255,255,.14); }
 .find-search input { flex: 1; border: none !important; outline: none; background: transparent;
   font-size: var(--fs-base); color: var(--text); padding: 0; }
 .find-empty { color: var(--muted); font-size: var(--fs-sm); padding: 2px; }
+.remember-choice { display: flex; align-items: center; gap: 8px; margin-top: 12px;
+  font-size: var(--fs-sm); color: var(--muted); cursor: pointer; user-select: none; }
+.remember-choice input { width: 15px; height: 15px; accent-color: var(--primary); cursor: pointer; flex: none; }
+.remember-choice b { color: var(--text); font-weight: 600; }
 
 /* Amount / GST% / GST Val: keep the money figures off the neighbouring
    column — never let them wrap or butt up against the GST input box. */

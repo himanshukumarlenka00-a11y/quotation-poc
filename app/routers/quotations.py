@@ -1209,18 +1209,23 @@ def update_quotation(qid: int, req: UpdateItemsRequest, user: dict = Depends(get
         for item in (req.items or []):
             ph = _norm_phrase(item.get("requested") or "")
             old = old_by_phrase.get(ph)
-            if not old or old.get("matched_by") == "human":
-                continue        # nothing to compare, or already human-settled
-            # Placeholder lineage never teaches the matcher (user rule):
-            # a Find pick on a not-in-catalogue row is a stand-in for THIS
-            # quote, not a fact about what the phrase means — learning it
-            # made "[WCCE001-SS]" permanently resolve to WCCE002.
-            if any(x.get("not_in_catalog") or x.get("was_placeholder")
-                   for x in (item, old)):
-                continue
+            if not old:
+                continue        # nothing to compare against
             ident = lambda x: ((str(x.get("product") or "")).strip().lower(),
                                (str(x.get("model_no") or "")).strip().lower())
             if ident(old) != ident(item):
+                # Teaching is OPT-IN: only when the user ticked "remember this
+                # choice" in the Switch/Find panel.
+                #
+                # Switching used to teach automatically, conflating two acts
+                # that look identical in the UI: "the matcher was wrong, fix
+                # it for good" and "this client wants something else just this
+                # once". The second is the common case, and treating it as the
+                # first is how "[WCCE001-SS]" got permanently pinned to
+                # WCCE002. A one-off preference must never re-point the
+                # catalogue mapping for everyone.
+                if not item.get("remember"):
+                    continue
                 conn.execute("""
                     INSERT INTO match_corrections
                         (phrase_norm, product, original_model, corrected_from,
@@ -1261,6 +1266,12 @@ def update_quotation(qid: int, req: UpdateItemsRequest, user: dict = Depends(get
                       user["id"], datetime.now().isoformat()))
     except Exception as e:
         print(f"Correction learning skipped (non-fatal): {e}")
+
+    # "remember" is a one-shot instruction, not a property of the line. If it
+    # were persisted, every later save of this quote would re-teach the same
+    # phrase — and worse, would re-teach it after a subsequent one-off switch.
+    for it in (req.items or []):
+        it.pop("remember", None)
 
     data["items"] = req.items
     if req.client_name:
