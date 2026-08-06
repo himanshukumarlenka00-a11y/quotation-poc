@@ -2,8 +2,8 @@
 
 ## LIVE IN PRODUCTION (see memory: ubuntu-server-deployment)
 Server melange@192.168.0.146 (crm-server). App :8000 + HTTPS :8443 (nginx,
-self-signed, cert trusted on user's PC). HEAD afb5085, cache css v108 /
-js v112. Master table 51,938 products. Pushed to GitHub through afb5085.
+self-signed, cert trusted on user's PC). HEAD 71f93f4, cache css v108 /
+js v113. Master table 51,938 products. Pushed to GitHub.
 
 Deploy flow: edit dev → verify cheaply → commit → tar-pipe to /opt/quotegen
 → restart quotegen if Python changed. ASK BEFORE EVERY SERVER-CHANGING
@@ -58,13 +58,22 @@ catalogue rather than reasoning from screenshots:
 Also: spec-only matches now need >1 significant word ("SAFE" was returning
 "GLOVE LARGE" because the word sits in that glove's spec).
 
-A failed line is no longer a dead end: suggest_catalog() runs a loose
+A failed line is no longer a dead end: suggest_products() runs a loose
 second pass (its OWN per-line FTS query — reusing the shared pool returned
 "WALL DRYER" because HAIR DRYER was outside the 4000) and the Find panel
-opens pre-loaded with candidates. Nothing is auto-applied. NOTE
-_suggestions is underscore-prefixed so it is stripped before save — it only
-exists in the fresh generate response, NOT on a quote reloaded from the DB.
-That gap is still open.
+opens pre-loaded with candidates. Nothing is auto-applied.
+
+_suggestions is underscore-prefixed and therefore stripped before save, so
+it only ever existed in the fresh generate response. Rather than persist six
+raw master rows per placeholder, the panel FETCHES them when they are absent:
+GET /api/suggest-products?q=... (skipped if the user has already typed).
+Works on a quote of any age. suggest_products, _covered and _UNITS are
+module level so the endpoint and the matcher cannot drift apart.
+
+TRAP, cost 20 minutes: hoisting _covered through a shell heredoc ate its
+ word-boundary anchors, leaving re.search(r"" + ...) — plain substring
+matching, so "pin" matched "chopping". Accuracy fell 94% -> 73% and the
+audit caught it. Edit that regex with a file edit, never through a heredoc.
 
 DATA ISSUE for the user, not code: 349 product names are duplicated within
 a single catalogue. e.g. "ROUND DAMPING HINGED  CHAFING DISH  LARGE
@@ -119,8 +128,8 @@ Rs20,482) — indistinguishable by name, only a model code separates them.
 
 ## Known gaps / next
 1. DONE (2026-08-06): cleanup, traceback leak, pricing test.
-2. _suggestions does not survive a save/reload (underscore key is stripped).
-   Find opens empty on a reopened quote. Fix: fetch suggestions on demand.
+2. DONE (2026-08-06): suggestions now fetched on demand, so they survive a
+   reload.
 3. Page redesigns left: Quotations list, Margin Analysis, Upload BOQ,
    Activity, Users & Roles. Dashboard empty-space plan approved, not built.
 4. UI logic audit areas 3-8 (areas 1-2 done).
