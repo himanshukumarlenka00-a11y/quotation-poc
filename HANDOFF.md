@@ -1,4 +1,108 @@
-# HANDOFF — quotation-poc session state (2026-08-06)
+# HANDOFF — quotation-poc session state (2026-08-10)
+
+## Session 2026-08-10 (12 commits, f6878c5..995a779, all deployed + pushed)
+
+STANDING RULE ADDED — VISUALISE BEFORE BUILDING. For any change with a UI
+surface, show an interactive mockup via the visualize tool and get approval
+BEFORE writing code. Stated verbatim: "before doing anything we will
+visualize the things — always remember this things". Saved as memory
+`visualize-before-implementing`. Does not apply to pure backend work.
+It has already paid: the batching design and the Margin-Analysis structure
+both changed shape after the mock.
+
+### Matcher: glued tokens (b4fc852) — real defect, fixed and measured
+FTS5 matches token PREFIXES, so `"dustbin"*` finds DUSTBIN and DUSTBINS but
+never WALTHR-IR-RD001-OVL-ROOMDUSTBIN — one token, starting with "room".
+The index is NOT stale (51,938 = 51,938, zero missing rows); a prefix query
+simply cannot see into the middle of a token. Invisible rows on live data:
+dustbin 19/63, tray 233/1476, bowl 27/4401, shaker 4/412, kettle 0/79.
+Fix: `_glued_rows()` + `_merge_glued()` — a bounded substring scan (<8ms
+worst case on 52k) appended to the FTS pool, wired into BOTH FTS call sites
+(`_line_pool` and `suggest_products`) so generator, Switch and Find gain it
+together. Words <4 chars or numeric are skipped ("ss", "18" as substrings
+match half the catalogue). Chose this over a trigram index: no rebuild, no
+second index to keep in step. test_glued_tokens.py, mutation-checked.
+MEASURED AFTER DEPLOY (live, variant counts): dustbin 31 -> 50 (+19, exactly
+as predicted), kettle 79 -> 79, shaker 344 -> 345, latency unchanged.
+BUT tray stayed 3 -> 3. The 233 rows now enter the pool and are then
+REJECTED BY THE SCORER, which is a different defect: a one-word generic
+request like "tray" covers too little of a long product name. 3 variants out
+of 1,476 rows containing the word. NEXT THING WORTH FIXING.
+
+### Switch panel: the 15-variant cap (2b3553a, 97d9abc)
+"Dustbin" has 50 distinct matches; the panel showed 15 with nothing saying
+more existed. `uniq[:15]` is now a `variant_cap` PARAMETER (default 15 — a
+34-line quote carrying 50 variants each is a megabyte of JSON nobody
+scrolls), and GET /api/product-variants re-runs THE SAME resolver for one
+product with a bigger cap. Same resolver deliberately: a second scorer would
+reorder the list under the user mid-decision (verified top variant identical
+at cap 15 and 200). Loads 30 per click; the endpoint also returns the true
+total so the note reads "45 of 50" and the button retires itself at the end.
+Fetched variants are APPENDED, never substituted — applySwitch() indexes
+into _variants, so the matcher's pick must keep index 0.
+
+### Generate page: one card, two ways in (003cd57, 82b1410, 995a779)
+Three commits because I got it wrong twice, in an instructive way:
+ - 003cd57 merged the margin action into the "file" card believing that card
+   was already on the Generate page. Its MARKUP is, but a later single-column
+   redesign hid it: `#sec-generate:not(.boq-only) .card-alt{display:none}`.
+   It only ever rendered in BOQ Coverage. LESSON: reading the markup is not
+   reading the page — check the CSS before claiming a thing is visible.
+ - 82b1410 un-hid it.
+ - 995a779 merged both cards into ONE (user picked "both visible" from a
+   mocked A/B): textarea | or | drop zone inside Create a Quotation,
+   stacking below 900px. ONE Generate button dispatches — a chosen file
+   wins over the textarea, and the card SAYS SO ("Generate will use
+   bar.xlsx ✕ clear") instead of deciding silently.
+`.card-alt`, `.or-divider`, `gen-boq-btn` and the two-column grid are gone.
+BOQ Coverage shares the section and now hides the typed half + tier picker
++ Generate rather than a whole second card.
+NOTE: /api/smart-generate-from-boq already turned any .xls/.xlsx into an
+editable quote with the file's own prices kept as boq_price, and
+renderResult shows BOQ Price + Profit columns whenever has_boq_pricing —
+that capability existed all along, nobody could find the button.
+
+### Margin analysis (4b11142)
+Now in quotation shape on screen AND as a real Excel. `build_margin_analysis`
+WRAPS `build_xls_minimal` and appends Cost/Profit/Margin as columns N/O/P —
+the same tactic build_xls_from_template uses for its BOQ columns, so nothing
+in the existing layout moves and there is one layout to maintain, not two.
+Retitled INTERNAL with a red banner; endpoint admin-only. The analyse
+endpoint was already resolving each line but returned only product+model —
+brand, spec, HSN, image and GST were on the matched row all along.
+
+### Session expiry (32d0914)
+loadRepository() assumed its fetch returned an array; on a lapsed session the
+API answers {detail:"Not logged in"}, .filter threw, and the user got a blank
+page with the reason only in the console. EVERY loader shared that
+assumption. Fixed once, in a fetch interceptor: any 401 outside /api/auth/
+while authed drops to the login gate with "Your session expired." /api/auth/
+is excluded because a wrong password also 401s.
+
+### Smaller (f6878c5, 902d569, 0f4fe9b, e8dddf8)
+- Login tagline said "Innovating Jamsetjiar"; the real logo reads
+  "innovating hospitality". Brand animation reworked 4.1s -> 2.4s, and the
+  "QuoteGen AI" line removed.
+- REDUCED MOTION IS ON, ON THIS MACHINE: HKCU\Control Panel\Desktop\
+  WindowMetrics\MinAnimate = 0, so Chrome reports prefers-reduced-motion.
+  A reduce block that pins everything to its final state therefore reads as
+  "no animation is there" to this user. Degrade to an opacity fade instead —
+  and remember every other animation in the app is silently off for them.
+- Hover details panel is now a click target for its card (pointer-events
+  auto while shown, 140ms grace over the 10px gap, forwards the click).
+- Request cap 1000 -> 8000 chars in all four places, plus a
+  Field(max_length=8000) the server never had at all.
+
+### Still open from today
+- "tray" scoring (above) — the biggest remaining matcher gap.
+- The 400-row FTS pool cap: tray 1428 hits -> 400 reach the scorer,
+  mixing bowl 4651 -> 400. Proposal was to keep 400 for batch generation and
+  raise it for the one-product Switch/Find path; not done, needs timings.
+- Margin Analysis page is now lists-only. Its Approved / BOQ-priced Drafts
+  sections filter on has_boq_pricing, so they fill only from quotes
+  generated off a priced file.
+
+# (previous session notes follow)
 
 ## LIVE IN PRODUCTION (see memory: ubuntu-server-deployment)
 Server melange@192.168.0.146 (crm-server). App :8000 + HTTPS :8443 (nginx,
