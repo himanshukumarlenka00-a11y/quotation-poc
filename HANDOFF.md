@@ -1,6 +1,6 @@
 # HANDOFF — quotation-poc session state (2026-08-10)
 
-## Session 2026-08-10 (19 commits, f6878c5..1109817, all deployed + pushed)
+## Session 2026-08-10 (22 commits, f6878c5..4b5855d, all deployed + pushed)
 
 ### "tray" solved (540aafd) — 3 variants -> 465
 NOT the glued tokens, NOT the 400-row pool. search_catalog scores a
@@ -36,6 +36,13 @@ Now gated on cost. _strip_cost removes cost from an employee payload
 entirely, so its presence IS the permission check. Added Cost and Margin %
 beside Profit, with totals, tracking live as prices are edited. Live figures
 match the old deleted table exactly: ₹2,016 profit, 6.0%, ₹33,549.
+TIGHTENED by b0313f6 — cost alone was too loose. It put purchase cost on
+every quotation, including one typed in plain English, which is the wrong
+thing to have on screen in front of a client. The gate is now INTENT **and**
+data: `q.show_margin && items.some(cost > 0)`. show_margin is set only by the
+Margin analysis button, persisted without an underscore so reopening the
+saved quote keeps the view. Typed -> no margin; Generate from file -> no
+margin; Margin analysis -> margin.
 COROLLARY: the deleted analysis table was never comparing what we QUOTED
 against cost — its "SOLD @" fell back to the master price. It was showing
 master price vs cost all along, the same figure these columns show.
@@ -58,15 +65,23 @@ Also fixed: Chrome restores a textarea's value on reload WITHOUT firing
 `input`, so the counter read "0 / 8000" beside 777 real characters. Synced at
 DOMContentLoaded.
 
+### Per-half statuses (4b5855d)
+#gen-status and #gen-boq-status both sat full width at the foot of the card,
+so running one path then the other stacked two anonymous green "Quotation
+ready" banners (10 items above 8 items) with nothing saying which input made
+which. Each now lives inside the half that produced it, side by side,
+collapsing via :empty when empty. #boq-coverage stays full width — it renders
+a table, not a status line.
+
 ### Open, and worth doing next
 - The user's .xls/.xlsx price columns do not parse into boq_price. Margin no
   longer depends on it, but "what we quoted then vs what we'd charge now" is
   unavailable until it does. NEEDS ONE OF THE ACTUAL FILES to diagnose.
 - The 400-row FTS pool cap (tray 1428 hits -> 400, mixing bowl 4651 -> 400).
   Untouched; needs timings before raising it for the Switch/Find path.
-- Whether the Margin analysis button should exist at all — it now does the
-  same as Generate from file, with a label that says what you get. Asked, not
-  answered.
+- ANSWERED by b0313f6: the Margin analysis button stays and now earns its
+  place — it is the only thing that turns the Cost / Profit / Margin columns
+  on. Generate from file no longer shows them.
 
 
 STANDING RULE ADDED — VISUALISE BEFORE BUILDING. For any change with a UI
@@ -212,7 +227,7 @@ is excluded because a wrong password also 401s.
   two lists stay empty until that parsing is fixed.
 
 ### Cache-busting state at end of session
-index.html references main.css?v=126 and app.js?v=129. index.html itself is
+index.html references main.css?v=127 and app.js?v=131. index.html itself is
 NOT versioned, so a stale index means stale asset URLs too — Ctrl+Shift+R.
 
 # (previous session notes follow)
