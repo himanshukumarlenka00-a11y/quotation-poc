@@ -1084,6 +1084,9 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             "orig_price_3star": best.get("orig_price_3star"),
             "orig_price_4star": best.get("orig_price_4star"),
             "_variants":    variants_sorted,
+            # How many the cap held back, so the Switch panel can say what is
+            # left instead of offering a "show more" that turns out to be empty.
+            "_variants_total": len(uniq),
             "_requested":   item.get("product", ""),
             # Persisted (no underscore) — the learning loop needs to know, at
             # edit time, which phrase produced this line and who matched it.
@@ -1528,11 +1531,12 @@ def product_variants(q: str = "", limit: int = 60,
     finally:
         conn.close()
     items = (matched[0].get("_variants") or []) if matched else []
+    total = (matched[0].get("_variants_total") or len(items)) if matched else 0
     # Same rule as everywhere else: employees never see purchase cost.
     if (user or {}).get("role") != "admin":
         for r in items:
             r.pop("cost", None)
-    return {"items": items}
+    return {"items": items, "total": total}
 
 
 @router.post("/api/analyse-quotation")
