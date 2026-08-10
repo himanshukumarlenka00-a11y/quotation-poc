@@ -9,7 +9,7 @@ from app.config import limiter, GROQ_API_KEY_DEFAULT, CEREBRAS_API_KEY, CEREBRAS
 from app.db import get_db
 from app.auth import get_current_user, require_role, _check_quote_access, log_action
 from app.matching import get_boq_context, get_feedback_context, generate_ref_no, get_latest_template
-from app.export import build_company_quotation
+from app.export import build_company_quotation, build_margin_analysis
 from app.images import _save_image_to_disk
 from app.parser import parse_boq_excel
 from app.routers.catalog import _save_upload_validated
@@ -1572,6 +1572,13 @@ def analyse_uploaded_quotation(
                 "product": src.get("product") or "",
                 "matched_to": "" if got.get("not_in_catalog") else (got.get("product") or ""),
                 "model_no": got.get("model_no") or src.get("model_no") or "",
+                # carried so the analysis can be shown and exported in the same
+                # shape as a quotation document, not as a bare figures table
+                "brand": got.get("brand") or "",
+                "specification": got.get("specification") or "",
+                "hsn_code": got.get("hsn_code") or "",
+                "image_path": got.get("image_path") or "",
+                "gst_pct": got.get("gst_pct"),
                 "qty": qty, "sold": sold, "amount": amount,
                 "cost": cost_u, "profit": profit, "margin_pct": margin, "state": state,
             })
@@ -1586,6 +1593,40 @@ def analyse_uploaded_quotation(
         "profit": round(profit_total, 2),
         "margin_pct": round(profit_total * 100 / known_rev, 1) if known_rev else None,
     }
+
+
+class AnalysisExportRequest(BaseModel):
+    filename: str = Field(default="quotation", max_length=200)
+    lines: list = []
+    counts: dict = {}
+    revenue: float = 0
+    known_revenue: float = 0
+    profit: float = 0
+    margin_pct: float | None = None
+
+
+@router.post("/api/analyse-quotation/export")
+@limiter.limit("20/minute")
+def export_quotation_analysis(
+    request: Request,
+    req: AnalysisExportRequest,
+    admin: dict = Depends(require_role("admin")),
+):
+    """Excel of the analysis currently on screen, in quotation shape.
+
+    Takes the analysis back rather than the file: it exports exactly what the
+    admin is looking at, and skips a second parse-and-match of the upload.
+    Admin-only, because the sheet carries purchase cost.
+    """
+    if not req.lines:
+        raise HTTPException(400, "Nothing to export — analyse a file first.")
+    try:
+        path = build_margin_analysis(req.model_dump())
+    except Exception as e:
+        raise server_error(e, "Margin export")
+    log_action(admin, "export_quotation_analysis", target=req.filename)
+    return FileResponse(path, filename=Path(path).name,
+                        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 @router.post("/api/quotations/{qid}/refresh-prices")

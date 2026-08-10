@@ -2607,6 +2607,8 @@ function marginFileClear() {
 // resolves lines by exact text identity, which an external file never
 // satisfies — this posts the file and lets the server parse, match and price
 // it at each line's own quantity.
+let _lastAnalysis = null, _lastAnalysisName = 'quotation';
+
 async function analyseQuotationFile() {
   const input = document.getElementById('margin-file');
   const out = document.getElementById('margin-upload-result');
@@ -2619,6 +2621,8 @@ async function analyseQuotationFile() {
     const res = await fetch(`${API}/api/analyse-quotation`, { method: 'POST', body: fd });
     const d = await res.json();
     if (!res.ok) { out.innerHTML = `<div class="alert alert-error">${apiErr(d)}</div>`; return; }
+    _lastAnalysis = d;
+    _lastAnalysisName = input.files[0].name.replace(/\.xlsx?$/i, '');
     out.innerHTML = renderQuotationAnalysis(d);
   } catch (e) {
     out.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
@@ -2634,11 +2638,19 @@ function renderQuotationAnalysis(d) {
     no_cost: '<span class="ma-warn">no cost in master</span>',
     not_in_master: '<span class="ma-bad">not in master</span>',
   };
-  const rows = d.lines.map(l => `
+  const rows = d.lines.map((l, i) => `
     <tr>
+      <td class="c">${i + 1}</td>
+      <td class="c">${l.image_path
+            ? `<img class="ma-img" src="${API}/api/image/${l.image_path}" alt="" loading="lazy">`
+            : '<div class="ma-noimg">📦</div>'}</td>
       <td>${escHtml(l.product)}${l.matched_to && l.matched_to !== l.product
             ? `<div class="ma-sub">→ ${escHtml(l.matched_to)}</div>` : ''}</td>
       <td class="c">${l.qty}</td>
+      <td class="ma-mono">${escHtml(l.model_no || '')}</td>
+      <td>${escHtml(l.brand || '')}</td>
+      <td class="ma-spec">${escHtml(l.specification || '')}</td>
+      <td class="c ma-mono">${escHtml(l.hsn_code || '')}</td>
       <td class="num">${money(l.sold)}</td>
       <td class="num">${money(l.amount)}</td>
       <td class="num">${l.cost == null ? '—' : money(l.cost)}</td>
@@ -2648,6 +2660,9 @@ function renderQuotationAnalysis(d) {
       <td>${badge[l.state]}</td>
     </tr>`).join('');
   return `
+    <div class="ma-head">
+      <button class="btn btn-sm btn-outline" onclick="downloadAnalysisXlsx(this)">⬇ Download Excel</button>
+    </div>
     <div class="ma-tiles">
       <div class="ma-tile"><span>Quoted value</span><b>${money(d.revenue)}</b></div>
       <div class="ma-tile"><span>Profit (costed lines)</span><b>${money(d.profit)}</b></div>
@@ -2656,12 +2671,42 @@ function renderQuotationAnalysis(d) {
     </div>
     <p class="ma-note">Profit and margin cover only the ${d.counts.ok} lines whose master cost is known
       (${money(d.known_revenue)} of ${money(d.revenue)} quoted). The rest are listed honestly rather than guessed.</p>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Product</th><th class="c">Qty</th><th class="num">Sold @</th>
-        <th class="num">Amount</th><th class="num">Cost @</th><th class="num">Profit</th>
-        <th class="num">Margin</th><th>State</th></tr></thead>
+    <div class="table-wrap"><table class="ma-table">
+      <thead><tr>
+        <th class="c">SL</th><th class="c">Image</th><th>Product</th><th class="c">Qty</th>
+        <th>Model No</th><th>Brand</th><th>Specification</th><th class="c">HSN</th>
+        <th class="num">Sold @</th><th class="num">Amount</th><th class="num">Cost @</th>
+        <th class="num">Profit</th><th class="num">Margin</th><th>State</th>
+      </tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
+}
+
+// Posts the analysis on screen back to the server, which renders it through
+// the same builder as a customer quotation — same columns, same product
+// images — with Cost / Profit / Margin appended and an internal-only banner.
+async function downloadAnalysisXlsx(btn) {
+  if (!_lastAnalysis) { toast('Analyse a file first', 'error'); return; }
+  const label = btn && btn.textContent;
+  if (btn) { btn.disabled = true; btn.textContent = 'Building…'; }
+  try {
+    const res = await fetch(`${API}/api/analyse-quotation/export`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(_lastAnalysis),
+    });
+    if (!res.ok) { toast(apiErr(await res.json().catch(() => ({}))), 'error'); return; }
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Margin_${_lastAnalysisName}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('Downloaded');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+  }
 }
 
 // ── Hover details for Switch / Find cards ───────────────────────────────────

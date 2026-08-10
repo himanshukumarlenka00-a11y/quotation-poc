@@ -1863,6 +1863,16 @@ html[data-theme=dark] .mlg-sweep { background: linear-gradient(90deg, transparen
 #margin-drop input[type=file] { display: none; }
 
 /* Uploaded-quotation analysis (Margin Analysis page) */
+.ma-head { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+/* Same column set as the quotation document, so the two read alike */
+.ma-table { font-size: var(--fs-xs); }
+.ma-table th, .ma-table td { padding: 6px 8px; vertical-align: middle; }
+.ma-img { width: 46px; height: 46px; object-fit: contain; border-radius: 6px;
+  background: #fff; border: 1px solid var(--border); display: block; }
+.ma-noimg { width: 46px; height: 46px; border-radius: 6px; background: var(--card-soft);
+  border: 1px solid var(--border); display: grid; place-items: center; opacity: .5; }
+.ma-mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: var(--fs-xs); }
+.ma-spec { max-width: 240px; color: var(--muted); font-size: var(--fs-xs); }
 .ma-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px; margin-bottom: 10px; }
 .ma-tile { background: var(--card-soft); border-radius: 8px; padding: 10px 14px; }
