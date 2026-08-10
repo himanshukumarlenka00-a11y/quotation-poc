@@ -724,7 +724,19 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             model = (r.get('original_model') or '').lower()
             spec  = (r.get('specification') or '').lower()
             score = 0
-            if model and ((mtoks and any(mt in model for mt in mtoks)) or (len(t) >= 4 and t in model)):
+            # A model-number hit scores 1000 and the 0.6 cutoff below then
+            # discards everything under 600 — so this branch must fire ONLY on
+            # something that really is a code. The whole-term test needs a
+            # DIGIT: plenty of "models" in the master are descriptive text
+            # ("DCTC 1014 (PP) - PP Tray", "LV LID HANGER"), so a bare product
+            # word matched them as a substring and scored 1000. A request for
+            # "tray" then cut off at 621, just above the ~619 a name match can
+            # reach, and all 473 rows actually named "...Tray..." were dropped
+            # in favour of 3 rows whose model text happened to say "tray".
+            # mtoks already covers letter+digit codes like WCCE001-SS.
+            t_is_code = len(t) >= 4 and any(c.isdigit() for c in t)
+            if model and ((mtoks and any(mt in model for mt in mtoks))
+                          or (t_is_code and t in model)):
                 score = 1000                                   # model-number match (most specific)
             elif core and all(_covered(w, name, name_ns) for w in core):
                 score = 600 - min(len(name), 120)              # full name match; tighter ranks higher
