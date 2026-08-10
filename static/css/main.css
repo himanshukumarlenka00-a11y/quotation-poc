@@ -1736,13 +1736,20 @@ html[data-theme=dark] .mlg-word { color: #eceff5; }
 html[data-theme=dark] .mlg-sweep { background: linear-gradient(90deg, transparent, rgba(255,255,255,.16), transparent); }
 @keyframes mlgsweep { to { left: 110%; } }
 
+/* Reduced motion means no MOVEMENT, not no life: keep a staggered opacity
+   fade (safe for vestibular triggers) and drop every transform, track shift
+   and the sweep. Windows with "animation effects" off lands here. */
 @media (prefers-reduced-motion: reduce) {
-  .mlg-icon, .mlg-icon path, .mlg-word, .mlg-word span, .mlg-tag { animation: none; }
-  .mlg-icon path { stroke-dashoffset: 0; }
-  .mlg-word { letter-spacing: .30em; padding-left: .30em; }
-  .mlg-tag { letter-spacing: .28em; padding-left: .28em; }
+  .mlg-icon { animation: mlgfade .5s ease both; }
+  .mlg-icon path { animation: mlgdraw .01s linear both; }
+  .mlg-word { animation: none; letter-spacing: .30em; padding-left: .30em; }
+  /* longhand, so the nth-child stagger delays below survive the override */
+  .mlg-word span { animation-name: mlgfade; animation-duration: .4s;
+    animation-timing-function: ease; animation-fill-mode: both; }
+  .mlg-tag { animation: mlgfade .5s ease .95s both; letter-spacing: .28em; padding-left: .28em; }
   .mlg-sweep { display: none; }
 }
+@keyframes mlgfade { from { opacity: 0; } }
 /* BOQ coverage missing-list thumbnails */
 .cov-thumb { width: 46px; height: 46px; object-fit: contain; border-radius: 8px;
   background: #fff; border: 1px solid var(--border); display: block; }
