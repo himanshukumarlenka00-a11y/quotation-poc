@@ -2065,15 +2065,44 @@ boqReqFileInput.addEventListener('change', e => setBoqReqFile(e.target.files[0])
 function setBoqReqFile(file) {
   if (!file) return;
   boqReqSelectedFile = file;
-  boqReqDropZone.querySelector('p').innerHTML = `<strong>${file.name}</strong> selected`;
-  document.getElementById('gen-boq-btn').disabled = false;
+  boqReqDropZone.querySelector('p').innerHTML = `<strong>${escHtml(file.name)}</strong> selected`;
+  boqReqDropZone.classList.add('has-file');
   document.getElementById('check-boq-btn').disabled = false;
   // Admin-only, and hidden outright for everyone else — see onAuthed()
   const ma = document.getElementById('margin-analyse-btn');
   if (ma) ma.disabled = false;
+  // Both inputs are on screen at once, so say which one Generate will use
+  // and give a way back to typing — otherwise a file picked by accident
+  // silently wins over whatever is in the textarea.
+  const chosen = document.getElementById('boq-file-chosen');
+  chosen.style.display = 'flex';
+  chosen.innerHTML = `<span>Generate will use <b>${escHtml(file.name)}</b></span>
+    <button type="button" onclick="clearBoqReqFile()" title="Use the typed request instead">✕ clear</button>`;
   document.getElementById('gen-boq-status').innerHTML = '';
   document.getElementById('boq-coverage').innerHTML = '';
   document.getElementById('margin-upload-result').innerHTML = '';
+}
+
+function clearBoqReqFile() {
+  boqReqSelectedFile = null;
+  boqReqFileInput.value = '';
+  boqReqDropZone.classList.remove('has-file');
+  boqReqDropZone.querySelector('p').innerHTML = '<strong>Click or drag &amp; drop</strong> the file here';
+  document.getElementById('boq-file-chosen').style.display = 'none';
+  document.getElementById('check-boq-btn').disabled = true;
+  const ma = document.getElementById('margin-analyse-btn');
+  if (ma) ma.disabled = true;
+  ['gen-boq-status', 'boq-coverage', 'margin-upload-result'].forEach(id => {
+    document.getElementById(id).innerHTML = '';
+  });
+}
+
+// One Generate button for two inputs sitting side by side. A chosen file wins
+// over the textarea because picking one is the more deliberate act, and the
+// card says so ("Generate will use bar.xlsx") rather than deciding silently.
+function generateFromCard() {
+  if (boqReqSelectedFile) return generateFromBoqFile();
+  return generateQuote();
 }
 
 // ── Phase A: show how each column will be read, before anything is imported ──
@@ -2341,8 +2370,9 @@ async function generateFromBoqFile() {
   // single PRICE column (no star columns) — never a roadblock.
   const tiersToUse = selectedTiers;
   const client = document.getElementById('client-name')?.value.trim() || '';
-  const btn = document.getElementById('gen-boq-btn');
+  const btn = document.getElementById('gen-btn');   // shared with the typed path
   const status = document.getElementById('gen-boq-status');
+  const label = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '<span class="loader"></span> Generating...';
   status.innerHTML = '<div class="alert alert-info">🤖 Reading the file and matching against the Master Table...</div>';
@@ -2358,7 +2388,7 @@ async function generateFromBoqFile() {
     if (!res.ok) throw new Error(data.detail || 'Generation failed');
     if (data.unsaved) {
       status.innerHTML = `<div class="alert alert-error">Nothing in this BOQ matched the Master Table. No quotation was saved.</div>`;
-      btn.disabled = false; btn.innerHTML = '📤 Generate from BOQ';
+      btn.disabled = false; btn.innerHTML = label;
       return;
     }
     currentQuotation = data;
@@ -2371,7 +2401,7 @@ async function generateFromBoqFile() {
     status.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '📤 Generate from BOQ';
+    btn.innerHTML = label;
   }
 }
 

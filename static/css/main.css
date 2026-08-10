@@ -1579,34 +1579,16 @@ html[data-theme=dark] .drop-zone:hover, html[data-theme=dark] .drop-zone.drag { 
 .card-alt:hover { box-shadow: 0 10px 30px -14px rgba(99,102,241,.3); }
 .card-alt .section-head { color: var(--primary, #6366f1); }
 .card-alt .section-head::before { background: linear-gradient(135deg, rgba(99,102,241,.20), rgba(99,102,241,.07)); }
-/* Generate page: two-column layout so everything fits without scrolling */
-#sec-generate.active { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 0 18px; align-items: start; }
-#sec-generate .or-divider { display: none; }
-#sec-generate .card-alt { margin-top: 0; }
+/* Generate page: one centered column holding the single Create a Quotation
+   card. The old two-column grid (typed card | file card) went away when the
+   two were merged — .card-alt and .or-divider no longer exist here. */
+#sec-generate.active { display: block; max-width: 1180px; margin: 0 auto; }
 #sec-generate .gen-head { margin-bottom: 14px; }
 #sec-generate .gh-art { width: 104px; height: 84px; }
 #sec-generate .steps-strip { margin-bottom: 14px; }
 #sec-generate .step-mini { padding: 10px 14px; }
-#sec-generate .card { padding: 16px 18px; }
-#sec-generate #req-prompt { min-height: 96px; }
-@media (max-width: 1100px) {
-  #sec-generate.active { display: block; }
-  #sec-generate .or-divider { display: flex; }
-}
-/* Generate page: stretch to fill the viewport, no dead space */
-/* Rows size to their content: with the file card back, a 1fr row would land
-   on the OR divider and stretch it down the page. */
-#sec-generate.active { min-height: calc(100vh - 120px); grid-template-rows: none; }
-#sec-generate .card, #sec-generate .card-alt { height: 100%; margin-bottom: 0; box-sizing: border-box; }
-#sec-generate .card { display: flex; flex-direction: column; }
-#sec-generate .card > div:has(#req-prompt) { flex: 1; display: flex; flex-direction: column; }
-#sec-generate #req-prompt { flex: 1; min-height: 96px; height: 100%; }
-#sec-generate .card-alt { display: flex; flex-direction: column; }
-#sec-generate .card-alt .drop-zone { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; }
-@media (max-width: 1100px) {
-  #sec-generate.active { min-height: 0; }
-  #sec-generate .card, #sec-generate .card-alt { height: auto; }
-}
+#sec-generate .card { padding: 16px 18px; margin-bottom: 0; box-sizing: border-box; }
+#sec-generate #req-prompt { min-height: 132px; }
 /* Name field + tier cards: same soft-filled panel treatment as the textarea */
 .input-ico input { background: var(--bg); border: 1.5px solid transparent; transition: border-color .15s, background .15s, box-shadow .15s; }
 .input-ico input:hover { border-color: var(--border); }
@@ -1656,10 +1638,20 @@ html[data-theme=dark] .btn-sm { background: transparent; }
 .vp-variant-row:hover { background: var(--accent-soft2); }
 html[data-theme=dark] .master-folder-head:hover { background: #2c3446; }
 html[data-theme=dark] .vp-variant-row:hover { background: #262d3b; }
-/* Coverage view: the same section, but only the BOQ card — entering via
-   the BOQ Coverage tab hides the quotation column so the two sidebar
-   items no longer look like the same page */
-#sec-generate.boq-only .card:not(.card-alt), #sec-generate.boq-only .steps-strip { display: none; }
+/* Coverage view: the same section and the same card, but only the file half —
+   entering via the BOQ Coverage tab hides the typed column, the tier picker
+   and the Generate button, so the two sidebar items no longer look like the
+   same page. (Both halves live in ONE card now, so this hides parts of it
+   rather than a whole second card.) */
+#sec-generate.boq-only .steps-strip,
+#sec-generate.boq-only .gen-typed,
+#sec-generate.boq-only .gen-or,
+#sec-generate.boq-only .tier-cards,
+#sec-generate.boq-only .card > h2,
+#sec-generate.boq-only .card > label,
+#sec-generate.boq-only #gen-btn { display: none; }
+#sec-generate.boq-only .gen-split { grid-template-columns: 1fr; }
+#sec-generate.boq-only .gen-actions { justify-content: flex-start; }
 #sec-generate.boq-only { grid-template-columns: 1fr; }
 #sec-generate.boq-only .gen-head div h1 { visibility: hidden; position: relative; }
 #sec-generate.boq-only .gen-head div h1::after { content: '☑ BOQ Coverage'; visibility: visible; position: absolute; left: 0; color: var(--primary); }
@@ -1932,13 +1924,37 @@ html[data-theme=dark] .mlg-sweep { background: linear-gradient(90deg, transparen
    shows here as well as in the BOQ Coverage view — uploading a requirement
    list or a past quotation is a way to start a quotation, so hiding it on the
    page called Generate Quotation meant nobody found it. */
-#sec-generate:not(.boq-only) .or-divider { display: flex; }
-/* ...but not in the BOQ Coverage view, where there is nothing to be OR'd
-   against — the typed-prompt card is hidden there. Beats the narrow-width
-   rule above on specificity, so it holds at every width. */
-#sec-generate.boq-only .or-divider { display: none; }
 #sec-generate:not(.boq-only) .gh-art { display: none; }
-#sec-generate.active { grid-template-columns: 1fr; max-width: 1280px; margin: 0 auto; min-height: 0; }
+
+/* Type it | or | drop a file — one card, two ways in. Stacks below 900px,
+   where two columns would leave both too narrow to use. */
+.gen-split { display: grid; grid-template-columns: 1fr auto 1fr; gap: 0 18px;
+  align-items: start; margin-top: 18px; }
+.gen-half-head { display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 8px; margin-bottom: 8px; min-height: var(--ctl-h); }
+.gen-or { align-self: stretch; display: flex; flex-direction: column; align-items: center;
+  gap: 8px; padding-top: 46px; }
+.gen-or span { font-size: var(--fs-xs); color: var(--muted); font-weight: 600;
+  letter-spacing: .5px; }
+.gen-or::after { content: ''; flex: 1; width: 1px; background: var(--border); }
+.gen-file .drop-zone { margin: 0; min-height: 132px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; }
+.gen-file-chosen { display: flex; align-items: center; gap: 8px; margin-top: 8px;
+  font-size: var(--fs-sm); color: var(--text, inherit); }
+.gen-file-chosen b { font-weight: 600; }
+.gen-file-chosen button { background: none; border: none; cursor: pointer; padding: 2px 4px;
+  color: var(--muted); font-size: var(--fs-sm); }
+.gen-file-chosen button:hover { color: var(--danger, #d64545); }
+.gen-actions { display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+.gen-actions-2nd { display: flex; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 900px) {
+  .gen-split { grid-template-columns: 1fr; gap: 14px; }
+  .gen-or { padding-top: 0; flex-direction: row; }
+  .gen-or::after { flex: 1; width: auto; height: 1px; }
+  .gen-or::before { content: ''; flex: 1; height: 1px; background: var(--border); }
+}
+#sec-generate.active { max-width: 1280px; margin: 0 auto; min-height: 0; }
 #sec-generate .card { height: auto; }
 #sec-generate .gen-head { margin-bottom: 18px; }
 
