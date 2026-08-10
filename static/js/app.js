@@ -2447,7 +2447,7 @@ async function addToQuote() {
 // ── Result ───────────────────────────────────────────────────────────────────
 function fmt(n, dec=0) { return n.toLocaleString('en-IN', {maximumFractionDigits: dec}); }
 
-function renderItemRow(item, idx, show3, show4, hasBoqPricing, showOrig) {
+function renderItemRow(item, idx, show3, show4, hasBoqPricing, showOrig, showMargin) {
   const isINR   = (item.price_currency || 'INR') === 'INR';
   const qty     = item.qty || 0;
   const price   = item.price_per_pc || 0;
@@ -2467,6 +2467,8 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing, showOrig) {
   const cost     = item.cost || 0;
   const profit   = hasBoqPricing ? qty * (boqPrice - priceInr)
                                  : qty * (priceInr - cost);
+  // Per-unit percentage, so it stays readable whatever the quantity.
+  const marginPct = (cost > 0 && priceInr > 0) ? (priceInr - cost) * 100 / priceInr : null;
 
   item._priceInr = priceInr;
   item._amtInr   = amtInr;
@@ -2564,8 +2566,10 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing, showOrig) {
         ${(orig3 != null || orig4 != null) ? `<option value="orig">Orig ₹${(activeTier==='4star' ? (orig4??orig3) : (orig3??orig4)).toLocaleString('en-IN')}</option>` : ''}
       </select>` : ''}
     </td>
-    ${hasBoqPricing ? `<td class="boq-price-cell num">₹${fmt(boqPrice, 2)}</td>
-    <td class="profit-cell num" style="color:${profit >= 0 ? '#1e9e56' : '#d64545'};font-weight:600;">₹${fmt(profit)}</td>` : ''}
+    ${hasBoqPricing ? `<td class="boq-price-cell num">₹${fmt(boqPrice, 2)}</td>` : ''}
+    ${showMargin ? `<td class="cost-cell num">₹${fmt(cost, 2)}</td>` : ''}
+    ${(hasBoqPricing || showMargin) ? `<td class="profit-cell num" style="color:${profit >= 0 ? '#1e9e56' : '#d64545'};font-weight:600;">₹${fmt(profit)}</td>` : ''}
+    ${showMargin ? `<td class="margin-cell num">${marginPct == null ? '—' : marginPct.toFixed(1) + '%'}</td>` : ''}
     <td class="amount-cell num">₹${fmt(amtInr)}</td>
     <td class="c"><input type="number" class="gst-input" value="${gst}" onchange="recalcRow(${idx})" style="width:50px"></td>
     <td class="gst-val-cell num">₹${fmt(gstVal)}</td>
@@ -2643,8 +2647,9 @@ async function analyseQuotationFile() {
   if (!boqReqSelectedFile) return;
   await generateFromBoqFile();
   if (!currentQuotation) return;                       // generation failed; it reported why
-  if (!currentQuotation.has_boq_pricing) {
-    toast('That file has no prices, so there is no profit to compare against', 'error');
+  // Margin needs the master's COST, not the file's prices — see renderResult.
+  if (!(currentQuotation.items || []).some(i => (i.cost || 0) > 0)) {
+    toast('No master cost on these lines, so margin cannot be worked out', 'error');
     return;
   }
   const foot = document.getElementById('foot-profit');
@@ -3114,21 +3119,31 @@ function renderResult(q) {
   // uploaded client BOQ that actually had its own pricing — a manually typed
   // quote has nothing to compare our Master Table price against.
   const hasBoqPricing = !!q.has_boq_pricing;
+  // Cost / Profit / Margin used to hang off has_boq_pricing, which is only
+  // true when the UPLOADED FILE carried its own price column. Uploading a
+  // past quotation whose price column does not parse left boq_price 0 on
+  // every line, so margin analysis showed nothing at all — even though the
+  // master's cost was sitting right there on each row. Gate on the cost
+  // instead: _strip_cost removes it entirely for employees, so its presence
+  // IS the permission check, not merely a hidden column.
+  const showMargin = items.some(i => (i.cost || 0) > 0);
 
   // Single unified header — all in INR
   const thead = document.querySelector('#items-table thead tr');
   thead.innerHTML = `<th style="width:40px">SL</th><th class="c" style="width:96px">Image</th><th>Product</th><th class="c" style="width:56px">QTY</th>
     <th>Model No</th><th>Brand</th><th>Specification</th>
     <th>HSN</th>${show3 ? '<th class="col-3star c" style="width:110px">⭐ 3★ Price</th>' : ''}${show4 ? '<th class="col-4star c" style="width:110px">⭐⭐ 4★ Price</th>' : ''}
-    <th class="num" style="width:90px">Price/Pc (₹)</th>${hasBoqPricing ? '<th class="num" style="width:100px">BOQ Price (₹)</th><th class="num" style="width:90px">Profit (₹)</th>' : ''}<th class="num" style="width:100px">Amount (₹)</th><th class="c" style="width:56px">GST%</th><th class="num" style="width:100px">GST Val (₹)</th><th style="width:40px"></th>`;
+    <th class="num" style="width:90px">Price/Pc (₹)</th>${hasBoqPricing ? '<th class="num" style="width:100px">BOQ Price (₹)</th>' : ''}${showMargin ? '<th class="num" style="width:90px">Cost (₹)</th>' : ''}${(hasBoqPricing || showMargin) ? '<th class="num" style="width:90px">Profit (₹)</th>' : ''}${showMargin ? '<th class="num" style="width:78px">Margin %</th>' : ''}<th class="num" style="width:100px">Amount (₹)</th><th class="c" style="width:56px">GST%</th><th class="num" style="width:100px">GST Val (₹)</th><th style="width:40px"></th>`;
 
   // Cost/Profit are deliberately NOT shown on a typed quotation — that view is
   // for checking what we stock, not for margin analysis. They appear only on a
   // BOQ-sourced quote, where BOQ Price gives something real to compare against.
-  const colSpan = 13 + (show3?1:0) + (show4?1:0) + (hasBoqPricing?2:0);
+  const colSpan = 13 + (show3?1:0) + (show4?1:0)
+                    + (hasBoqPricing?1:0) + (showMargin?2:0)
+                    + ((hasBoqPricing || showMargin)?1:0);
   let html = '';
 
-  items.forEach(item => { html += renderItemRow(item, items.indexOf(item), show3, show4, hasBoqPricing, showOrig); });
+  items.forEach(item => { html += renderItemRow(item, items.indexOf(item), show3, show4, hasBoqPricing, showOrig, showMargin); });
 
   html += `<tr class="manual-add-row"><td colspan="${colSpan}" style="padding:10px 14px;">
     <button type="button" class="btn-manual-add" id="manual-add-btn" onclick="toggleManualAdd()">✎ + Enter a product manually</button>
@@ -3146,12 +3161,18 @@ function renderResult(q) {
   // Profit only when BOQ pricing is present. Label colspan is whatever's left,
   // so the two rows always sum to the table's real column count regardless of
   // which optional columns are showing.
-  const trailingCols = 4 + (hasBoqPricing ? 1 : 0);
+  const costTotal = items.reduce((s,i) => s + (i._cost||0) * (i.qty||0), 0);
+  const marginTotal = subTotal > 0 ? (subTotal - costTotal) * 100 / subTotal : null;
+  const trailingCols = 4 + (hasBoqPricing ? 1 : 0) + (showMargin ? 2 : 0)
+                         + ((hasBoqPricing || showMargin) ? 1 : 0);
   const labelColspan = colSpan - trailingCols;
 
   html += `<tr class="quot-subrow" style="background:#eaf4fb;font-weight:700;">
     <td colspan="${labelColspan}" ${tdR}>SUB TOTAL</td>
-    ${hasBoqPricing ? `<td class="num" id="foot-profit">₹${fmt(profitTotal)}</td>` : ''}
+    ${hasBoqPricing ? '<td></td>' : ''}
+    ${showMargin ? `<td class="num" id="foot-cost">₹${fmt(costTotal)}</td>` : ''}
+    ${(hasBoqPricing || showMargin) ? `<td class="num" id="foot-profit">₹${fmt(profitTotal)}</td>` : ''}
+    ${showMargin ? `<td class="num" id="foot-margin">${marginTotal == null ? '—' : marginTotal.toFixed(1) + '%'}</td>` : ''}
     <td class="num" id="foot-sub">₹${fmt(subTotal)}</td><td></td><td class="num" id="foot-gst">₹${fmt(gstTotal)}</td><td></td>
   </tr>`;
   html += `<tr class="quot-grandrow" style="background:#1a3a6b;color:#fff;font-weight:700;">
@@ -3252,6 +3273,11 @@ function recalcRow(idx) {
 
   row.querySelector('.amount-cell').textContent  = '₹' + fmt(amtInr);
   row.querySelector('.gst-val-cell').textContent = '₹' + fmt(gstVal);
+  const marginCell = row.querySelector('.margin-cell');
+  if (marginCell) {
+    const m = (cost > 0 && priceInr > 0) ? (priceInr - cost) * 100 / priceInr : null;
+    marginCell.textContent = m == null ? '—' : m.toFixed(1) + '%';
+  }
   const profitCell = row.querySelector('.profit-cell');
   if (profitCell) {
     profitCell.textContent = '₹' + fmt(profit);
