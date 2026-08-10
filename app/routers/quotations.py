@@ -1414,13 +1414,21 @@ def update_quotation(qid: int, req: UpdateItemsRequest, user: dict = Depends(get
                 item["matched_by"] = "human"
                 learned.append((item.get("requested") or ph,
                                 old.get("product"), item.get("product")))
-            else:
+            elif not (item.get("not_in_catalog") or item.get("matched_by") == "not_found"):
                 # Line saved untouched — a confirmation. Weaker than a
                 # correction, so the ON CONFLICT guard only bumps the counter
                 # when the stored row already points at this same product;
                 # it can never overwrite a human correction aimed elsewhere.
                 # No audit entry: every save confirms every untouched line,
                 # and logging each would drown the Activity page.
+                #
+                # Placeholder lines are excluded above: their `product` is the
+                # client's raw request text, not a catalogue product, so this
+                # branch was writing "Strogae Rack" -> "Strogae Rack" into the
+                # learning table on every save. 33 of 99 rows were that junk.
+                # Harmless while nothing in the master matches the text, but a
+                # landmine — import a product with that name and the row
+                # silently becomes a live auto-selection learned from nothing.
                 conn.execute("""
                     INSERT INTO match_corrections
                         (phrase_norm, product, original_model, corrected_by,
