@@ -2647,6 +2647,11 @@ async function analyseQuotationFile() {
     toast('No master cost on these lines, so margin cannot be worked out', 'error');
     return;
   }
+  // Re-render with the margin columns on — this is the one entry point that
+  // asks for them. Persisted without an underscore so reopening the saved
+  // quote still shows margin rather than silently dropping back.
+  currentQuotation.show_margin = true;
+  renderResult(currentQuotation);
   const foot = document.getElementById('foot-profit');
   if (foot) {
     foot.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -3114,14 +3119,15 @@ function renderResult(q) {
   // uploaded client BOQ that actually had its own pricing — a manually typed
   // quote has nothing to compare our Master Table price against.
   const hasBoqPricing = !!q.has_boq_pricing;
-  // Cost / Profit / Margin used to hang off has_boq_pricing, which is only
-  // true when the UPLOADED FILE carried its own price column. Uploading a
-  // past quotation whose price column does not parse left boq_price 0 on
-  // every line, so margin analysis showed nothing at all — even though the
-  // master's cost was sitting right there on each row. Gate on the cost
-  // instead: _strip_cost removes it entirely for employees, so its presence
-  // IS the permission check, not merely a hidden column.
-  const showMargin = items.some(i => (i.cost || 0) > 0);
+  // Cost / Profit / Margin appear ONLY when the user asked for margin, i.e.
+  // came in through the Margin analysis button. Generating a quotation —
+  // typed or from a file — is about what we stock and what the client pays;
+  // putting our purchase cost on that screen answers a question nobody asked
+  // and is the wrong thing to have open in front of a client.
+  // Two conditions, both needed: the intent (show_margin) and the data
+  // (_strip_cost deletes cost from an employee's payload entirely, so its
+  // presence is the permission check, not a hidden column).
+  const showMargin = !!q.show_margin && items.some(i => (i.cost || 0) > 0);
 
   // Single unified header — all in INR
   const thead = document.querySelector('#items-table thead tr');
