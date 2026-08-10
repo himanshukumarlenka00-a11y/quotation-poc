@@ -1913,8 +1913,10 @@ html[data-theme=dark] .mlg-sweep { background: linear-gradient(90deg, transparen
 
 /* Type it | or | drop a file — one card, two ways in. Stacks below 900px,
    where two columns would leave both too narrow to use. */
+/* stretch, not start: the halves must share a height for each one's
+   margin-top:auto to drop its action row onto the same baseline. */
 .gen-split { display: grid; grid-template-columns: 1fr auto 1fr; gap: 0 18px;
-  align-items: start; margin-top: 18px; }
+  align-items: stretch; margin-top: 18px; }
 .gen-half-head { display: flex; align-items: center; justify-content: space-between;
   flex-wrap: wrap; gap: 8px; margin-bottom: 8px; min-height: var(--ctl-h); }
 .gen-or { align-self: stretch; display: flex; flex-direction: column; align-items: center;
@@ -1930,9 +1932,14 @@ html[data-theme=dark] .mlg-sweep { background: linear-gradient(90deg, transparen
 .gen-file-chosen button { background: none; border: none; cursor: pointer; padding: 2px 4px;
   color: var(--muted); font-size: var(--fs-sm); }
 .gen-file-chosen button:hover { color: var(--danger, #d64545); }
-.gen-actions { display: flex; align-items: center; justify-content: space-between;
-  gap: 10px; flex-wrap: wrap; margin-top: 20px; }
-.gen-actions-2nd { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Each half carries its own actions, right-aligned under its input, so the
+   button that acts on a thing sits with that thing. Both halves stretch to
+   the same height and the rows line up. */
+.gen-split > div { display: flex; flex-direction: column; }
+.gen-half-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;
+  align-items: center; margin-top: auto; padding-top: 12px; }
+.gen-half-actions .btn-primary { padding: 11px 20px; border-radius: 10px;
+  font-size: var(--fs-base); }
 @media (max-width: 900px) {
   .gen-split { grid-template-columns: 1fr; gap: 14px; }
   .gen-or { padding-top: 0; flex-direction: row; }

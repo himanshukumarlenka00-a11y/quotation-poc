@@ -812,6 +812,10 @@ async function fillFromFile(file, kind) {
 // GenerateRequest.prompt's max_length on the server.
 const REQ_MAX = 8000;
 
+// Chrome restores a textarea's value on reload WITHOUT firing `input`, so the
+// counter read "0 / 8000" beside 777 characters of restored text. Sync at load.
+window.addEventListener('DOMContentLoaded', () => updateReqCount());
+
 function updateReqCount() {
   const ta = document.getElementById('req-prompt');
   const c = document.getElementById('req-count');
@@ -2071,13 +2075,11 @@ function setBoqReqFile(file) {
   // Admin-only, and hidden outright for everyone else — see onAuthed()
   const ma = document.getElementById('margin-analyse-btn');
   if (ma) ma.disabled = false;
-  // Both inputs are on screen at once, so say which one Generate will use
-  // and give a way back to typing — otherwise a file picked by accident
-  // silently wins over whatever is in the textarea.
+  document.getElementById('gen-boq-btn').disabled = false;
   const chosen = document.getElementById('boq-file-chosen');
   chosen.style.display = 'flex';
-  chosen.innerHTML = `<span>Generate will use <b>${escHtml(file.name)}</b></span>
-    <button type="button" onclick="clearBoqReqFile()" title="Use the typed request instead">✕ clear</button>`;
+  chosen.innerHTML = `<span><b>${escHtml(file.name)}</b></span>
+    <button type="button" onclick="clearBoqReqFile()" title="Remove this file">✕ clear</button>`;
   document.getElementById('gen-boq-status').innerHTML = '';
   document.getElementById('boq-coverage').innerHTML = '';
 }
@@ -2089,19 +2091,12 @@ function clearBoqReqFile() {
   boqReqDropZone.querySelector('p').innerHTML = '<strong>Click or drag &amp; drop</strong> the file here';
   document.getElementById('boq-file-chosen').style.display = 'none';
   document.getElementById('check-boq-btn').disabled = true;
+  document.getElementById('gen-boq-btn').disabled = true;
   const ma = document.getElementById('margin-analyse-btn');
   if (ma) ma.disabled = true;
   ['gen-boq-status', 'boq-coverage'].forEach(id => {
     document.getElementById(id).innerHTML = '';
   });
-}
-
-// One Generate button for two inputs sitting side by side. A chosen file wins
-// over the textarea because picking one is the more deliberate act, and the
-// card says so ("Generate will use bar.xlsx") rather than deciding silently.
-function generateFromCard() {
-  if (boqReqSelectedFile) return generateFromBoqFile();
-  return generateQuote();
 }
 
 // ── Phase A: show how each column will be read, before anything is imported ──
@@ -2369,7 +2364,7 @@ async function generateFromBoqFile() {
   // single PRICE column (no star columns) — never a roadblock.
   const tiersToUse = selectedTiers;
   const client = document.getElementById('client-name')?.value.trim() || '';
-  const btn = document.getElementById('gen-btn');   // shared with the typed path
+  const btn = document.getElementById('gen-boq-btn');
   const status = document.getElementById('gen-boq-status');
   const label = btn.innerHTML;
   btn.disabled = true;

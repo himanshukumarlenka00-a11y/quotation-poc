@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=123">
+<link rel="stylesheet" href="/static/css/main.css?v=125">
 </head>
 <body>
 
@@ -234,8 +234,9 @@
     </div>
 
     <!-- Two ways in, side by side: type it, or drop a file. One card, because
-         they are the same job and an OR divider between two cards read as two
-         separate features. #gen-btn dispatches to whichever one has input. -->
+         they are the same job. Each half owns its OWN action button: a single
+         shared Generate had to guess which input you meant, and silently
+         discarded the other one when both had content. -->
     <div class="gen-split">
       <div class="gen-typed">
         <div class="gen-half-head">
@@ -256,6 +257,11 @@
           <div class="ta-count" id="req-count">0 / 8000</div>
           <div id="suggest-dropdown" class="suggest-dropdown" style="display:none;"></div>
         </div>
+        <div class="gen-half-actions">
+          <button class="btn btn-primary" id="gen-btn" onclick="generateQuote()">
+            <span id="gen-icon">✨</span> Generate from this list
+          </button>
+        </div>
       </div>
 
       <div class="gen-or"><span>or</span></div>
@@ -271,18 +277,15 @@
           <input type="file" id="boq-req-file-input" accept=".xls,.xlsx">
         </div>
         <div class="gen-file-chosen" id="boq-file-chosen" style="display:none;"></div>
+        <div class="gen-half-actions">
+          <button class="btn btn-sm btn-outline" id="check-boq-btn" onclick="checkBoqCoverage()" disabled>🔍 Check what we stock</button>
+          <button class="btn btn-sm btn-outline" id="margin-analyse-btn" onclick="analyseQuotationFile()" disabled
+                  style="display:none;">◔ Margin analysis</button>
+          <button class="btn btn-primary" id="gen-boq-btn" onclick="generateFromBoqFile()" disabled>
+            📤 Generate from file
+          </button>
+        </div>
       </div>
-    </div>
-
-    <div class="gen-actions">
-      <span class="gen-actions-2nd">
-        <button class="btn btn-sm btn-outline" id="check-boq-btn" onclick="checkBoqCoverage()" disabled>🔍 Check what we stock</button>
-        <button class="btn btn-sm btn-outline" id="margin-analyse-btn" onclick="analyseQuotationFile()" disabled
-                style="display:none;">◔ Margin analysis</button>
-      </span>
-      <button class="btn btn-primary" id="gen-btn" onclick="generateFromCard()" style="font-size:var(--fs-md);padding:14px 30px;border-radius:10px;">
-        <span id="gen-icon">✨</span> Generate Quotation
-      </button>
     </div>
     <div id="gen-status" style="margin-top:12px;"></div>
     <div id="gen-boq-status" style="margin-top:12px;"></div>
@@ -497,6 +500,6 @@
 </div><!--/shell-->
 
 
-<script src="/static/js/app.js?v=128"></script>
+<script src="/static/js/app.js?v=129"></script>
 </body>
 </html>
