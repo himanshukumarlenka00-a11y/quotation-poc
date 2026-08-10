@@ -1,6 +1,6 @@
 # HANDOFF — quotation-poc session state (2026-08-10)
 
-## Session 2026-08-10 (22 commits, f6878c5..4b5855d, all deployed + pushed)
+## Session 2026-08-10 (24 commits, f6878c5..8f33e05, all deployed + pushed)
 
 ### "tray" solved (540aafd) — 3 variants -> 465
 NOT the glued tokens, NOT the 400-row pool. search_catalog scores a
@@ -73,10 +73,38 @@ which. Each now lives inside the half that produced it, side by side,
 collapsing via :empty when empty. #boq-coverage stays full width — it renders
 a table, not a status line.
 
+### The exported quotation is now a LIVE sheet (8f33e05)
+Every number in the download was frozen, so changing a price in Excel left
+AMOUNT, GST AMOUNT and the three totals stale and the file had to be
+regenerated. In build_xls_from_template (the template path behind Download,
+NOT build_xls_minimal) the derived cells are formulas:
+    K21:K{last}  =C*J        AMOUNT    = QTY x PRICE/PC
+    M21:M{last}  =K*L        GST AMOUNT= AMOUNT x GST%   (L holds .18, fmt 0%)
+    TOTAL =SUM(K..)   GST VALUE =SUM(M..)   GRAND =K(total)+K(gst)
+Ranges include the freight row, which sits directly under the items. QTY,
+PRICE/PC and GST% are the only typed-in numbers left.
+
+DO NOT "SIMPLIFY" THIS BACK TO PLAIN VALUES. The old code avoided formulas
+on purpose — "some Excel installs sit in manual-calc mode and show formula
+cells blank until F9". That is a real failure and the reason this is safe is
+one line: `wb.calculation.fullCalcOnLoad = True`. Remove it and the export
+ships blank cells to those users.
+
+Verified on the live server against the user's own QT-20260810-182711:
+40 formula cells, inputs still plain (C=4, J=270.3, L=0.18), fullCalcOnLoad
+true. Re-upload still works — parse_boq_excel reads product/qty/price and
+never AMOUNT, detect_file_type keys on header NAMES not values, so a
+formula-bearing export parses 4/4 rows and is still called a quotation at
+0.8 confidence. The AMOUNT fallback I expected to need was unnecessary;
+checking beat assuming.
+
 ### Open, and worth doing next
 - The user's .xls/.xlsx price columns do not parse into boq_price. Margin no
   longer depends on it, but "what we quoted then vs what we'd charge now" is
   unavailable until it does. NEEDS ONE OF THE ACTUAL FILES to diagnose.
+  NARROWED 2026-08-10: an export WE generate round-trips perfectly —
+  parse_boq_excel reads its product/qty/price back correctly. So the fault is
+  in the specific files being uploaded, not the parser in general.
 - The 400-row FTS pool cap (tray 1428 hits -> 400, mixing bowl 4651 -> 400).
   Untouched; needs timings before raising it for the Switch/Find path.
 - ANSWERED by b0313f6: the Margin analysis button stays and now earns its
@@ -227,7 +255,9 @@ is excluded because a wrong password also 401s.
   two lists stay empty until that parsing is fixed.
 
 ### Cache-busting state at end of session
-index.html references main.css?v=127 and app.js?v=131. index.html itself is
+index.html references main.css?v=127 and app.js?v=131 (unchanged by
+8f33e05 — that commit touched app/export.py only, so it needed a service
+restart rather than a cache bump). index.html itself is
 NOT versioned, so a stale index means stale asset URLs too — Ctrl+Shift+R.
 
 # (previous session notes follow)
