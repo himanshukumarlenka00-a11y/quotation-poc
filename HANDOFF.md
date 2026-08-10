@@ -1,6 +1,6 @@
 # HANDOFF — quotation-poc session state (2026-08-10)
 
-## Session 2026-08-10 (12 commits, f6878c5..995a779, all deployed + pushed)
+## Session 2026-08-10 (14 commits, f6878c5..66d6d47, all deployed + pushed)
 
 STANDING RULE ADDED — VISUALISE BEFORE BUILDING. For any change with a UI
 surface, show an interactive mockup via the visualize tool and get approval
@@ -9,6 +9,44 @@ visualize the things — always remember this things". Saved as memory
 `visualize-before-implementing`. Does not apply to pure backend work.
 It has already paid: the batching design and the Margin-Analysis structure
 both changed shape after the mock.
+
+### THE RECURRING MISTAKE THIS SESSION — read this before building anything
+Three times I built a parallel version of something the app already had,
+because I checked whether the CODE existed without checking whether the
+USER could reach it, or without checking what the existing view already
+rendered. Cost: ~500 lines written and then deleted.
+  1. Margin analysis table + Margin_*.xlsx (4b11142) — deleted five commits
+     later (66d6d47) because Current Quote ALREADY renders BOQ Price,
+     Profit and a total-profit footer, and build_company_quotation ALREADY
+     appends the same two as columns N/O.
+  2. Claimed "the Generate page already has a file upload" from the markup
+     alone; CSS was hiding it (82b1410).
+  3. Nearly added a second drop zone next to an identical one.
+BEFORE writing a view: grep what the target page already renders, and open
+the page. `has_boq_pricing` in particular gates a lot of already-built UI.
+
+### Margin analysis: deleted, not moved (66d6d47, net -314 lines)
+The button now runs the same generation and LANDS ON CURRENT QUOTE, flashing
+#foot-profit so it is obvious what you were sent to look at. A file with no
+prices toasts instead of showing an empty profit view.
+GONE: /api/analyse-quotation, /api/analyse-quotation/export,
+build_margin_analysis, renderQuotationAnalysis, downloadAnalysisXlsx, all
+.ma-* CSS. Both endpoints verified 404 in prod.
+DELIBERATELY LOST, user chose this over keeping a second surface: per-line
+COST, MARGIN %, and the costed / no-cost / unmatched counts. Current Quote
+shows profit but never cost. If those are ever wanted back, they belong as
+columns in Current Quote (gated on role — _strip_cost removes cost from
+employee payloads), not as a new page.
+
+### Non-array API payloads — a whole bug class, now half-fixed
+A lapsed session answers valid JSON `{detail: "Not logged in"}`, which
+`.json()` parses happily and the next `.filter`/`.flatMap` then throws on,
+taking the page down with only a console trace. Two sites fixed with
+`asList()`: loadRepository (32d0914) and /api/sales-persons (66d6d47) —
+the latter's try/catch covered network failure only, so a lapsed session
+killed the entire quotation render. The fetch interceptor shows the login
+gate, but it does NOT stop the throw. Any OTHER loader that assumes an
+array is still exposed; asList() is there, use it.
 
 ### Matcher: glued tokens (b4fc852) — real defect, fixed and measured
 FTS5 matches token PREFIXES, so `"dustbin"*` finds DUSTBIN and DUSTBINS but
@@ -62,14 +100,13 @@ editable quote with the file's own prices kept as boq_price, and
 renderResult shows BOQ Price + Profit columns whenever has_boq_pricing —
 that capability existed all along, nobody could find the button.
 
-### Margin analysis (4b11142)
-Now in quotation shape on screen AND as a real Excel. `build_margin_analysis`
-WRAPS `build_xls_minimal` and appends Cost/Profit/Margin as columns N/O/P —
-the same tactic build_xls_from_template uses for its BOQ columns, so nothing
-in the existing layout moves and there is one layout to maintain, not two.
-Retitled INTERNAL with a red banner; endpoint admin-only. The analyse
-endpoint was already resolving each line but returned only product+model —
-brand, spec, HSN, image and GST were on the matched row all along.
+### Margin analysis (4b11142) — SUPERSEDED, all of this was deleted
+Built the analysis in quotation shape plus a Margin_*.xlsx, then removed it
+whole in 66d6d47 (see above). Kept here only as the worked example of the
+recurring mistake: it duplicated Current Quote's existing profit view.
+One thing survives and is worth knowing — `_resolve_master_matches` returns
+brand, spec, HSN, image_path and gst_pct on each matched row; the analyse
+endpoint had simply never passed them through.
 
 ### Session expiry (32d0914)
 loadRepository() assumed its fetch returned an array; on a lapsed session the
@@ -94,13 +131,21 @@ is excluded because a wrong password also 401s.
   Field(max_length=8000) the server never had at all.
 
 ### Still open from today
-- "tray" scoring (above) — the biggest remaining matcher gap.
+- "tray" scoring (above) — the biggest remaining matcher gap. 1,476 rows
+  contain the word, 3 become variants. Glued tokens are NOT the cause; the
+  scorer rejects generic one-word requests against long product names.
 - The 400-row FTS pool cap: tray 1428 hits -> 400 reach the scorer,
   mixing bowl 4651 -> 400. Proposal was to keep 400 for batch generation and
   raise it for the one-product Switch/Find path; not done, needs timings.
-- Margin Analysis page is now lists-only. Its Approved / BOQ-priced Drafts
-  sections filter on has_boq_pricing, so they fill only from quotes
-  generated off a priced file.
+- Other loaders still assume array payloads (see the bug-class note above).
+- Margin Analysis page is now lists-only, and its upload is gone. Its
+  Approved / BOQ-priced Drafts sections filter on has_boq_pricing, so they
+  fill only from quotes generated off a priced file — which the Generate
+  page now does, so they should stop being empty.
+
+### Cache-busting state at end of session
+index.html references main.css?v=123 and app.js?v=127. index.html itself is
+NOT versioned, so a stale index means stale asset URLs too — Ctrl+Shift+R.
 
 # (previous session notes follow)
 
