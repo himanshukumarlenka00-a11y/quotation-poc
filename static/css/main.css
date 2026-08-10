@@ -1942,6 +1942,12 @@ html[data-theme=dark] .mlg-sweep { background: linear-gradient(90deg, transparen
 .gen-split > div { display: flex; flex-direction: column; }
 .gen-half-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;
   align-items: center; margin-top: auto; padding-top: 12px; }
+/* Each half reports its own outcome underneath itself. Both used to sit
+   full-width at the card's foot, where two runs stacked two green banners
+   with nothing to say which input produced which. */
+.gen-half-status:empty { display: none; }
+.gen-half-status { margin-top: 10px; }
+.gen-half-status .alert { margin: 0; }
 .gen-half-actions .btn-primary { padding: 11px 20px; border-radius: 10px;
   font-size: var(--fs-base); }
 @media (max-width: 900px) {

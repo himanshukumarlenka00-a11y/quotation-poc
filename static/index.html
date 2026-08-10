@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=126">
+<link rel="stylesheet" href="/static/css/main.css?v=127">
 </head>
 <body>
 
@@ -262,6 +262,7 @@
             <span id="gen-icon">✨</span> Generate from this list
           </button>
         </div>
+        <div class="gen-half-status" id="gen-status"></div>
       </div>
 
       <div class="gen-or"><span>or</span></div>
@@ -285,10 +286,10 @@
             📤 Generate from file
           </button>
         </div>
+        <div class="gen-half-status" id="gen-boq-status"></div>
       </div>
     </div>
-    <div id="gen-status" style="margin-top:12px;"></div>
-    <div id="gen-boq-status" style="margin-top:12px;"></div>
+    <!-- Coverage stays full width: it renders a table, not a one-line status. -->
     <div id="boq-coverage" style="margin-top:14px;"></div>
   </div>
 
@@ -500,6 +501,6 @@
 </div><!--/shell-->
 
 
-<script src="/static/js/app.js?v=130"></script>
+<script src="/static/js/app.js?v=131"></script>
 </body>
 </html>
