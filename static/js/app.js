@@ -2080,7 +2080,6 @@ function setBoqReqFile(file) {
     <button type="button" onclick="clearBoqReqFile()" title="Use the typed request instead">✕ clear</button>`;
   document.getElementById('gen-boq-status').innerHTML = '';
   document.getElementById('boq-coverage').innerHTML = '';
-  document.getElementById('margin-upload-result').innerHTML = '';
 }
 
 function clearBoqReqFile() {
@@ -2092,7 +2091,7 @@ function clearBoqReqFile() {
   document.getElementById('check-boq-btn').disabled = true;
   const ma = document.getElementById('margin-analyse-btn');
   if (ma) ma.disabled = true;
-  ['gen-boq-status', 'boq-coverage', 'margin-upload-result'].forEach(id => {
+  ['gen-boq-status', 'boq-coverage'].forEach(id => {
     document.getElementById(id).innerHTML = '';
   });
 }
@@ -2634,113 +2633,25 @@ function setItemField(idx, field, val) {
   if (it) it[field] = val.trim();
 }
 
-// Analyse a quotation that only exists as a file. The in-app margin panel
-// resolves lines by exact text identity, which an external file never
-// satisfies — this posts the file and lets the server parse, match and price
-// it at each line's own quantity.
-//
-// Shares the Generate page's drop zone with "Generate quotation": the same
-// upload answers both questions, and a second drop zone for the same file
-// was only ever a way to make people upload it twice.
-let _lastAnalysis = null, _lastAnalysisName = 'quotation';
-
+// "Margin analysis" is the same generation as the Generate button — it just
+// says what you are looking for. Current Quote already renders BOQ Price,
+// Profit and a total-profit footer whenever the uploaded file carried prices
+// (renderResult, has_boq_pricing), and /api/download appends the same two as
+// columns N/O. A second table and a second Excel were duplicating a view the
+// app already had, so they are gone; this lands you on the built one.
 async function analyseQuotationFile() {
-  const out = document.getElementById('margin-upload-result');
-  const btn = document.getElementById('margin-analyse-btn');
   if (!boqReqSelectedFile) return;
-  btn.disabled = true; btn.textContent = 'Analysing…';
-  out.innerHTML = '<div class="loading-state">Reading the file and matching every line…</div>';
-  try {
-    const fd = new FormData(); fd.append('file', boqReqSelectedFile);
-    const res = await fetch(`${API}/api/analyse-quotation`, { method: 'POST', body: fd });
-    const d = await res.json();
-    if (!res.ok) { out.innerHTML = `<div class="alert alert-error">${apiErr(d)}</div>`; return; }
-    _lastAnalysis = d;
-    _lastAnalysisName = boqReqSelectedFile.name.replace(/\.xlsx?$/i, '');
-    out.innerHTML = renderQuotationAnalysis(d);
-    out.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  } catch (e) {
-    out.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
-  } finally {
-    btn.disabled = false; btn.textContent = '◔ Margin analysis';
+  await generateFromBoqFile();
+  if (!currentQuotation) return;                       // generation failed; it reported why
+  if (!currentQuotation.has_boq_pricing) {
+    toast('That file has no prices, so there is no profit to compare against', 'error');
+    return;
   }
-}
-
-function renderQuotationAnalysis(d) {
-  const money = n => '₹' + fmt(n || 0);
-  const badge = {
-    ok: '<span class="ma-ok">costed</span>',
-    no_cost: '<span class="ma-warn">no cost in master</span>',
-    not_in_master: '<span class="ma-bad">not in master</span>',
-  };
-  const rows = d.lines.map((l, i) => `
-    <tr>
-      <td class="c">${i + 1}</td>
-      <td class="c">${l.image_path
-            ? `<img class="ma-img" src="${API}/api/image/${l.image_path}" alt="" loading="lazy">`
-            : '<div class="ma-noimg">📦</div>'}</td>
-      <td>${escHtml(l.product)}${l.matched_to && l.matched_to !== l.product
-            ? `<div class="ma-sub">→ ${escHtml(l.matched_to)}</div>` : ''}</td>
-      <td class="c">${l.qty}</td>
-      <td class="ma-mono">${escHtml(l.model_no || '')}</td>
-      <td>${escHtml(l.brand || '')}</td>
-      <td class="ma-spec">${escHtml(l.specification || '')}</td>
-      <td class="c ma-mono">${escHtml(l.hsn_code || '')}</td>
-      <td class="num">${money(l.sold)}</td>
-      <td class="num">${money(l.amount)}</td>
-      <td class="num">${l.cost == null ? '—' : money(l.cost)}</td>
-      <td class="num" style="color:${(l.profit || 0) >= 0 ? 'var(--success)' : 'var(--danger)'};font-weight:700;">
-        ${l.profit == null ? '—' : money(l.profit)}</td>
-      <td class="num">${l.margin_pct == null ? '—' : l.margin_pct + '%'}</td>
-      <td>${badge[l.state]}</td>
-    </tr>`).join('');
-  return `
-    <div class="ma-head">
-      <button class="btn btn-sm btn-outline" onclick="downloadAnalysisXlsx(this)">⬇ Download Excel</button>
-    </div>
-    <div class="ma-tiles">
-      <div class="ma-tile"><span>Quoted value</span><b>${money(d.revenue)}</b></div>
-      <div class="ma-tile"><span>Profit (costed lines)</span><b>${money(d.profit)}</b></div>
-      <div class="ma-tile"><span>Margin</span><b>${d.margin_pct == null ? '—' : d.margin_pct + '%'}</b></div>
-      <div class="ma-tile"><span>Lines</span><b>${d.counts.ok} costed · ${d.counts.no_cost} no cost · ${d.counts.not_in_master} unmatched</b></div>
-    </div>
-    <p class="ma-note">Profit and margin cover only the ${d.counts.ok} lines whose master cost is known
-      (${money(d.known_revenue)} of ${money(d.revenue)} quoted). The rest are listed honestly rather than guessed.</p>
-    <div class="table-wrap"><table class="ma-table">
-      <thead><tr>
-        <th class="c">SL</th><th class="c">Image</th><th>Product</th><th class="c">Qty</th>
-        <th>Model No</th><th>Brand</th><th>Specification</th><th class="c">HSN</th>
-        <th class="num">Sold @</th><th class="num">Amount</th><th class="num">Cost @</th>
-        <th class="num">Profit</th><th class="num">Margin</th><th>State</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table></div>`;
-}
-
-// Posts the analysis on screen back to the server, which renders it through
-// the same builder as a customer quotation — same columns, same product
-// images — with Cost / Profit / Margin appended and an internal-only banner.
-async function downloadAnalysisXlsx(btn) {
-  if (!_lastAnalysis) { toast('Analyse a file first', 'error'); return; }
-  const label = btn && btn.textContent;
-  if (btn) { btn.disabled = true; btn.textContent = 'Building…'; }
-  try {
-    const res = await fetch(`${API}/api/analyse-quotation/export`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(_lastAnalysis),
-    });
-    if (!res.ok) { toast(apiErr(await res.json().catch(() => ({}))), 'error'); return; }
-    const url = URL.createObjectURL(await res.blob());
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Margin_${_lastAnalysisName}.xlsx`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast('Downloaded');
-  } catch (e) {
-    toast(e.message, 'error');
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = label; }
+  const foot = document.getElementById('foot-profit');
+  if (foot) {
+    foot.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    foot.classList.add('flash-profit');
+    setTimeout(() => foot.classList.remove('flash-profit'), 1600);
   }
 }
 
@@ -3556,7 +3467,10 @@ async function initSalesPersonPicker(q) {
   const rsel = document.getElementById('sales-region-sel');
   if (!sel) return;
   if (!salesPersons) {
-    try { salesPersons = await (await fetch(`${API}/api/sales-persons`)).json(); }
+    // asList, not just catch: a lapsed session answers 200-shaped JSON
+    // ({detail: "Not logged in"}), which parses fine and then dies on
+    // .flatMap below — taking the whole quotation render down with it.
+    try { salesPersons = asList(await (await fetch(`${API}/api/sales-persons`)).json()); }
     catch (e) { salesPersons = []; }
   }
   if (rsel) {

@@ -9,7 +9,7 @@ from app.config import limiter, GROQ_API_KEY_DEFAULT, CEREBRAS_API_KEY, CEREBRAS
 from app.db import get_db
 from app.auth import get_current_user, require_role, _check_quote_access, log_action
 from app.matching import get_boq_context, get_feedback_context, generate_ref_no, get_latest_template
-from app.export import build_company_quotation, build_margin_analysis
+from app.export import build_company_quotation
 from app.images import _save_image_to_disk
 from app.parser import parse_boq_excel
 from app.routers.catalog import _save_upload_validated
@@ -1594,134 +1594,6 @@ def product_variants(q: str = "", limit: int = 60,
         for r in items:
             r.pop("cost", None)
     return {"items": items, "total": total}
-
-
-@router.post("/api/analyse-quotation")
-@limiter.limit("20/minute")
-def analyse_uploaded_quotation(
-    request: Request,
-    file: UploadFile = File(...),
-    admin: dict = Depends(require_role("admin")),
-):
-    """Cost / profit / margin for a quotation we already sent, from its file.
-
-    /api/quotations/{qid}/margin can only analyse quotes built inside the app,
-    because it resolves each line against the master by exact text identity.
-    An old quotation sitting in Excel had no route to that maths at all.
-
-    Admin-only: it exposes purchase cost, which employees never see.
-
-    Every piece here already existed — the BOQ parser reads product/model/qty/
-    price, _resolve_master_matches finds the master row (exact identity would
-    fail on an external file's wording), and the arithmetic is the same as the
-    margin endpoint. The master stores a UNIT cost, so every figure is
-    multiplied by that line's quantity.
-    """
-    if not file.filename.endswith((".xls", ".xlsx")):
-        raise HTTPException(400, "Only .xls/.xlsx files allowed")
-    suffix = ".xlsx" if file.filename.endswith(".xlsx") else ".xls"
-    fd, tmp_path = tempfile.mkstemp(suffix=suffix)
-    os.close(fd)
-    tmp_path = Path(tmp_path)
-    try:
-        _save_upload_validated(file, tmp_path)
-        rows, _structure = parse_boq_excel(str(tmp_path), file.filename)
-    finally:
-        tmp_path.unlink(missing_ok=True)
-    if not rows:
-        raise HTTPException(400, "No product rows could be read from this file.")
-
-    conn = get_db()
-    try:
-        # match on the file's own wording, via the same resolver the generator
-        # uses — an external quotation never phrases things like our catalogue
-        extracted = [{"product": r.get("product") or "",
-                      "model_no": r.get("model_no") or "",
-                      "qty": int(r.get("qty") or 1)}
-                     for r in rows if (r.get("product") or "").strip()]
-        matched, _nf = _resolve_master_matches(
-            conn, extracted, [], ["3star"], None, prompt="")
-
-        lines, revenue, known_rev, profit_total = [], 0.0, 0.0, 0.0
-        counts = {"ok": 0, "no_cost": 0, "not_in_master": 0}
-        for src, got in zip(rows, matched):
-            qty = float(src.get("qty") or 1)
-            # what WE charged on that quotation; fall back to the matched
-            # master price when the file carries no price column
-            sold = float(src.get("price") or 0) or float(got.get("price_per_pc") or 0)
-            amount = qty * sold
-            revenue += amount
-            cost_u = float(got.get("cost") or 0)
-            if got.get("not_in_catalog"):
-                state, cost_u, profit, margin = "not_in_master", None, None, None
-            elif cost_u <= 0:
-                state, cost_u, profit, margin = "no_cost", None, None, None
-            else:
-                profit = qty * (sold - cost_u)
-                margin = round((sold - cost_u) * 100 / sold, 1) if sold else None
-                known_rev += amount
-                profit_total += profit
-                state = "ok"
-            counts[state] += 1
-            lines.append({
-                "product": src.get("product") or "",
-                "matched_to": "" if got.get("not_in_catalog") else (got.get("product") or ""),
-                "model_no": got.get("model_no") or src.get("model_no") or "",
-                # carried so the analysis can be shown and exported in the same
-                # shape as a quotation document, not as a bare figures table
-                "brand": got.get("brand") or "",
-                "specification": got.get("specification") or "",
-                "hsn_code": got.get("hsn_code") or "",
-                "image_path": got.get("image_path") or "",
-                "gst_pct": got.get("gst_pct"),
-                "qty": qty, "sold": sold, "amount": amount,
-                "cost": cost_u, "profit": profit, "margin_pct": margin, "state": state,
-            })
-    finally:
-        conn.close()
-
-    log_action(admin, "analyse_uploaded_quotation", target=file.filename)
-    return {
-        "filename": file.filename, "lines": lines, "counts": counts,
-        "revenue": round(revenue, 2),
-        "known_revenue": round(known_rev, 2),
-        "profit": round(profit_total, 2),
-        "margin_pct": round(profit_total * 100 / known_rev, 1) if known_rev else None,
-    }
-
-
-class AnalysisExportRequest(BaseModel):
-    filename: str = Field(default="quotation", max_length=200)
-    lines: list = []
-    counts: dict = {}
-    revenue: float = 0
-    known_revenue: float = 0
-    profit: float = 0
-    margin_pct: float | None = None
-
-
-@router.post("/api/analyse-quotation/export")
-@limiter.limit("20/minute")
-def export_quotation_analysis(
-    request: Request,
-    req: AnalysisExportRequest,
-    admin: dict = Depends(require_role("admin")),
-):
-    """Excel of the analysis currently on screen, in quotation shape.
-
-    Takes the analysis back rather than the file: it exports exactly what the
-    admin is looking at, and skips a second parse-and-match of the upload.
-    Admin-only, because the sheet carries purchase cost.
-    """
-    if not req.lines:
-        raise HTTPException(400, "Nothing to export — analyse a file first.")
-    try:
-        path = build_margin_analysis(req.model_dump())
-    except Exception as e:
-        raise server_error(e, "Margin export")
-    log_action(admin, "export_quotation_analysis", target=req.filename)
-    return FileResponse(path, filename=Path(path).name,
-                        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 @router.post("/api/quotations/{qid}/refresh-prices")

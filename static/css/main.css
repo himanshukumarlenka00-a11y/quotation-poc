@@ -1861,29 +1861,14 @@ html[data-theme=dark] .mlg-sweep { background: linear-gradient(90deg, transparen
 .switch-more-note { font-size: var(--fs-xs); color: var(--muted); margin-top: 8px; }
 .switch-more .switch-more-note { margin-top: 0; }
 
-/* Uploaded-quotation analysis (Margin Analysis page) */
-.ma-head { display: flex; justify-content: flex-end; margin-bottom: 10px; }
-/* Same column set as the quotation document, so the two read alike */
-.ma-table { font-size: var(--fs-xs); }
-.ma-table th, .ma-table td { padding: 6px 8px; vertical-align: middle; }
-.ma-img { width: 46px; height: 46px; object-fit: contain; border-radius: 6px;
-  background: #fff; border: 1px solid var(--border); display: block; }
-.ma-noimg { width: 46px; height: 46px; border-radius: 6px; background: var(--card-soft);
-  border: 1px solid var(--border); display: grid; place-items: center; opacity: .5; }
-.ma-mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: var(--fs-xs); }
-.ma-spec { max-width: 240px; color: var(--muted); font-size: var(--fs-xs); }
-.ma-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 10px; margin-bottom: 10px; }
-.ma-tile { background: var(--card-soft); border-radius: 8px; padding: 10px 14px; }
-.ma-tile span { display: block; font-size: var(--fs-xs); color: var(--muted); margin-bottom: 2px; }
-.ma-tile b { font-size: var(--fs-md); color: var(--text); }
-.ma-note { font-size: var(--fs-sm); color: var(--muted); margin-bottom: 12px; }
-.ma-sub { font-size: var(--fs-xs); color: var(--muted); margin-top: 2px; }
-.ma-ok, .ma-warn, .ma-bad { font-size: var(--fs-xs); font-weight: 700;
-  padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
-.ma-ok   { background: rgba(24,160,76,.12);  color: var(--success); }
-.ma-warn { background: rgba(224,138,0,.14);  color: var(--accent); }
-.ma-bad  { background: rgba(220,53,69,.12);  color: var(--danger); }
+/* "Margin analysis" lands on Current Quote and flashes the profit total, so
+   it is obvious what you were sent to look at. Opacity/colour only — no
+   movement, which keeps it visible under prefers-reduced-motion. */
+.flash-profit { animation: flashProfit 1.6s ease; border-radius: 6px; }
+@keyframes flashProfit {
+  0%, 100% { background: transparent; }
+  15%, 60% { background: rgba(24,160,76,.22); }
+}
 
 /* Toasts — replaced 18 blocking alert() dialogs. Bottom-right so they never
    cover the quotation table or the sidebar nav. */
