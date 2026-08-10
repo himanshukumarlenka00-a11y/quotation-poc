@@ -269,22 +269,25 @@
   <div class="card card-alt">
     <div class="boq-head">
       <div>
-        <h3 class="section-head" data-icon="📋">Check a BOQ against the Master Table</h3>
-        <p class="section-sub">See what we already stock, and add anything missing.</p>
+        <h3 class="section-head" data-icon="📋">Start from a file</h3>
+        <p class="section-sub">A client's requirement list, or a quotation you already sent.</p>
       </div>
       <div class="boq-actions">
         <button class="btn btn-accent" id="check-boq-btn" onclick="checkBoqCoverage()" disabled>🔍 Check what we stock</button>
-        <button class="btn btn-accent" id="gen-boq-btn" onclick="generateFromBoqFile()" disabled>📤 Generate from BOQ</button>
+        <button class="btn btn-accent" id="gen-boq-btn" onclick="generateFromBoqFile()" disabled>📤 Generate quotation</button>
+        <button class="btn btn-accent" id="margin-analyse-btn" onclick="analyseQuotationFile()" disabled
+                style="display:none;">◔ Margin analysis</button>
       </div>
     </div>
     <div class="drop-zone" id="boq-req-drop-zone" onclick="document.getElementById('boq-req-file-input').click()">
       <svg class="dz-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 17.6A4.5 4.5 0 0 0 17.5 9h-1.3A7 7 0 1 0 4 14.9"/><path d="M12 12v9"/><path d="m8 16 4-4 4 4"/></svg>
-      <p><strong>Click or drag &amp; drop</strong> the requirement file here</p>
+      <p><strong>Click or drag &amp; drop</strong> the file here</p>
       <p style="margin-top:4px;font-size:var(--fs-sm);">.xls and .xlsx supported</p>
       <input type="file" id="boq-req-file-input" accept=".xls,.xlsx">
     </div>
     <div id="gen-boq-status" style="margin-top:12px;"></div>
     <div id="boq-coverage" style="margin-top:14px;"></div>
+    <div id="margin-upload-result" style="margin-top:14px;"></div>
   </div>
 
 </section>
@@ -436,35 +439,8 @@
 
 <!-- ── SECTION 4: Repository ── -->
 <section id="sec-repository" class="section">
-  <!-- Margin view only: analyse a quotation we already sent, from its file.
-       The in-app margin panel needs a quote built here; this covers the ones
-       that only exist as Excel. -->
-  <div class="card" id="margin-upload-card" style="display:none;">
-    <h2 data-icon="◔">Analyse a past quotation</h2>
-    <p style="color:var(--muted);font-size:var(--fs-base);margin-bottom:14px;">
-      Upload a quotation you already sent. Each line is matched to the master
-      table and priced at its own quantity, to show cost, profit and margin.
-    </p>
-    <div class="drop-zone" id="margin-drop"
-         onclick="document.getElementById('margin-file').click()">
-      <svg class="dz-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-      </svg>
-      <p id="margin-drop-label"><strong>Click or drag &amp; drop</strong> a quotation here</p>
-      <p style="margin-top:4px;font-size:var(--fs-sm);">.xls and .xlsx — one file</p>
-      <input type="file" id="margin-file" accept=".xls,.xlsx" onchange="marginFilePicked(this)">
-    </div>
-    <div style="margin-top:12px;display:flex;gap:10px;align-items:center;">
-      <button class="btn btn-primary btn-sm" id="margin-analyse-btn" disabled
-              onclick="analyseQuotationFile()">◔ Analyse</button>
-      <button class="btn btn-sm" id="margin-clear-btn" style="display:none;"
-              onclick="marginFileClear()">Clear</button>
-    </div>
-    <div id="margin-upload-result" style="margin-top:14px;"></div>
-  </div>
-
+  <!-- The past-quotation upload lives on the Generate page now: one drop zone
+       for both a client requirement and a quotation we already sent. -->
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
       <div>
@@ -522,6 +498,6 @@
 </div><!--/shell-->
 
 
-<script src="/static/js/app.js?v=122"></script>
+<script src="/static/js/app.js?v=123"></script>
 </body>
 </html>

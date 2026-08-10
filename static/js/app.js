@@ -60,6 +60,10 @@ function onAuthed() {
   // avoids showing a tab that would 403.
   document.getElementById('tab-audit').style.display = currentUser.role === 'admin' ? '' : 'none';
   document.getElementById('tab-users').style.display = currentUser.role === 'admin' ? '' : 'none';
+  // Margin analysis exposes purchase cost — the endpoint is admin-only, so
+  // don't offer employees a button that would 403.
+  document.getElementById('margin-analyse-btn').style.display =
+    currentUser.role === 'admin' ? '' : 'none';
   const su = document.getElementById('side-user');
   if (su) su.innerHTML = `<div class="savatar">${(currentUser.name || '?')[0].toUpperCase()}</div>
     <div><b>${(currentUser.name || '').split(' ')[0]}</b><small>${currentUser.role}</small></div>`;
@@ -257,10 +261,7 @@ function show(tab) {
   if (tab === 'upload')    { loadCatalog(); loadUploadedFiles(); }
   if (tab === 'master')    { loadMasterFiles(); if (!masterSummary.length) loadMasterTable(); }
   if (tab === 'generate')  { document.getElementById('sec-generate').classList.remove('boq-only'); loadCatalogSelector(); }
-  if (tab === 'repository') { window._marginOnly = false;
-    const up = document.getElementById('margin-upload-card');
-    if (up) up.style.display = 'none';
-    loadRepository(); }
+  if (tab === 'repository') { window._marginOnly = false; loadRepository(); }
   if (tab === 'audit')     loadAuditLog();
   if (tab === 'users')     loadUsers();
   if (tab === 'dashboard') loadDashboard();
@@ -719,8 +720,6 @@ function showMargins() {
   document.querySelectorAll('.section').forEach(x => x.classList.remove('active'));
   document.getElementById('sec-repository').classList.add('active');
   window._marginOnly = true;   // margin view: only BOQ-priced quotes
-  const up = document.getElementById('margin-upload-card');
-  if (up) up.style.display = 'block';
   loadRepository();
 }
 
@@ -2029,8 +2028,12 @@ function setBoqReqFile(file) {
   boqReqDropZone.querySelector('p').innerHTML = `<strong>${file.name}</strong> selected`;
   document.getElementById('gen-boq-btn').disabled = false;
   document.getElementById('check-boq-btn').disabled = false;
+  // Admin-only, and hidden outright for everyone else — see onAuthed()
+  const ma = document.getElementById('margin-analyse-btn');
+  if (ma) ma.disabled = false;
   document.getElementById('gen-boq-status').innerHTML = '';
   document.getElementById('boq-coverage').innerHTML = '';
+  document.getElementById('margin-upload-result').innerHTML = '';
 }
 
 // ── Phase A: show how each column will be read, before anything is imported ──
@@ -2561,73 +2564,35 @@ function setItemField(idx, field, val) {
   if (it) it[field] = val.trim();
 }
 
-// Drop-zone plumbing for the past-quotation upload. Same pattern as the
-// other upload cards — click to browse, drag & drop, filename shown once
-// chosen, rather than a raw "Choose File | No file chosen" control.
-function marginFilePicked(input) {
-  const f = input.files && input.files[0];
-  const label = document.getElementById('margin-drop-label');
-  document.getElementById('margin-analyse-btn').disabled = !f;
-  document.getElementById('margin-clear-btn').style.display = f ? 'inline-flex' : 'none';
-  document.getElementById('margin-drop').classList.toggle('has-file', !!f);
-  if (label) label.innerHTML = f
-    ? `<strong>${escHtml(f.name)}</strong> selected`
-    : '<strong>Click or drag &amp; drop</strong> a quotation here';
-}
-
-function marginFileClear() {
-  const input = document.getElementById('margin-file');
-  input.value = '';
-  marginFilePicked(input);
-  document.getElementById('margin-upload-result').innerHTML = '';
-}
-
-(function () {
-  // drag & drop, matching the other drop zones
-  const zone = document.getElementById('margin-drop');
-  if (!zone) return;
-  ['dragenter', 'dragover'].forEach(ev => zone.addEventListener(ev, e => {
-    e.preventDefault(); zone.classList.add('drag');
-  }));
-  ['dragleave', 'drop'].forEach(ev => zone.addEventListener(ev, e => {
-    e.preventDefault(); zone.classList.remove('drag');
-  }));
-  zone.addEventListener('drop', e => {
-    const f = e.dataTransfer.files && e.dataTransfer.files[0];
-    if (!f) return;
-    if (!/\.xlsx?$/i.test(f.name)) { toast('Only .xls or .xlsx files', 'error'); return; }
-    const input = document.getElementById('margin-file');
-    const dt = new DataTransfer(); dt.items.add(f);
-    input.files = dt.files;
-    marginFilePicked(input);
-  });
-})();
-
 // Analyse a quotation that only exists as a file. The in-app margin panel
 // resolves lines by exact text identity, which an external file never
 // satisfies — this posts the file and lets the server parse, match and price
 // it at each line's own quantity.
+//
+// Shares the Generate page's drop zone with "Generate quotation": the same
+// upload answers both questions, and a second drop zone for the same file
+// was only ever a way to make people upload it twice.
 let _lastAnalysis = null, _lastAnalysisName = 'quotation';
 
 async function analyseQuotationFile() {
-  const input = document.getElementById('margin-file');
   const out = document.getElementById('margin-upload-result');
   const btn = document.getElementById('margin-analyse-btn');
-  if (!input.files.length) return;
+  if (!boqReqSelectedFile) return;
   btn.disabled = true; btn.textContent = 'Analysing…';
   out.innerHTML = '<div class="loading-state">Reading the file and matching every line…</div>';
   try {
-    const fd = new FormData(); fd.append('file', input.files[0]);
+    const fd = new FormData(); fd.append('file', boqReqSelectedFile);
     const res = await fetch(`${API}/api/analyse-quotation`, { method: 'POST', body: fd });
     const d = await res.json();
     if (!res.ok) { out.innerHTML = `<div class="alert alert-error">${apiErr(d)}</div>`; return; }
     _lastAnalysis = d;
-    _lastAnalysisName = input.files[0].name.replace(/\.xlsx?$/i, '');
+    _lastAnalysisName = boqReqSelectedFile.name.replace(/\.xlsx?$/i, '');
     out.innerHTML = renderQuotationAnalysis(d);
+    out.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   } catch (e) {
     out.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
   } finally {
-    btn.disabled = false; btn.textContent = '◔ Analyse';
+    btn.disabled = false; btn.textContent = '◔ Margin analysis';
   }
 }
 
