@@ -2,8 +2,23 @@
 
 ## LIVE IN PRODUCTION (see memory: ubuntu-server-deployment)
 Server melange@192.168.0.146 (crm-server). App :8000 + HTTPS :8443 (nginx,
-self-signed, cert trusted on user's PC). HEAD b70a1a1, cache css v109 /
-js v114. Master table 51,938 products. Pushed to GitHub.
+self-signed, cert trusted on user's PC). Master table 51,938 products.
+
+TWO ADDRESSES FOR THE SAME BOX — do not panic when the LAN one dies:
+  LAN        192.168.0.146    office network only
+  Tailscale  100.94.230.77    anywhere with internet (tailscaled is active
+                              on the server; the user's PC is on the tailnet)
+Both verified: https://100.94.230.77:8443/health -> 200, SSH works. The
+ed25519 host key is identical on both addresses
+(SHA256:4s71FMUiP+1JG7gRa455kwPi7Rhf3g48l2FzNfdgCUE) — compare before
+trusting a new one rather than blind-accepting.
+
+Diagnosing "server is down": check YOUR OWN ip first (ipconfig). Twice now
+the box was fine — up 2+ days — while this PC had dropped off the LAN and
+held only Cloudflare WARP / Tailscale / a 10.204.x wifi address, no
+192.168.0.x at all. Ping failing tells you nothing about the server. The
+CRM on port 80 of the same box is another liveness check. Git/GitHub never
+needs the LAN.
 
 Deploy flow: edit dev → verify cheaply → commit → tar-pipe to /opt/quotegen
 → restart quotegen if Python changed. ASK BEFORE EVERY SERVER-CHANGING
@@ -25,6 +40,13 @@ use python for pipes.
   before save — it is an instruction, not a property of the line.
   Bad learned row id 273 was deleted from prod.
 - Empty-quote guard ignores placeholders (all-placeholder → nothing saved).
+- Placeholder lines are NEVER written to match_corrections, by either branch.
+  The confirmation branch (which records every unchanged line on each save)
+  was storing a placeholder's raw request text as if it were a product:
+  "Strogae Rack" -> "Strogae Rack". 33 of 99 rows were that junk; deleted
+  2026-08-10 after a backup, 66 real ones remain. Harmless while nothing in
+  the master matches the text, but a landmine — import a product with that
+  name and the row becomes a live auto-selection learned from nothing.
 - Switch panel sorts cheapest-first for DISPLAY ONLY — _variants[0] stays the
   matcher's pick, sorting the array would re-point every quote.
 
