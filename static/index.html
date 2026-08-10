@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=112">
+<link rel="stylesheet" href="/static/css/main.css?v=113">
 </head>
 <body>
 
@@ -446,11 +446,22 @@
       Upload a quotation you already sent. Each line is matched to the master
       table and priced at its own quantity, to show cost, profit and margin.
     </p>
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-      <input type="file" id="margin-file" accept=".xls,.xlsx"
-             onchange="document.getElementById('margin-analyse-btn').disabled = !this.files.length">
+    <div class="drop-zone" id="margin-drop"
+         onclick="document.getElementById('margin-file').click()">
+      <svg class="dz-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      <p id="margin-drop-label"><strong>Click or drag &amp; drop</strong> a quotation here</p>
+      <p style="margin-top:4px;font-size:var(--fs-sm);">.xls and .xlsx — one file</p>
+      <input type="file" id="margin-file" accept=".xls,.xlsx" onchange="marginFilePicked(this)">
+    </div>
+    <div style="margin-top:12px;display:flex;gap:10px;align-items:center;">
       <button class="btn btn-primary btn-sm" id="margin-analyse-btn" disabled
               onclick="analyseQuotationFile()">◔ Analyse</button>
+      <button class="btn btn-sm" id="margin-clear-btn" style="display:none;"
+              onclick="marginFileClear()">Clear</button>
     </div>
     <div id="margin-upload-result" style="margin-top:14px;"></div>
   </div>
@@ -512,6 +523,6 @@
 </div><!--/shell-->
 
 
-<script src="/static/js/app.js?v=116"></script>
+<script src="/static/js/app.js?v=117"></script>
 </body>
 </html>

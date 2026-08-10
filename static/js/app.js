@@ -2557,6 +2557,48 @@ function setItemField(idx, field, val) {
   if (it) it[field] = val.trim();
 }
 
+// Drop-zone plumbing for the past-quotation upload. Same pattern as the
+// other upload cards — click to browse, drag & drop, filename shown once
+// chosen, rather than a raw "Choose File | No file chosen" control.
+function marginFilePicked(input) {
+  const f = input.files && input.files[0];
+  const label = document.getElementById('margin-drop-label');
+  document.getElementById('margin-analyse-btn').disabled = !f;
+  document.getElementById('margin-clear-btn').style.display = f ? 'inline-flex' : 'none';
+  document.getElementById('margin-drop').classList.toggle('has-file', !!f);
+  if (label) label.innerHTML = f
+    ? `<strong>${escHtml(f.name)}</strong> selected`
+    : '<strong>Click or drag &amp; drop</strong> a quotation here';
+}
+
+function marginFileClear() {
+  const input = document.getElementById('margin-file');
+  input.value = '';
+  marginFilePicked(input);
+  document.getElementById('margin-upload-result').innerHTML = '';
+}
+
+(function () {
+  // drag & drop, matching the other drop zones
+  const zone = document.getElementById('margin-drop');
+  if (!zone) return;
+  ['dragenter', 'dragover'].forEach(ev => zone.addEventListener(ev, e => {
+    e.preventDefault(); zone.classList.add('drag');
+  }));
+  ['dragleave', 'drop'].forEach(ev => zone.addEventListener(ev, e => {
+    e.preventDefault(); zone.classList.remove('drag');
+  }));
+  zone.addEventListener('drop', e => {
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!f) return;
+    if (!/\.xlsx?$/i.test(f.name)) { toast('Only .xls or .xlsx files', 'error'); return; }
+    const input = document.getElementById('margin-file');
+    const dt = new DataTransfer(); dt.items.add(f);
+    input.files = dt.files;
+    marginFilePicked(input);
+  });
+})();
+
 // Analyse a quotation that only exists as a file. The in-app margin panel
 // resolves lines by exact text identity, which an external file never
 // satisfies — this posts the file and lets the server parse, match and price
