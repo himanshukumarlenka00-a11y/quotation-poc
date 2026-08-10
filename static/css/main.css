@@ -1767,6 +1767,38 @@ html[data-theme=dark] .mlg-sweep { background: rgba(255,255,255,.14); }
 .find-search input { flex: 1; border: none !important; outline: none; background: transparent;
   font-size: var(--fs-base); color: var(--text); padding: 0; }
 .find-empty { color: var(--muted); font-size: var(--fs-sm); padding: 2px; }
+/* Hover details for Switch / Find cards. Fixed, not absolute: .switch-cards
+   scrolls (max-height 360px) and .quot-doc is overflow:hidden, so an absolute
+   child would be clipped by both. */
+#sc-pop { position: fixed; z-index: 5500; width: 400px; max-width: calc(100vw - 24px);
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(23,28,44,.24); padding: 14px; pointer-events: none;
+  opacity: 0; transform: translateY(10px) scale(.97); transform-origin: top left;
+  transition: opacity .2s ease, transform .26s cubic-bezier(.22,1,.36,1); }
+#sc-pop.on { opacity: 1; transform: translateY(0) scale(1); }
+.scp-top { display: flex; gap: 14px; }
+.scp-img { width: 132px; height: 132px; flex: none; border-radius: 8px; overflow: hidden;
+  border: 1px solid var(--border); background: var(--card-soft);
+  display: flex; align-items: center; justify-content: center; }
+.scp-img img { width: 100%; height: 100%; object-fit: contain; }
+.scp-noimg { font-size: var(--fs-xs); color: var(--muted); }
+.scp-meta { flex: 1; min-width: 0; }
+.scp-title { font-size: var(--fs-sm); font-weight: 700; color: var(--text);
+  line-height: 1.35; margin-bottom: 8px; }
+.scp-tiers { display: flex; gap: 8px; margin-bottom: 8px; }
+.scp-tier { flex: 1; background: var(--card-soft); border-radius: 6px;
+  padding: 6px 8px; text-align: center; }
+.scp-tier span { display: block; font-size: var(--fs-xs); color: var(--muted); }
+.scp-tier b { font-size: var(--fs-sm); color: var(--text); }
+.scp-row { display: flex; justify-content: space-between; gap: 10px;
+  font-size: var(--fs-xs); padding: 3px 0; border-top: 1px solid var(--border);
+  color: var(--text); }
+.scp-k { color: var(--muted); }
+.scp-spec { font-size: var(--fs-xs); color: var(--muted); line-height: 1.5;
+  margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border);
+  max-height: 88px; overflow: hidden; }
+@media (max-width: 700px) { #sc-pop { display: none; } }   /* no hover on touch */
+
 /* Toasts — replaced 18 blocking alert() dialogs. Bottom-right so they never
    cover the quotation table or the sidebar nav. */
 #toast-host { position: fixed; right: 20px; bottom: 20px; z-index: 6000;

@@ -2552,6 +2552,95 @@ function setItemField(idx, field, val) {
   if (it) it[field] = val.trim();
 }
 
+// ── Hover details for Switch / Find cards ───────────────────────────────────
+// Both panels render .switch-card, so one handler serves both. The panel is
+// position:fixed and placed by JS rather than an absolute child, because
+// .switch-cards is a scroll container (max-height 360px, overflow-y auto)
+// and .quot-doc is overflow:hidden — an absolute popover gets clipped by
+// both. Fixed also lets it flip when the card sits near a screen edge.
+let _hoverTimer = null;
+
+function _hoverRow(el) {
+  const pos = +el.dataset.hpos;
+  if (el.dataset.hsrc === 'f') return _findResults[pos];
+  const it = currentQuotation && currentQuotation.items[+el.dataset.hidx];
+  return it && it._variants && it._variants[pos];
+}
+
+function _hoverPanelEl() {
+  let p = document.getElementById('sc-pop');
+  if (!p) {
+    p = document.createElement('div');
+    p.id = 'sc-pop';
+    document.body.appendChild(p);
+  }
+  return p;
+}
+
+function _hoverShow(el) {
+  const v = _hoverRow(el);
+  if (!v) return;
+  // Switch variants and Find suggestions carry the same facts under
+  // different keys (model_no vs original_model, price vs price_3star).
+  const model = v.model_no || v.original_model || '';
+  const p3 = v.price_3star || v.price || 0;
+  const p4 = v.price_4star || 0;
+  const spec = (v.specification || v.description || '').replace(/\n/g, ' ').trim();
+  const img = v.image_path ? `${API}/api/image/${v.image_path}` : '';
+  const row = (k, val) => val
+    ? `<div class="scp-row"><span class="scp-k">${k}</span><span>${escHtml(String(val))}</span></div>` : '';
+
+  const p = _hoverPanelEl();
+  p.innerHTML = `
+    <div class="scp-top">
+      <div class="scp-img">${img ? `<img src="${img}" alt="">`
+                                 : '<span class="scp-noimg">no image</span>'}</div>
+      <div class="scp-meta">
+        <div class="scp-title">${escHtml(v.product || '')}</div>
+        <div class="scp-tiers">
+          <div class="scp-tier"><span>3★</span><b>₹${(p3 || 0).toLocaleString('en-IN')}</b></div>
+          ${p4 ? `<div class="scp-tier"><span>4★</span><b>₹${p4.toLocaleString('en-IN')}</b></div>` : ''}
+        </div>
+        ${row('Model', model)}
+        ${row('Brand', v.brand)}
+        ${row('HSN', v.hsn_code)}
+        ${row('GST', v.gst_pct != null ? v.gst_pct + '%' : '')}
+      </div>
+    </div>
+    ${row('Catalogue', (v.file_name || '').replace(/\.xlsx?$/i, ''))}
+    ${spec ? `<div class="scp-spec">${escHtml(spec)}</div>` : ''}`;
+
+  // place it, flipping when the card is near the right or bottom edge
+  p.classList.add('on');
+  const r = el.getBoundingClientRect();
+  const pw = p.offsetWidth, ph = p.offsetHeight, gap = 10;
+  let left = r.left, top = r.bottom + gap;
+  if (left + pw > innerWidth - 12) left = Math.max(12, r.right - pw);
+  if (top + ph > innerHeight - 12) top = Math.max(12, r.top - ph - gap);
+  p.style.left = left + 'px';
+  p.style.top = top + 'px';
+}
+
+function _hoverHide() {
+  clearTimeout(_hoverTimer);
+  const p = document.getElementById('sc-pop');
+  if (p) p.classList.remove('on');
+}
+
+// Delegated, so cards rendered later are covered without rebinding.
+document.addEventListener('mouseover', e => {
+  const card = e.target.closest && e.target.closest('.switch-card[data-hsrc]');
+  if (!card) return;
+  clearTimeout(_hoverTimer);
+  // short delay so sweeping the mouse across a grid does not strobe panels
+  _hoverTimer = setTimeout(() => _hoverShow(card), 220);
+});
+document.addEventListener('mouseout', e => {
+  const card = e.target.closest && e.target.closest('.switch-card[data-hsrc]');
+  if (card) _hoverHide();
+});
+document.addEventListener('scroll', _hoverHide, true);
+
 // ── Find in catalogue (placeholder rows) ────────────────────────────────────
 // The matcher found nothing for this line, so give the user a live search
 // over the master table; picking a result fills the whole row.
@@ -2572,7 +2661,7 @@ function _findCards(idx, list, isSuggestion) {
     const thumb = v.image_path ? `<img class="sc-thumb-img" src="${API}/api/image/${v.image_path}" alt="">`
                                : '<div class="sc-thumb-placeholder">📦</div>';
     return `
-      <div class="switch-card" onclick="applyFind(${idx},${ri})" style="animation-delay:${ri * 35}ms">
+      <div class="switch-card" onclick="applyFind(${idx},${ri})" data-hsrc="f" data-hpos="${ri}" style="animation-delay:${ri * 35}ms">
         <div class="sc-thumb">${thumb}</div>
         <div class="sc-body">
           <div class="sc-name">${escHtml(v.product || '')}</div>
@@ -2742,7 +2831,7 @@ function switchVariant(idx) {
       ? `onclick="event.stopPropagation(); showImageLightbox('${thumbSrc}')" title="Click to enlarge"`
       : '';
     return `
-      <div class="switch-card ${isCur?'active':''}" onclick="applySwitch(${idx},${vi},this)" style="animation-delay:${pos * 35}ms">
+      <div class="switch-card ${isCur?'active':''}" onclick="applySwitch(${idx},${vi},this)" data-hsrc="v" data-hidx="${idx}" data-hpos="${vi}" style="animation-delay:${pos * 35}ms">
         <div class="sc-thumb" ${thumbClick}>${thumb}</div>
         <div class="sc-body">
           <div class="sc-name">${v.product||''}</div>
