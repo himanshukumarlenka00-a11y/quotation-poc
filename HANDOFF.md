@@ -1,6 +1,73 @@
 # HANDOFF — quotation-poc session state (2026-08-10)
 
-## Session 2026-08-10 (14 commits, f6878c5..66d6d47, all deployed + pushed)
+## Session 2026-08-10 (19 commits, f6878c5..1109817, all deployed + pushed)
+
+### "tray" solved (540aafd) — 3 variants -> 465
+NOT the glued tokens, NOT the 400-row pool. search_catalog scores a
+model-number hit 1000 and then keeps only rows above 0.6 x best. The
+whole-term model test was a bare substring check, and plenty of "models" in
+the master are descriptive text:
+    DCTC 1014 (PP) - PP Tray        LV LID HANGER
+So "tray" matched those as a SUBSTRING, scored 1000, and the cutoff landed at
+621 — two points above the ~619 a real name match can reach
+(600 - len(name) + 30 price + 5 image). All 473 rows in the pool actually
+named "...Tray..." were discarded in favour of 3 whose model text said tray.
+Fix: the whole-term test now needs a DIGIT in the term. mtoks already handles
+letter+digit codes, and an inline code in a sentence still wins.
+MEASURED AFTER DEPLOY: tray 3 -> 465, hanger -> 105 (silently broken the same
+way), dustbin 50, kettle 79 unchanged, model codes still resolve, 60-107ms.
+test_word_vs_model.py, mutation-checked (old condition -> exactly 1 row).
+
+HOW IT WAS FOUND, because guessing failed twice: I blamed _UNITS, then the
+price filter, both wrong. What settled it was wrapping the module-level
+_merge_glued to CAPTURE the pool search_catalog actually received — 528 rows,
+473 passing _covered. That ruled out the pool and the matching and left the
+cutoff. When a nested function hides the state you need, monkeypatch the
+module-level thing it calls; do not re-implement its query.
+
+### Margin: gate on COST, not on the file's prices (ea2c587)
+"Margin analysis shows nothing" was real, not a preference. Cost/Profit hung
+off has_boq_pricing, true only when the UPLOADED FILE carries a price column
+— and on this user's quotations it never parses. Verified in their own Chrome
+on QT-20260810-172108: 17 items, 16 with cost, **0 with boq_price**, no Profit
+column rendered. The master's cost was sitting right there (254.15 against a
+price of 270.30).
+Now gated on cost. _strip_cost removes cost from an employee payload
+entirely, so its presence IS the permission check. Added Cost and Margin %
+beside Profit, with totals, tracking live as prices are edited. Live figures
+match the old deleted table exactly: ₹2,016 profit, 6.0%, ₹33,549.
+COROLLARY: the deleted analysis table was never comparing what we QUOTED
+against cost — its "SOLD @" fell back to the master price. It was showing
+master price vs cost all along, the same figure these columns show.
+
+### One button per input (b782254, 1109817)
+A single Generate had to guess, and with text typed AND a file dropped it
+silently used the file. Now "Generate from this list" sits under the
+textarea and "Check what we stock / Margin analysis / Generate from file"
+under the drop zone. No precedence rule, nothing discarded, generateFromCard
+deleted. .gen-split stretches so each half's margin-top:auto lands its row on
+one baseline.
+THEN THE CARD WENT LOPSIDED, and the cause is worth remembering:
+    #sec-generate .card > div:has(#gen-btn) { display: flex; ... }
+dated from when Generate was a direct child of the card. Moving the button
+into .gen-split made that selector match THE SPLIT, and at id+class it beat
+".gen-split { display:grid }" — the grid became a flex row and the typed half
+floated right. A :has() selector keyed on a moving element re-targets itself
+when that element moves, silently; the rule it overrides just stops applying.
+Also fixed: Chrome restores a textarea's value on reload WITHOUT firing
+`input`, so the counter read "0 / 8000" beside 777 real characters. Synced at
+DOMContentLoaded.
+
+### Open, and worth doing next
+- The user's .xls/.xlsx price columns do not parse into boq_price. Margin no
+  longer depends on it, but "what we quoted then vs what we'd charge now" is
+  unavailable until it does. NEEDS ONE OF THE ACTUAL FILES to diagnose.
+- The 400-row FTS pool cap (tray 1428 hits -> 400, mixing bowl 4651 -> 400).
+  Untouched; needs timings before raising it for the Switch/Find path.
+- Whether the Margin analysis button should exist at all — it now does the
+  same as Generate from file, with a label that says what you get. Asked, not
+  answered.
+
 
 STANDING RULE ADDED — VISUALISE BEFORE BUILDING. For any change with a UI
 surface, show an interactive mockup via the visualize tool and get approval
@@ -23,7 +90,13 @@ rendered. Cost: ~500 lines written and then deleted.
      alone; CSS was hiding it (82b1410).
   3. Nearly added a second drop zone next to an identical one.
 BEFORE writing a view: grep what the target page already renders, and open
-the page. `has_boq_pricing` in particular gates a lot of already-built UI.
+the page. `has_boq_pricing` in particular gates a lot of already-built UI —
+and it is FALSE on this user's uploads, which is what made margin look
+missing when the data was there all along (ea2c587).
+A fourth instance, different flavour: I twice guessed at a cause instead of
+measuring (_UNITS, then the price filter, for "tray"). Capture the real
+state — monkeypatch the module-level function the nested one calls — rather
+than re-implementing its query and trusting the replica.
 
 ### Margin analysis: deleted, not moved (66d6d47, net -314 lines)
 The button now runs the same generation and LANDS ON CURRENT QUOTE, flashing
@@ -32,11 +105,11 @@ prices toasts instead of showing an empty profit view.
 GONE: /api/analyse-quotation, /api/analyse-quotation/export,
 build_margin_analysis, renderQuotationAnalysis, downloadAnalysisXlsx, all
 .ma-* CSS. Both endpoints verified 404 in prod.
-DELIBERATELY LOST, user chose this over keeping a second surface: per-line
-COST, MARGIN %, and the costed / no-cost / unmatched counts. Current Quote
-shows profit but never cost. If those are ever wanted back, they belong as
-columns in Current Quote (gated on role — _strip_cost removes cost from
-employee payloads), not as a new page.
+Lost with it: per-line COST, MARGIN %, and the costed / no-cost / unmatched
+counts — the user chose that over keeping a second surface.
+SUPERSEDED SAME SESSION: cost and margin % came straight back as COLUMNS in
+Current Quote (ea2c587, top of file), which is where the note below predicted
+they belonged. Only the three counts are genuinely gone.
 
 ### Non-array API payloads — a whole bug class, now half-fixed
 A lapsed session answers valid JSON `{detail: "Not logged in"}`, which
@@ -130,21 +203,16 @@ is excluded because a wrong password also 401s.
 - Request cap 1000 -> 8000 chars in all four places, plus a
   Field(max_length=8000) the server never had at all.
 
-### Still open from today
-- "tray" scoring (above) — the biggest remaining matcher gap. 1,476 rows
-  contain the word, 3 become variants. Glued tokens are NOT the cause; the
-  scorer rejects generic one-word requests against long product names.
-- The 400-row FTS pool cap: tray 1428 hits -> 400 reach the scorer,
-  mixing bowl 4651 -> 400. Proposal was to keep 400 for batch generation and
-  raise it for the one-product Switch/Find path; not done, needs timings.
+### Still open (mid-session list; see "Open, and worth doing next" at the top)
+- "tray" scoring — SOLVED later the same session, see 540aafd at the top.
 - Other loaders still assume array payloads (see the bug-class note above).
 - Margin Analysis page is now lists-only, and its upload is gone. Its
-  Approved / BOQ-priced Drafts sections filter on has_boq_pricing, so they
-  fill only from quotes generated off a priced file — which the Generate
-  page now does, so they should stop being empty.
+  Approved / BOQ-priced Drafts sections filter on has_boq_pricing — which is
+  FALSE on this user's uploads (their price columns do not parse), so those
+  two lists stay empty until that parsing is fixed.
 
 ### Cache-busting state at end of session
-index.html references main.css?v=123 and app.js?v=127. index.html itself is
+index.html references main.css?v=126 and app.js?v=129. index.html itself is
 NOT versioned, so a stale index means stale asset URLs too — Ctrl+Shift+R.
 
 # (previous session notes follow)
