@@ -3,7 +3,7 @@ from pathlib import Path
 from datetime import datetime
 from fastapi import APIRouter, Depends, Request, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from groq import Groq
 from app.config import limiter, GROQ_API_KEY_DEFAULT, CEREBRAS_API_KEY, CEREBRAS_MODEL, server_error
 from app.db import get_db
@@ -23,7 +23,7 @@ class BuildQuotationRequest(BaseModel):
     items: list = []
 
 class GenerateRequest(BaseModel):
-    prompt: str
+    prompt: str = Field(max_length=8000)
     client_name: str = ""
     catalogs: list = []  # list of file_name strings; empty = search all
     tiers: list = ["3star"]  # subset of ["3star", "4star"] — which master-table price tier(s) to show
@@ -280,7 +280,7 @@ def _parse_items_deterministically(prompt):
     of an API call.
     """
     p = (prompt or "").strip()
-    if not p or len(p) > 1000:
+    if not p or len(p) > 8000:
         return None
 
     # Pasted-list shape: one product per LINE with the qty at the END —

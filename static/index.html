@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=116">
+<link rel="stylesheet" href="/static/css/main.css?v=117">
 </head>
 <body>
 
@@ -247,8 +247,8 @@
       <input type="file" id="xls-req-input" accept=".xls,.xlsx" style="display:none" onchange="fillFromFile(this.files[0],'excel');this.value=''">
     </div>
     <div style="position:relative;">
-      <textarea id="req-prompt" maxlength="1000" oninput="updateReqCount()" placeholder="e.g. 30 electric kettles, 20 hair dryers and 50 coat hangers" style="min-height:110px;font-size:var(--fs-md);"></textarea>
-      <div class="ta-count" id="req-count">0 / 1000</div>
+      <textarea id="req-prompt" maxlength="8000" oninput="updateReqCount()" placeholder="e.g. 30 electric kettles, 20 hair dryers and 50 coat hangers" style="min-height:110px;font-size:var(--fs-md);"></textarea>
+      <div class="ta-count" id="req-count">0 / 8000</div>
       <div id="suggest-dropdown" class="suggest-dropdown" style="display:none;"></div>
     </div>
 
@@ -522,6 +522,6 @@
 </div><!--/shell-->
 
 
-<script src="/static/js/app.js?v=117"></script>
+<script src="/static/js/app.js?v=118"></script>
 </body>
 </html>

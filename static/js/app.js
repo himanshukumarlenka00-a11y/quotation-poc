@@ -759,20 +759,24 @@ async function fillFromFile(file, kind) {
     const d = await res.json();
     if (!res.ok) { st.innerHTML = `<div class="alert alert-error">${apiErr(d)}</div>`; return; }
     let text = (d.lines || []).join('\n');
-    const cut = text.length > 1000;
-    if (cut) text = text.slice(0, 1000);
+    const cut = text.length > REQ_MAX;
+    if (cut) text = text.slice(0, REQ_MAX);
     ta.value = text; updateReqCount(); ta.focus();
     st.innerHTML = `<div class="alert alert-success">Read ${d.lines.length} line(s) from the file —
-      check the list, then press Generate.${cut ? ' ⚠️ Trimmed to the first 1000 characters.' : ''}</div>`;
+      check the list, then press Generate.${cut ? ` ⚠️ Trimmed to the first ${REQ_MAX} characters.` : ''}</div>`;
   } catch (e) {
     st.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
   }
 }
 
+// Kept in step with the textarea's maxlength in index.html and with
+// GenerateRequest.prompt's max_length on the server.
+const REQ_MAX = 8000;
+
 function updateReqCount() {
   const ta = document.getElementById('req-prompt');
   const c = document.getElementById('req-count');
-  if (ta && c) c.textContent = `${ta.value.length} / 1000`;
+  if (ta && c) c.textContent = `${ta.value.length} / ${REQ_MAX}`;
 }
 
 // ── Users (admin only) ───────────────────────────────────────────────────────
@@ -2666,7 +2670,7 @@ function renderQuotationAnalysis(d) {
 // .switch-cards is a scroll container (max-height 360px, overflow-y auto)
 // and .quot-doc is overflow:hidden — an absolute popover gets clipped by
 // both. Fixed also lets it flip when the card sits near a screen edge.
-let _hoverTimer = null;
+let _hoverTimer = null, _hoverHideTimer = null, _hoverCard = null;
 
 function _hoverRow(el) {
   const pos = +el.dataset.hpos;
@@ -2680,6 +2684,16 @@ function _hoverPanelEl() {
   if (!p) {
     p = document.createElement('div');
     p.id = 'sc-pop';
+    // The panel is a second, larger hit target for the card it describes:
+    // keep it open while the pointer is inside it, and forward a click to
+    // the card so selection stays in one place (its inline onclick).
+    p.addEventListener('mouseenter', () => clearTimeout(_hoverHideTimer));
+    p.addEventListener('mouseleave', _hoverHide);
+    p.addEventListener('click', () => {
+      const card = _hoverCard;
+      _hoverHide(0);
+      if (card && document.body.contains(card)) card.click();
+    });
     document.body.appendChild(p);
   }
   return p;
@@ -2688,6 +2702,7 @@ function _hoverPanelEl() {
 function _hoverShow(el) {
   const v = _hoverRow(el);
   if (!v) return;
+  _hoverCard = el;
   // Switch variants and Find suggestions carry the same facts under
   // different keys (model_no vs original_model, price vs price_3star).
   const model = v.model_no || v.original_model || '';
@@ -2729,10 +2744,17 @@ function _hoverShow(el) {
   p.style.top = top + 'px';
 }
 
-function _hoverHide() {
+// Grace period, because there is a 10px gap between the card and the panel —
+// hiding on the card's mouseout would kill the panel while the pointer is
+// still travelling towards it.
+function _hoverHide(delay = 140) {
   clearTimeout(_hoverTimer);
-  const p = document.getElementById('sc-pop');
-  if (p) p.classList.remove('on');
+  clearTimeout(_hoverHideTimer);
+  _hoverHideTimer = setTimeout(() => {
+    const p = document.getElementById('sc-pop');
+    if (p) p.classList.remove('on');
+    _hoverCard = null;
+  }, delay);
 }
 
 // Delegated, so cards rendered later are covered without rebinding.
@@ -2740,6 +2762,7 @@ document.addEventListener('mouseover', e => {
   const card = e.target.closest && e.target.closest('.switch-card[data-hsrc]');
   if (!card) return;
   clearTimeout(_hoverTimer);
+  clearTimeout(_hoverHideTimer);   // moving back from the panel onto the card
   // short delay so sweeping the mouse across a grid does not strobe panels
   _hoverTimer = setTimeout(() => _hoverShow(card), 220);
 });
@@ -2747,6 +2770,7 @@ document.addEventListener('mouseout', e => {
   const card = e.target.closest && e.target.closest('.switch-card[data-hsrc]');
   if (card) _hoverHide();
 });
+document.addEventListener('scroll', () => _hoverHide(0), true);
 document.addEventListener('scroll', _hoverHide, true);
 
 // ── Find in catalogue (placeholder rows) ────────────────────────────────────
