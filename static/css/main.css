@@ -1594,7 +1594,9 @@ html[data-theme=dark] .drop-zone:hover, html[data-theme=dark] .drop-zone.drag { 
   #sec-generate .or-divider { display: flex; }
 }
 /* Generate page: stretch to fill the viewport, no dead space */
-#sec-generate.active { min-height: calc(100vh - 120px); grid-template-rows: auto auto 1fr auto; }
+/* Rows size to their content: with the file card back, a 1fr row would land
+   on the OR divider and stretch it down the page. */
+#sec-generate.active { min-height: calc(100vh - 120px); grid-template-rows: none; }
 #sec-generate .card, #sec-generate .card-alt { height: 100%; margin-bottom: 0; box-sizing: border-box; }
 #sec-generate .card { display: flex; flex-direction: column; }
 #sec-generate .card > div:has(#req-prompt) { flex: 1; display: flex; flex-direction: column; }
@@ -1926,9 +1928,15 @@ html[data-theme=dark] .mlg-sweep { background: linear-gradient(90deg, transparen
 .quot-doc .qty-input, .quot-doc .gst-input { text-align: center; }
 .quot-doc .price-input { text-align: right; }
 .quot-doc th:first-child, .quot-doc td:first-child { text-align: center; }
-/* Generate page: single centered column — the BOQ card lives in the
-   BOQ Coverage tab (boq-only view) and is hidden here */
-#sec-generate:not(.boq-only) .card-alt { display: none; }
+/* Generate page: single centered column. The file card ("Start from a file")
+   shows here as well as in the BOQ Coverage view — uploading a requirement
+   list or a past quotation is a way to start a quotation, so hiding it on the
+   page called Generate Quotation meant nobody found it. */
+#sec-generate:not(.boq-only) .or-divider { display: flex; }
+/* ...but not in the BOQ Coverage view, where there is nothing to be OR'd
+   against — the typed-prompt card is hidden there. Beats the narrow-width
+   rule above on specificity, so it holds at every width. */
+#sec-generate.boq-only .or-divider { display: none; }
 #sec-generate:not(.boq-only) .gh-art { display: none; }
 #sec-generate.active { grid-template-columns: 1fr; max-width: 1280px; margin: 0 auto; min-height: 0; }
 #sec-generate .card { height: auto; }
