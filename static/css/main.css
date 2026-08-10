@@ -1655,8 +1655,6 @@ html[data-theme=dark] .vp-variant-row:hover { background: #262d3b; }
 #sec-generate.boq-only .card > label,
 #sec-generate.boq-only #gen-btn { display: none; }
 #sec-generate.boq-only .gen-split { grid-template-columns: 1fr; }
-#sec-generate.boq-only .gen-actions { justify-content: flex-start; }
-#sec-generate.boq-only { grid-template-columns: 1fr; }
 #sec-generate.boq-only .gen-head div h1 { visibility: hidden; position: relative; }
 #sec-generate.boq-only .gen-head div h1::after { content: '☑ BOQ Coverage'; visibility: visible; position: absolute; left: 0; color: var(--primary); }
 #sec-generate.boq-only .gen-head div p { visibility: hidden; position: relative; }
