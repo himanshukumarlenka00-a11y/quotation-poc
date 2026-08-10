@@ -2,8 +2,8 @@
 
 ## LIVE IN PRODUCTION (see memory: ubuntu-server-deployment)
 Server melange@192.168.0.146 (crm-server). App :8000 + HTTPS :8443 (nginx,
-self-signed, cert trusted on user's PC). HEAD 71f93f4, cache css v108 /
-js v113. Master table 51,938 products. Pushed to GitHub.
+self-signed, cert trusted on user's PC). HEAD b70a1a1, cache css v109 /
+js v114. Master table 51,938 products. Pushed to GitHub.
 
 Deploy flow: edit dev → verify cheaply → commit → tar-pipe to /opt/quotegen
 → restart quotegen if Python changed. ASK BEFORE EVERY SERVER-CHANGING
@@ -80,6 +80,32 @@ a single catalogue. e.g. "ROUND DAMPING HINGED  CHAFING DISH  LARGE
 CAPACITY" (8060C, Rs21,812) vs the same name with one less space (8040C,
 Rs20,482) — indistinguishable by name, only a model code separates them.
 
+## Matcher: per-line candidate pools (the big one)
+rows_pool was ONE FTS query for the whole request, capped twice — 
+sorted(words)[:40] and LIMIT 4000 — and both caps tighten as the request
+grows. Found by auditing 40 RANDOM products instead of 14 hand-spread ones:
+exact catalogue names failed 17/40, all 17 absent from the pool, 8/8 of them
+matching when sent alone. A 40-line batch had 147 distinct words, so most
+lines were never searched for at all; a 700-line BOQ was mostly guesswork.
+ORDER BY rank (the earlier fix) only reordered a pool already too small.
+
+Each line now gets its own ranked query (LIMIT 400), cached per term.
+Cheaper too: 40 lines x 4000 shared rows = 160k comparisons, vs ~400 of
+their own = 16k. rows_pool stays as the FTS-unavailable fallback.
+
+  exact name  22/40 (17 no-match) -> 39/40 (0 no-match)
+  human name  21/40 -> 37/40      + qualifiers 20/40 -> 36/40
+  plural      18/40 -> 34/40      typo         17/40 -> 22/40
+  20-line   2,859ms -> 1,207ms    100-line  20,555ms -> 5,187ms
+Unchanged: 0 price mismatches, no cost in employee payloads, 0/10
+fabricated model codes substituted, 14-product audit still 94%.
+
+LESSON: a small hand-picked sample hid this completely. Audit with RANDOM
+products, and at batch sizes matching real BOQs.
+
+KNOWN WEAK SPOT: typos (22/40). A transposed letter defeats word matching.
+Fuzzy matching would trade precision for recall — not done, ask first.
+
 ## UI 2026-08-06
 - Global interaction feedback: press-dip on buttons that are not .btn,
   :focus-visible ring (there were ZERO app-wide), and a
@@ -95,6 +121,11 @@ Rs20,482) — indistinguishable by name, only a model code separates them.
   trace with a short error id (config.server_error).
 - test_pricing.py guards the money maths, force-added past the test_*.py
   gitignore, mutation-checked both ways.
+- 18 blocking alert() dialogs replaced with toasts (bottom-right, stacked,
+  errors linger 5.2s vs 3.2s). Checked first that none relied on alert()
+  blocking. confirm() deliberately left alone: 5 sites guard destructive
+  actions and are synchronous, so converting them means async reworking each
+  call site — cosmetic gain, real risk of breaking a delete guard.
 
 ## Built 2026-08-05
 - CSS TOKENS FIXED (big one): --fs-xs/sm/base/md/lg, --ctl-h, --sp-3, --sp-4
