@@ -1831,6 +1831,20 @@ html[data-theme=dark] .mlg-sweep { background: rgba(255,255,255,.14); }
   max-height: 88px; overflow: hidden; }
 @media (max-width: 700px) { #sc-pop { display: none; } }   /* no hover on touch */
 
+/* Uploaded-quotation analysis (Margin Analysis page) */
+.ma-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px; margin-bottom: 10px; }
+.ma-tile { background: var(--card-soft); border-radius: 8px; padding: 10px 14px; }
+.ma-tile span { display: block; font-size: var(--fs-xs); color: var(--muted); margin-bottom: 2px; }
+.ma-tile b { font-size: var(--fs-md); color: var(--text); }
+.ma-note { font-size: var(--fs-sm); color: var(--muted); margin-bottom: 12px; }
+.ma-sub { font-size: var(--fs-xs); color: var(--muted); margin-top: 2px; }
+.ma-ok, .ma-warn, .ma-bad { font-size: var(--fs-xs); font-weight: 700;
+  padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.ma-ok   { background: rgba(24,160,76,.12);  color: var(--success); }
+.ma-warn { background: rgba(224,138,0,.14);  color: var(--accent); }
+.ma-bad  { background: rgba(220,53,69,.12);  color: var(--danger); }
+
 /* Toasts — replaced 18 blocking alert() dialogs. Bottom-right so they never
    cover the quotation table or the sidebar nav. */
 #toast-host { position: fixed; right: 20px; bottom: 20px; z-index: 6000;

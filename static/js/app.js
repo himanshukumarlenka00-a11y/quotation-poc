@@ -257,7 +257,10 @@ function show(tab) {
   if (tab === 'upload')    { loadCatalog(); loadUploadedFiles(); }
   if (tab === 'master')    { loadMasterFiles(); if (!masterSummary.length) loadMasterTable(); }
   if (tab === 'generate')  { document.getElementById('sec-generate').classList.remove('boq-only'); loadCatalogSelector(); }
-  if (tab === 'repository') { window._marginOnly = false; loadRepository(); }
+  if (tab === 'repository') { window._marginOnly = false;
+    const up = document.getElementById('margin-upload-card');
+    if (up) up.style.display = 'none';
+    loadRepository(); }
   if (tab === 'audit')     loadAuditLog();
   if (tab === 'users')     loadUsers();
   if (tab === 'dashboard') loadDashboard();
@@ -716,6 +719,8 @@ function showMargins() {
   document.querySelectorAll('.section').forEach(x => x.classList.remove('active'));
   document.getElementById('sec-repository').classList.add('active');
   window._marginOnly = true;   // margin view: only BOQ-priced quotes
+  const up = document.getElementById('margin-upload-card');
+  if (up) up.style.display = 'block';
   loadRepository();
 }
 
@@ -2550,6 +2555,67 @@ function toast(msg, type = 'info') {
 function setItemField(idx, field, val) {
   const it = currentQuotation && currentQuotation.items && currentQuotation.items[idx];
   if (it) it[field] = val.trim();
+}
+
+// Analyse a quotation that only exists as a file. The in-app margin panel
+// resolves lines by exact text identity, which an external file never
+// satisfies — this posts the file and lets the server parse, match and price
+// it at each line's own quantity.
+async function analyseQuotationFile() {
+  const input = document.getElementById('margin-file');
+  const out = document.getElementById('margin-upload-result');
+  const btn = document.getElementById('margin-analyse-btn');
+  if (!input.files.length) return;
+  btn.disabled = true; btn.textContent = 'Analysing…';
+  out.innerHTML = '<div class="loading-state">Reading the file and matching every line…</div>';
+  try {
+    const fd = new FormData(); fd.append('file', input.files[0]);
+    const res = await fetch(`${API}/api/analyse-quotation`, { method: 'POST', body: fd });
+    const d = await res.json();
+    if (!res.ok) { out.innerHTML = `<div class="alert alert-error">${apiErr(d)}</div>`; return; }
+    out.innerHTML = renderQuotationAnalysis(d);
+  } catch (e) {
+    out.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '◔ Analyse';
+  }
+}
+
+function renderQuotationAnalysis(d) {
+  const money = n => '₹' + fmt(n || 0);
+  const badge = {
+    ok: '<span class="ma-ok">costed</span>',
+    no_cost: '<span class="ma-warn">no cost in master</span>',
+    not_in_master: '<span class="ma-bad">not in master</span>',
+  };
+  const rows = d.lines.map(l => `
+    <tr>
+      <td>${escHtml(l.product)}${l.matched_to && l.matched_to !== l.product
+            ? `<div class="ma-sub">→ ${escHtml(l.matched_to)}</div>` : ''}</td>
+      <td class="c">${l.qty}</td>
+      <td class="num">${money(l.sold)}</td>
+      <td class="num">${money(l.amount)}</td>
+      <td class="num">${l.cost == null ? '—' : money(l.cost)}</td>
+      <td class="num" style="color:${(l.profit || 0) >= 0 ? 'var(--success)' : 'var(--danger)'};font-weight:700;">
+        ${l.profit == null ? '—' : money(l.profit)}</td>
+      <td class="num">${l.margin_pct == null ? '—' : l.margin_pct + '%'}</td>
+      <td>${badge[l.state]}</td>
+    </tr>`).join('');
+  return `
+    <div class="ma-tiles">
+      <div class="ma-tile"><span>Quoted value</span><b>${money(d.revenue)}</b></div>
+      <div class="ma-tile"><span>Profit (costed lines)</span><b>${money(d.profit)}</b></div>
+      <div class="ma-tile"><span>Margin</span><b>${d.margin_pct == null ? '—' : d.margin_pct + '%'}</b></div>
+      <div class="ma-tile"><span>Lines</span><b>${d.counts.ok} costed · ${d.counts.no_cost} no cost · ${d.counts.not_in_master} unmatched</b></div>
+    </div>
+    <p class="ma-note">Profit and margin cover only the ${d.counts.ok} lines whose master cost is known
+      (${money(d.known_revenue)} of ${money(d.revenue)} quoted). The rest are listed honestly rather than guessed.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Product</th><th class="c">Qty</th><th class="num">Sold @</th>
+        <th class="num">Amount</th><th class="num">Cost @</th><th class="num">Profit</th>
+        <th class="num">Margin</th><th>State</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
 }
 
 // ── Hover details for Switch / Find cards ───────────────────────────────────

@@ -1501,6 +1501,93 @@ def suggest_products_endpoint(q: str = "", limit: int = 6,
     return {"items": rows}
 
 
+@router.post("/api/analyse-quotation")
+@limiter.limit("20/minute")
+def analyse_uploaded_quotation(
+    request: Request,
+    file: UploadFile = File(...),
+    admin: dict = Depends(require_role("admin")),
+):
+    """Cost / profit / margin for a quotation we already sent, from its file.
+
+    /api/quotations/{qid}/margin can only analyse quotes built inside the app,
+    because it resolves each line against the master by exact text identity.
+    An old quotation sitting in Excel had no route to that maths at all.
+
+    Admin-only: it exposes purchase cost, which employees never see.
+
+    Every piece here already existed — the BOQ parser reads product/model/qty/
+    price, _resolve_master_matches finds the master row (exact identity would
+    fail on an external file's wording), and the arithmetic is the same as the
+    margin endpoint. The master stores a UNIT cost, so every figure is
+    multiplied by that line's quantity.
+    """
+    if not file.filename.endswith((".xls", ".xlsx")):
+        raise HTTPException(400, "Only .xls/.xlsx files allowed")
+    suffix = ".xlsx" if file.filename.endswith(".xlsx") else ".xls"
+    fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+    os.close(fd)
+    tmp_path = Path(tmp_path)
+    try:
+        _save_upload_validated(file, tmp_path)
+        rows, _structure = parse_boq_excel(str(tmp_path), file.filename)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+    if not rows:
+        raise HTTPException(400, "No product rows could be read from this file.")
+
+    conn = get_db()
+    try:
+        # match on the file's own wording, via the same resolver the generator
+        # uses — an external quotation never phrases things like our catalogue
+        extracted = [{"product": r.get("product") or "",
+                      "model_no": r.get("model_no") or "",
+                      "qty": int(r.get("qty") or 1)}
+                     for r in rows if (r.get("product") or "").strip()]
+        matched, _nf = _resolve_master_matches(
+            conn, extracted, [], ["3star"], None, prompt="")
+
+        lines, revenue, known_rev, profit_total = [], 0.0, 0.0, 0.0
+        counts = {"ok": 0, "no_cost": 0, "not_in_master": 0}
+        for src, got in zip(rows, matched):
+            qty = float(src.get("qty") or 1)
+            # what WE charged on that quotation; fall back to the matched
+            # master price when the file carries no price column
+            sold = float(src.get("price") or 0) or float(got.get("price_per_pc") or 0)
+            amount = qty * sold
+            revenue += amount
+            cost_u = float(got.get("cost") or 0)
+            if got.get("not_in_catalog"):
+                state, cost_u, profit, margin = "not_in_master", None, None, None
+            elif cost_u <= 0:
+                state, cost_u, profit, margin = "no_cost", None, None, None
+            else:
+                profit = qty * (sold - cost_u)
+                margin = round((sold - cost_u) * 100 / sold, 1) if sold else None
+                known_rev += amount
+                profit_total += profit
+                state = "ok"
+            counts[state] += 1
+            lines.append({
+                "product": src.get("product") or "",
+                "matched_to": "" if got.get("not_in_catalog") else (got.get("product") or ""),
+                "model_no": got.get("model_no") or src.get("model_no") or "",
+                "qty": qty, "sold": sold, "amount": amount,
+                "cost": cost_u, "profit": profit, "margin_pct": margin, "state": state,
+            })
+    finally:
+        conn.close()
+
+    log_action(admin, "analyse_uploaded_quotation", target=file.filename)
+    return {
+        "filename": file.filename, "lines": lines, "counts": counts,
+        "revenue": round(revenue, 2),
+        "known_revenue": round(known_rev, 2),
+        "profit": round(profit_total, 2),
+        "margin_pct": round(profit_total * 100 / known_rev, 1) if known_rev else None,
+    }
+
+
 @router.post("/api/quotations/{qid}/refresh-prices")
 def refresh_quotation_prices(qid: int, user: dict = Depends(get_current_user)):
     """Pull each line's CURRENT master-table 3star/4star price into an
