@@ -1617,8 +1617,12 @@ html[data-theme=dark] #sec-generate .tier-card.active, html[data-theme=dark] .ti
 #sec-generate #req-prompt { flex: none; height: auto; min-height: 120px; max-height: 160px; }
 /* Short textarea again -> drop the suggestions BELOW the box as normal */
 #sec-generate .suggest-dropdown { top: calc(100% + 4px); bottom: auto; max-height: 240px; }
-/* Generate button: pinned to the card's bottom-right */
-#sec-generate .card > div:has(#gen-btn) { margin-top: auto; display: flex; justify-content: flex-end; }
+/* Was "#sec-generate .card > div:has(#gen-btn)", from when the Generate button
+   sat in a shared action row that was a direct child of the card. The button
+   now lives inside .gen-split, so that selector matched the SPLIT itself and,
+   being id+class, outranked ".gen-split { display: grid }" — the two halves
+   collapsed to flex widths and the typed side floated right, leaving a hole
+   down the left of the card. .gen-half-actions handles this now. */
 /* Small action buttons: quiet ghost pills, consistent across rows */
 .btn-sm { border-radius: 999px; padding: 6px 14px; font-weight: 600; font-size: var(--fs-sm);
   line-height: 1.3; border: 1px solid var(--border); background: var(--card); color: var(--text);
