@@ -1775,7 +1775,39 @@ html[data-theme=dark] .mlg-sweep { background: rgba(255,255,255,.14); }
   box-shadow: 0 14px 40px rgba(23,28,44,.24); padding: 14px; pointer-events: none;
   opacity: 0; transform: translateY(10px) scale(.97); transform-origin: top left;
   transition: opacity .2s ease, transform .26s cubic-bezier(.22,1,.36,1); }
-#sc-pop.on { opacity: 1; transform: translateY(0) scale(1); }
+/* Springs in with a touch of overshoot, then the contents rise in sequence.
+   Keyframes rather than transitions because the panel's innerHTML is rebuilt
+   on every hover, so each animation replays by itself with no class juggling.
+   The global prefers-reduced-motion block collapses all of this to instant. */
+#sc-pop.on { opacity: 1; transform: translateY(0) scale(1);
+  animation: scpPop .34s cubic-bezier(.34,1.42,.5,1) both; }
+@keyframes scpPop {
+  from { opacity: 0; transform: translateY(12px) scale(.94); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes scpRise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes scpZoom {
+  from { opacity: 0; transform: scale(.88); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes scpTier {
+  0%   { opacity: 0; transform: translateY(8px) scale(.9); }
+  70%  { opacity: 1; transform: translateY(0) scale(1.04); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+#sc-pop.on .scp-img   { animation: scpZoom .42s cubic-bezier(.22,1,.36,1) .05s both; }
+#sc-pop.on .scp-title { animation: scpRise .30s ease-out .10s both; }
+#sc-pop.on .scp-tier:nth-child(1) { animation: scpTier .40s cubic-bezier(.34,1.5,.5,1) .16s both; }
+#sc-pop.on .scp-tier:nth-child(2) { animation: scpTier .40s cubic-bezier(.34,1.5,.5,1) .22s both; }
+#sc-pop.on .scp-meta .scp-row:nth-of-type(1) { animation: scpRise .28s ease-out .26s both; }
+#sc-pop.on .scp-meta .scp-row:nth-of-type(2) { animation: scpRise .28s ease-out .30s both; }
+#sc-pop.on .scp-meta .scp-row:nth-of-type(3) { animation: scpRise .28s ease-out .34s both; }
+#sc-pop.on .scp-meta .scp-row:nth-of-type(4) { animation: scpRise .28s ease-out .38s both; }
+#sc-pop.on > .scp-row { animation: scpRise .28s ease-out .42s both; }
+#sc-pop.on .scp-spec  { animation: scpRise .32s ease-out .46s both; }
 .scp-top { display: flex; gap: 14px; }
 .scp-img { width: 132px; height: 132px; flex: none; border-radius: 8px; overflow: hidden;
   border: 1px solid var(--border); background: var(--card-soft);
