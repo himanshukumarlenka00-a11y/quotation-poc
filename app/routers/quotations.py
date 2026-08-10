@@ -425,6 +425,58 @@ def _covered(word, s, s_ns):
     return False
 
 
+def _glued_rows(conn, words, catalogs=None, limit=200):
+    """Rows whose text contains a request word GLUED inside a longer token.
+
+    FTS5 matches token prefixes, so `"dustbin"*` finds DUSTBIN and DUSTBINS
+    but never WALTHR-IR-RD001-OVL-ROOMDUSTBIN — that is one token starting
+    with "room", and a prefix query cannot see into the middle of it. The
+    index is not stale (51,938 rows indexed, zero missing); prefix matching
+    simply cannot reach these. Measured against the live master: 19 of 63
+    dustbins and 233 of 1,476 trays are invisible to FTS for this reason.
+
+    A bounded substring scan is the cheap fix — under 8ms worst case on
+    52k rows, versus a second trigram index to build and keep in step.
+    Short and numeric words are skipped: "ss" or "18" would match half the
+    catalogue as substrings and drown the pool in noise.
+
+    ponytail: full scan per line, ~8ms at 52k rows. If the master reaches
+    a few hundred thousand, add an FTS5 trigram index instead.
+    """
+    core = [w for w in words if len(w) >= 4 and w.isalpha()]
+    if not core:
+        return []
+    where = " OR ".join(
+        "product LIKE ? COLLATE NOCASE OR specification LIKE ? COLLATE NOCASE "
+        "OR original_model LIKE ? COLLATE NOCASE" for _ in core)
+    params = []
+    for w in core:
+        params += ["%" + w + "%"] * 3
+    sql = f"SELECT * FROM master_products WHERE ({where})"
+    if catalogs:
+        sql += " AND file_name IN (%s)" % ",".join("?" * len(catalogs))
+        params += list(catalogs)
+    try:
+        return [dict(r) for r in conn.execute(sql + " LIMIT ?", [*params, limit]).fetchall()]
+    except Exception:
+        return []
+
+
+def _merge_glued(conn, pool, words, catalogs=None, limit=200):
+    """Append substring-only matches to an FTS pool, without reordering it.
+
+    Appended rather than merged by rank: the FTS rows are already sorted by
+    bm25 and the scorer downstream re-ranks everything anyway, so putting
+    these at the end keeps the pool's existing order meaningful if it is
+    ever truncated.
+    """
+    extra = _glued_rows(conn, words, catalogs, limit)
+    if not extra:
+        return pool
+    have = {r.get("id") for r in pool}
+    return pool + [r for r in extra if r.get("id") not in have]
+
+
 def suggest_products(conn, term, catalogs=None, limit=6):
     """Loose candidates for a request that nothing matched confidently.
 
@@ -466,6 +518,10 @@ def suggest_products(conn, term, catalogs=None, limit=6):
                 "WHERE master_fts MATCH ? ORDER BY f.rank LIMIT 600", (match,)).fetchall()]
     except Exception:
         pass
+    # ...plus rows where the word is glued inside a longer token, which a
+    # prefix query can never reach. Find is exactly where this matters: the
+    # line already failed to match, so a missing candidate is the whole bug.
+    pool = _merge_glued(conn, pool, core[:12], catalogs)
     if not pool:
         return []                 # FTS unavailable — no guesses
     out = []
@@ -612,6 +668,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                         "WHERE master_fts MATCH ? ORDER BY f.rank LIMIT 400", (match,)).fetchall()]
             except Exception:
                 pool = []
+            pool = _merge_glued(conn, pool, words, catalogs)
         _pool_cache[key] = pool
         return pool
 
