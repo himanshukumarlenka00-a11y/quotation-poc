@@ -456,13 +456,17 @@ def build_company_quotation(quotation: dict, items: list) -> str:
         ws.cell(r, 6, item.get("brand", ""))
         ws.cell(r, 8, spec_text)
         ws.cell(r, 9, item.get("hsn_code", ""))
-        # Plain computed values, not formulas — some Excel installs sit in
-        # manual-calc mode and show formula cells blank until F9.
+        # AMOUNT and GST AMOUNT are FORMULAS so the sheet stays alive: change
+        # a qty, a price or a GST% in Excel and the line and every total below
+        # follow. QTY / PRICE/PC / GST% are the only typed-in numbers.
+        # (This used to be plain values, because a manual-calc install shows
+        #  formula cells blank until F9 — wb.calculation.fullCalcOnLoad below
+        #  forces the recalculation on open, which is what makes this safe.)
         amount = round(qty * price, 2)
         ws.cell(r, 10, round(price, 2))
-        ws.cell(r, 11, amount)
+        ws.cell(r, 11, f"=C{r}*J{r}")
         ws.cell(r, 12, gst_pct / 100)
-        ws.cell(r, 13, round(amount * gst_pct / 100, 2))
+        ws.cell(r, 13, f"=K{r}*L{r}")
 
         if has_boq_pricing:
             boq_price = float(item.get("boq_price") or 0)
@@ -512,8 +516,8 @@ def build_company_quotation(quotation: dict, items: list) -> str:
     freight_gst = round(freight_amt * freight_gst_pct, 2)
     ws.cell(freight_row, 3, 1)
     ws.cell(freight_row, 10, freight_amt)
-    ws.cell(freight_row, 11, freight_amt)
-    ws.cell(freight_row, 13, freight_gst)
+    ws.cell(freight_row, 11, f"=C{freight_row}*J{freight_row}")
+    ws.cell(freight_row, 13, f"=K{freight_row}*L{freight_row}")
 
     total_amount = round(sum(
         round(int(i.get("qty") or 0) * float(i.get("price_per_pc") or i.get("price") or 0), 2)
@@ -522,10 +526,13 @@ def build_company_quotation(quotation: dict, items: list) -> str:
         round(round(int(i.get("qty") or 0) * float(i.get("price_per_pc") or i.get("price") or 0), 2)
               * (float(i.get("gst_pct")) if i.get("gst_pct") is not None else 18.0) / 100, 2)
         for i in items) + freight_gst, 2)
-    ws.cell(total_row, 11, total_amount)
-    ws.cell(total_row, 13, total_gst)
-    ws.cell(gst_row, 11, total_gst)
-    ws.cell(grand_row, 11, round(total_amount + total_gst, 2))
+    # Totals sum the whole table, freight row included — its last row is
+    # freight_row, which sits directly under the items.
+    first, last = FIRST_ITEM_ROW, freight_row
+    ws.cell(total_row, 11, f"=SUM(K{first}:K{last})")
+    ws.cell(total_row, 13, f"=SUM(M{first}:M{last})")
+    ws.cell(gst_row, 11, f"=SUM(M{first}:M{last})")
+    ws.cell(grand_row, 11, f"=K{total_row}+K{gst_row}")
 
     if has_boq_pricing:
         # Same fix as the letterhead box: the totals block's right edge sits
@@ -556,6 +563,12 @@ def build_company_quotation(quotation: dict, items: list) -> str:
 
     new_last_row = new_footer_start + (footer_last_row - FOOTER_START)
     ws.print_area = f"A1:{get_column_letter(MAX_COL)}{new_last_row}"
+
+    # openpyxl writes formulas with no cached result, so a workbook opened in
+    # manual-calc mode would show every derived cell blank until someone hits
+    # F9. This flag makes Excel recalculate the whole book on open, which is
+    # what lets AMOUNT / GST / the totals be live formulas at all.
+    wb.calculation.fullCalcOnLoad = True
 
     out = EXPORTS_DIR / f"Quote_{(ref_no or 'export').replace('/', '-')}.xlsx"
     wb.save(str(out))
