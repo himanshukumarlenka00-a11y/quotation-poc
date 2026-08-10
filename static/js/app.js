@@ -22,6 +22,45 @@ function apiErr(body, fallback = 'Request failed') {
   return d.msg || fallback;
 }
 
+// A 401 anywhere means the 8-hour session lapsed. Every loader assumed its
+// fetch returned data, so an expired session produced a silently broken page
+// rather than a prompt — loadRepository() died on "all.filter is not a
+// function" with nothing on screen and only a console trace to show for it.
+// One interceptor covers every caller, including ones not written yet, which
+// is a smaller and more durable fix than a guard in each of twenty loaders.
+(function () {
+  const realFetch = window.fetch;
+  window.fetch = async function (input, init) {
+    const res = await realFetch(input, init);
+    const url = typeof input === 'string' ? input : (input && input.url) || '';
+    // /api/auth/* answers 401 for a wrong password too — that is a failed
+    // login attempt, not a lapsed session, and must not bounce the user.
+    if (res.status === 401 && !/\/api\/auth\//.test(url)
+        && document.body.classList.contains('authed')) {
+      sessionExpired();
+    }
+    return res;
+  };
+})();
+
+let _sessionGone = false;
+
+function sessionExpired() {
+  if (_sessionGone) return;   // one notice, not one per parallel fetch
+  _sessionGone = true;
+  currentUser = null;
+  document.body.classList.remove('authed');
+  if (typeof showLoginForm === 'function') showLoginForm();
+  const err = document.getElementById('login-err');
+  if (err) err.textContent = 'Your session expired. Log in again.';
+}
+
+// Returns [] for anything that is not a list, so a loader renders an empty
+// state instead of throwing partway through and leaving the page half-built.
+function asList(x) {
+  return Array.isArray(x) ? x : [];
+}
+
 // These inputs live outside any <form> — in some browsers, Enter inside a
 // loose (non-form) input can still trigger an implicit page reload/flicker.
 // Blocking it here (and committing the value via blur, which fires
@@ -48,6 +87,7 @@ async function checkAuth() {
 }
 
 function onAuthed() {
+  _sessionGone = false;   // re-armed, so the next lapse notifies again
   document.body.classList.add('authed');
   const nav = document.getElementById('nav-user');
   const showName = (currentUser.name || '').trim().toLowerCase() !== (currentUser.role || '').toLowerCase();
@@ -3598,10 +3638,10 @@ async function submitFeedback() {
 
 // ── Repository ────────────────────────────────────────────────────────────────
 async function loadRepository() {
-  let [approved, all] = await Promise.all([
+  let [approved, all] = (await Promise.all([
     fetch(`${API}/api/quotations?status=approved`).then(r=>r.json()),
     fetch(`${API}/api/quotations`).then(r=>r.json())
-  ]);
+  ])).map(asList);
   let drafts = all.filter(q => q.status === 'draft');
 
   // Margin view: only quotes with client BOQ pricing — margin is a
