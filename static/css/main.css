@@ -1862,6 +1862,11 @@ html[data-theme=dark] .mlg-sweep { background: linear-gradient(90deg, transparen
 #margin-drop.has-file .dz-cloud { color: var(--success); }
 #margin-drop input[type=file] { display: none; }
 
+/* Switch panel: "show more options" affordance for the capped variant list */
+.switch-more { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.switch-more-note { font-size: var(--fs-xs); color: var(--muted); margin-top: 8px; }
+.switch-more .switch-more-note { margin-top: 0; }
+
 /* Uploaded-quotation analysis (Margin Analysis page) */
 .ma-head { display: flex; justify-content: flex-end; margin-bottom: 10px; }
 /* Same column set as the quotation document, so the two read alike */

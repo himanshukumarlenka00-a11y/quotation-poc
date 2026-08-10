@@ -495,7 +495,8 @@ def suggest_products(conn, term, catalogs=None, limit=6):
 
 
 
-def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, prompt=""):
+def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, prompt="",
+                            variant_cap=15):
     """Match extracted {product, qty} items against the Master Table only —
     shared by both the free-text prompt flow and the client-BOQ-file-upload
     flow, so the two entry points always resolve products identically."""
@@ -1052,7 +1053,10 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             if k in seen:
                 continue
             seen.add(k); uniq.append(_normalize(v))
-        variants_sorted = uniq[:15]          # cap the switch list
+        # Default 15 keeps the generate payload small — 34 lines x 50 variants
+        # is a megabyte of JSON nobody scrolls. /api/product-variants raises it
+        # for one product at a time, when the user asks to see the rest.
+        variants_sorted = uniq[:variant_cap]
         best = variants_sorted[0]
 
         result_items.append({
@@ -1499,6 +1503,36 @@ def suggest_products_endpoint(q: str = "", limit: int = 6,
         for r in rows:
             r.pop("cost", None)
     return {"items": rows}
+
+
+@router.get("/api/product-variants")
+def product_variants(q: str = "", limit: int = 60,
+                     user: dict = Depends(get_current_user)):
+    """The full alternatives list for one product, for the Switch panel.
+
+    Generate caps each line at 15 variants, because a 34-line quote carrying
+    50 alternatives each is a megabyte of JSON that nobody scrolls. That cap
+    is invisible in the UI though — "dustbin" has 50 distinct matches and the
+    panel silently showed 15. This re-runs the SAME resolver for a single
+    product with a bigger cap, so the extra cards are ranked identically to
+    the ones already on screen rather than by some second, different scorer.
+    """
+    term = (q or "").strip()
+    if len(term) < 2:
+        return {"items": []}
+    conn = get_db()
+    try:
+        matched, _nf = _resolve_master_matches(
+            conn, [{"product": term, "model_no": "", "qty": 1}], [], ["3star"], None,
+            prompt="", variant_cap=max(1, min(int(limit or 60), 200)))
+    finally:
+        conn.close()
+    items = (matched[0].get("_variants") or []) if matched else []
+    # Same rule as everywhere else: employees never see purchase cost.
+    if (user or {}).get("role") != "admin":
+        for r in items:
+            r.pop("cost", None)
+    return {"items": items}
 
 
 @router.post("/api/analyse-quotation")

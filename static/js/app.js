@@ -3025,6 +3025,13 @@ function switchVariant(idx) {
     <div class="switch-panel-inner">
       <div class="switch-panel-title">🔄 Switch Variant — "${item._requested || item.product}"</div>
       <div class="switch-cards">${cards}</div>
+      ${item._variantsFull ? `<div class="switch-more-note">Showing all ${ordered.length} matches.</div>` : `
+        <div class="switch-more">
+          <button class="btn btn-sm btn-outline" onclick="loadMoreVariants(${idx}, this)">
+            Show more options
+          </button>
+          <span class="switch-more-note">Generate keeps the ${ordered.length} best per line.</span>
+        </div>`}
       <label class="remember-choice" title="Off = this quote only. On = the matcher learns this phrase for good.">
         <input type="checkbox" id="remember-${idx}">
         Remember this choice for "<b>${escHtml(item._requested || item.product || '')}</b>" in future quotations
@@ -3036,6 +3043,33 @@ function switchVariant(idx) {
     </div>
   </td>`;
   row.insertAdjacentElement('afterend', panel);
+}
+
+// Pulls the uncapped alternatives for this line and reopens the panel. The
+// currently-selected variant must survive at its own index, because
+// applySwitch() indexes into _variants — so the fetched list is appended to
+// what is already there rather than replacing it.
+async function loadMoreVariants(idx, btn) {
+  const item = currentQuotation && currentQuotation.items[idx];
+  if (!item) return;
+  const term = item._requested || item.product || '';
+  btn.disabled = true; btn.textContent = 'Loading…';
+  try {
+    const res = await fetch(`${API}/api/product-variants?q=${encodeURIComponent(term)}&limit=200`);
+    const d = await res.json();
+    if (!res.ok) { toast(apiErr(d), 'error'); return; }
+    const key = v => `${(v.product || '').trim().toLowerCase()}|${(v.model_no || '').trim().toLowerCase()}`;
+    const have = new Set(item._variants.map(key));
+    const added = (d.items || []).filter(v => !have.has(key(v)));
+    item._variants = item._variants.concat(added);
+    item._variantsFull = true;
+    switchVariant(idx);
+    toast(added.length ? `${added.length} more option(s)` : 'No further matches');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    if (btn.isConnected) { btn.disabled = false; btn.textContent = 'Show more options'; }
+  }
 }
 
 function applySwitch(idx, vi, cardEl) {
