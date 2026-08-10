@@ -71,7 +71,7 @@ Works on a quote of any age. suggest_products, _covered and _UNITS are
 module level so the endpoint and the matcher cannot drift apart.
 
 TRAP, cost 20 minutes: hoisting _covered through a shell heredoc ate its
- word-boundary anchors, leaving re.search(r"" + ...) — plain substring
+\b word-boundary anchors, leaving re.search(r"" + ...) — plain substring
 matching, so "pin" matched "chopping". Accuracy fell 94% -> 73% and the
 audit caught it. Edit that regex with a file edit, never through a heredoc.
 
