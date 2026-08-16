@@ -77,6 +77,13 @@ Suggested cleanup pass (admin decisions needed, not auto-delete):
   designed answer. Ambiguity ≠ inaccuracy.
 - Partial model prefixes matching a sibling (RBLRIT → RBLRIT01KT).
 
+## Fix batch 1 — SHIPPED 2026-08-05 (commit pending)
+
+Fixes 1-4 implemented and re-audited: model codes 84->89%, plurals 36->43%,
+unit-spacing 44->83%, model-spaced 79->85%, unit-stripped 12->50%,
+brand-stripped 36->40%. exact-core stuck ~50% — capped by duplicate-name
+data, not ranking. Typos remain 0% (item 3 below still open).
+
 ## Recommended sequence
 
 1. Code fixes 1-4 (one batch, ~4-5k tokens, re-run audit to prove).

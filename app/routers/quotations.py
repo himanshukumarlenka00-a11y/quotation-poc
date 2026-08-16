@@ -591,6 +591,14 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 words.add(w.lower())
         # Prefix-match each word so "knive"/"knives" still reach "knife"-ish
         # rows, OR'd because any shared word makes a row worth scoring.
+        # Plurals cut one way only under prefix search: "cup"* reaches
+        # "cups" but "cups"* can NEVER reach "cup" — a request for "cups"
+        # once matched a kettle tray whose SPEC mentioned cups while every
+        # row actually NAMED "cup" was absent from the pool. Add the
+        # stripped-s form of each word so both directions work.
+        for w in list(words):
+            if w.endswith("s") and len(w) > 3:
+                words.add(w[:-1])
         return " OR ".join(f'"{w}"*' for w in sorted(words)[:40])
 
     search_terms = [it.get("search_term") or it.get("product") or "" for it in extracted]
@@ -735,8 +743,18 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             # in favour of 3 rows whose model text happened to say "tray".
             # mtoks already covers letter+digit codes like WCCE001-SS.
             t_is_code = len(t) >= 4 and any(c.isdigit() for c in t)
-            if model and ((mtoks and any(mt in model for mt in mtoks))
-                          or (t_is_code and t in model)):
+            # Normalized full-string equality: typing a product's EXACT name
+            # (or its name minus the BRAND-CODE- prefix) must beat every
+            # sibling variant — "Moove Plate 22*" once lost to "Moove Plate".
+            tn = re.sub(r"[^a-z0-9]+", " ", t).strip()
+            if tn and (re.sub(r"[^a-z0-9]+", " ", name).strip() == tn
+                       or re.sub(r"[^a-z0-9]+", " ", human).strip() == tn):
+                score = 2000                                   # exact name — supreme
+            elif model and ((mtoks and any(mt in model for mt in mtoks))
+                          or (t_is_code and t in model)
+                          # digit-only codes (AndyManhart "1052418") are real
+                          # model numbers too — primary match, not tie-break
+                          or any(len(nt) >= 5 and nt in model for nt in numtoks)):
                 score = 1000                                   # model-number match (most specific)
             elif core and all(_covered(w, name, name_ns) for w in core):
                 score = 600 - min(len(name), 120)              # full name match; tighter ranks higher
@@ -1018,11 +1036,15 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 # adjective in common is not enough: "waste bin" vs
                 # "Insulated Ice Box" shares nothing meaningful, while
                 # "waste bin" vs "DUSTBIN" shares the head as a compound.
-                head = next((w for w in reversed(
+                # Size tokens masquerade as the head ("shaker 650mls",
+                # "trolley 4compartments") — skip unit-plurals and check the
+                # last TWO significant words, not just the very last one.
+                heads = [w for w in reversed(
                     [w for w in re.findall(r"[a-z]+", original_kw.lower())
-                     if len(w) >= 3 and w not in _UNITS])), None)
-                related = head is not None and any(
-                    head == b or head in b or b in head for b in sug_words)
+                     if len(w) >= 3 and w not in _UNITS
+                     and w.rstrip("s") not in _UNITS])][:2]
+                related = any(
+                    h == b or h in b or b in h for h in heads for b in sug_words)
                 if not req_words or related:
                     variants = search_catalog(sem_match)
                 else:
