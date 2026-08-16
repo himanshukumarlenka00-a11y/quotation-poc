@@ -82,7 +82,10 @@ Suggested cleanup pass (admin decisions needed, not auto-delete):
 Fixes 1-4 implemented and re-audited: model codes 84->89%, plurals 36->43%,
 unit-spacing 44->83%, model-spaced 79->85%, unit-stripped 12->50%,
 brand-stripped 36->40%. exact-core stuck ~50% — capped by duplicate-name
-data, not ranking. Typos remain 0% (item 3 below still open).
+data, not ranking. Typo layer also shipped same day: unknown query words spell-corrected to
+the catalogue's own vocabulary at edit-distance 1 (deterministic, known
+words never touched). Typos 0% -> 22% == the plain-fragment baseline, i.e.
+the typo penalty is gone; the residual is ordinary ambiguity.
 
 ## Recommended sequence
 

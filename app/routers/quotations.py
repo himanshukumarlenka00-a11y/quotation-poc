@@ -575,6 +575,64 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
     except Exception:
         all_products = []
 
+    # ── Typo correction against the catalogue's own vocabulary ──────────────
+    # "coktail table" found nothing, ever: FTS is exact-prefix and the name
+    # matcher needs real words. Deterministic fix: any query word UNKNOWN to
+    # the catalogue is corrected to the closest catalogue word at edit
+    # distance 1 (most frequent wins). Known words are never touched, so
+    # this cannot "correct" a legitimate term into something else.
+    global _VOCAB_CACHE
+    try:
+        _VOCAB_CACHE
+    except NameError:
+        _VOCAB_CACHE = (None, None)
+    if _VOCAB_CACHE[0] != len(all_products):
+        from collections import Counter
+        freq = Counter(w for p in all_products
+                       for w in re.findall(r"[a-z]{3,}", (p or "").lower()))
+        _VOCAB_CACHE = (len(all_products), freq)
+    _vocab = _VOCAB_CACHE[1]
+
+    def _ed1(a, b):
+        """Edit distance <= 1 (substitute / insert / delete one char)."""
+        la, lb = len(a), len(b)
+        if abs(la - lb) > 1:
+            return False
+        if la == lb:
+            return sum(1 for x, y in zip(a, b) if x != y) <= 1
+        if la > lb:
+            a, b, la, lb = b, a, lb, la
+        i = j = diff = 0
+        while i < la and j < lb:
+            if a[i] == b[j]:
+                i += 1; j += 1
+            else:
+                diff += 1
+                if diff > 1:
+                    return False
+                j += 1
+        return True
+
+    def _fix_typos(term):
+        out = []
+        for w in re.findall(r"\S+", term or ""):
+            lw = w.lower()
+            if (len(lw) >= 4 and lw.isalpha() and lw not in _vocab
+                    and lw.rstrip("s") not in _vocab):
+                cands = [(v, n) for v, n in _vocab.items()
+                         if v[0] == lw[0] and _ed1(lw, v)]
+                if cands:
+                    w = max(cands, key=lambda x: x[1])[0]
+            out.append(w)
+        return " ".join(out)
+
+    for it in extracted:
+        for key in ("product", "search_term"):
+            if it.get(key):
+                fixed = _fix_typos(it[key])
+                if fixed != it[key]:
+                    it[key] = fixed
+
     # Candidate rows for field-wide searching.
     #
     # This used to load EVERY master_products row into Python on every request.
