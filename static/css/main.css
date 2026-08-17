@@ -2057,3 +2057,12 @@ body.sb-mini .main-col { margin-left: 72px; }
 .aic-row .qa-main { padding: 8px 18px; flex: none; }
 .aic-status { font-size: var(--fs-sm); color: var(--muted); margin-top: 8px; }
 .aic-status:empty { display: none; }
+
+/* Dedupe screen */
+.dedupe-pair { display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 12px;
+  padding: 12px 14px; margin-bottom: 10px; }
+.dp-info small { color: var(--muted); }
+.dp-badge { background: var(--amber-soft2, #fef3c7); color: #92400e; font-size: 11px;
+  font-weight: 800; padding: 3px 10px; border-radius: 999px; margin-left: 10px; }
+.dp-actions { display: flex; gap: 8px; }

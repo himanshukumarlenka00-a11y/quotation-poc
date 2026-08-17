@@ -491,6 +491,74 @@ def bulk_set_tier_pricing(filename: str, req: BulkTierPricingRequest,
     return {"message": msg, "updated": updated, "skipped": skipped}
 
 
+@router.get("/api/master-table/dedupe-report")
+def dedupe_report(admin: dict = Depends(require_role("admin"))):
+    """The data-hygiene report behind SEARCH_FINDINGS: junk rows, catalogue
+    pairs sharing model codes (double imports), duplicate product names.
+    Read-only — deletions are separate, explicit admin actions."""
+    conn = get_db()
+    try:
+        junk = [dict(r) for r in conn.execute(
+            "SELECT id, product, file_name, price_3star FROM master_products "
+            "WHERE LENGTH(TRIM(product)) < 6 "
+            "OR product NOT GLOB '*[A-Za-z][A-Za-z][A-Za-z]*' LIMIT 100")]
+        pairs = [dict(r) for r in conn.execute("""
+            SELECT a.file_name AS file_a, b.file_name AS file_b,
+                   COUNT(DISTINCT LOWER(a.original_model)) AS shared_models
+            FROM master_products a
+            JOIN master_products b
+              ON LOWER(a.original_model) = LOWER(b.original_model)
+             AND a.file_name < b.file_name
+            WHERE LENGTH(a.original_model) >= 5
+            GROUP BY a.file_name, b.file_name
+            HAVING shared_models >= 5
+            ORDER BY shared_models DESC LIMIT 20""")]
+        counts = {r["file_name"]: r["n"] for r in conn.execute(
+            "SELECT file_name, COUNT(*) n FROM master_products GROUP BY file_name")}
+        for p in pairs:
+            p["rows_a"] = counts.get(p["file_a"], 0)
+            p["rows_b"] = counts.get(p["file_b"], 0)
+        dup_names = [dict(r) for r in conn.execute("""
+            SELECT LOWER(TRIM(product)) AS name, COUNT(*) AS n,
+                   COUNT(DISTINCT file_name) AS files
+            FROM master_products GROUP BY LOWER(TRIM(product))
+            HAVING n > 1 ORDER BY n DESC LIMIT 30""")]
+        dup_total = conn.execute(
+            "SELECT COUNT(*) FROM (SELECT 1 FROM master_products "
+            "GROUP BY LOWER(TRIM(product)) HAVING COUNT(*) > 1)").fetchone()[0]
+    finally:
+        conn.close()
+    return {"junk": junk, "overlapping_imports": pairs,
+            "dup_names": dup_names, "dup_name_groups_total": dup_total}
+
+
+class DeleteRowsRequest(BaseModel):
+    ids: list
+
+
+@router.post("/api/master-table/delete-rows")
+def delete_master_rows(req: DeleteRowsRequest, admin: dict = Depends(require_role("admin"))):
+    """Delete specific product rows by id (the dedupe screen's junk cleanup).
+    Hard-capped and audit-logged; never touches files on disk."""
+    ids = [int(i) for i in (req.ids or [])][:200]
+    if not ids:
+        raise HTTPException(400, "No rows given.")
+    conn = get_db()
+    try:
+        ph = ",".join("?" * len(ids))
+        sample = [r[0] for r in conn.execute(
+            f"SELECT product FROM master_products WHERE id IN ({ph}) LIMIT 5", ids)]
+        cur = conn.execute(f"DELETE FROM master_products WHERE id IN ({ph})", ids)
+        conn.commit()
+        rebuild_master_fts(conn)
+        n = cur.rowcount
+    finally:
+        conn.close()
+    log_action(admin, "delete_master_rows", target=f"{n} row(s)",
+               after={"sample": sample})
+    return {"message": f"Deleted {n} row(s).", "deleted": n}
+
+
 @router.get("/api/master-table/download-file/{filename:path}")
 def download_master_file(filename: str, admin: dict = Depends(require_role("admin"))):
     """Download the original uploaded catalogue file. Admin-only — source

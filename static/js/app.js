@@ -100,6 +100,8 @@ function onAuthed() {
   // avoids showing a tab that would 403.
   document.getElementById('tab-audit').style.display = currentUser.role === 'admin' ? '' : 'none';
   document.getElementById('tab-users').style.display = currentUser.role === 'admin' ? '' : 'none';
+  const td = document.getElementById('tab-dedupe');
+  if (td) td.style.display = currentUser.role === 'admin' ? '' : 'none';
   // Margin analysis exposes purchase cost — the endpoint is admin-only, so
   // don't offer employees a button that would 403.
   document.getElementById('margin-analyse-btn').style.display =
@@ -304,6 +306,7 @@ function show(tab) {
   if (tab === 'repository') { window._marginOnly = false; loadRepository(); }
   if (tab === 'audit')     loadAuditLog();
   if (tab === 'users')     loadUsers();
+  if (tab === 'dedupe')    loadDedupe();
   if (tab === 'dashboard') loadDashboard();
 }
 
@@ -820,6 +823,88 @@ function updateReqCount() {
   const ta = document.getElementById('req-prompt');
   const c = document.getElementById('req-count');
   if (ta && c) c.textContent = `${ta.value.length} / ${REQ_MAX}`;
+}
+
+// ── Dedupe (admin only): junk rows, double imports, duplicate names ──────────
+async function loadDedupe() {
+  const view = document.getElementById('dedupe-view');
+  view.innerHTML = '<div class="loading-state">Scanning the master table…</div>';
+  try {
+    const res = await fetch(`${API}/api/master-table/dedupe-report`);
+    const d = await res.json();
+    if (!res.ok) { view.innerHTML = `<div class="alert alert-error">${apiErr(d)}</div>`; return; }
+    renderDedupe(d);
+  } catch (e) {
+    view.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+  }
+}
+
+function renderDedupe(d) {
+  const view = document.getElementById('dedupe-view');
+  const junk = d.junk.length ? `
+    <div class="table-wrap"><table>
+      <thead><tr><th></th><th>Product name</th><th>Catalogue</th><th>3★ ₹</th></tr></thead>
+      <tbody>${d.junk.map(j => `<tr>
+        <td><input type="checkbox" class="junk-cb" value="${j.id}" checked></td>
+        <td><strong>${escHtml(j.product)}</strong></td>
+        <td style="font-size:var(--fs-sm)">${escHtml(j.file_name || '')}</td>
+        <td>₹${j.price_3star || 0}</td></tr>`).join('')}</tbody>
+    </table></div>
+    <button class="btn btn-sm btn-danger" style="margin-top:10px" onclick="deleteJunkRows()">🗑 Delete selected rows</button>`
+    : '<div class="alert alert-success">No junk rows found.</div>';
+
+  const pairs = d.overlapping_imports.length ? d.overlapping_imports.map(p => `
+    <div class="dedupe-pair">
+      <div class="dp-info">
+        <b>${escHtml(p.file_a)}</b> <small>(${p.rows_a} products)</small>
+        &nbsp;↔&nbsp; <b>${escHtml(p.file_b)}</b> <small>(${p.rows_b} products)</small>
+        <span class="dp-badge">${p.shared_models} shared model codes</span>
+      </div>
+      <div class="dp-actions">
+        <button class="btn btn-sm btn-danger" onclick="deleteWholeImport('${escHtml(p.file_a).replace(/'/g, "\\'")}', ${p.rows_a})">Delete left import</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteWholeImport('${escHtml(p.file_b).replace(/'/g, "\\'")}', ${p.rows_b})">Delete right import</button>
+      </div>
+    </div>`).join('')
+    : '<div class="alert alert-success">No overlapping imports found.</div>';
+
+  const dups = d.dup_names.length ? `
+    <p style="color:var(--muted);font-size:var(--fs-sm);margin-bottom:10px;">
+      ${d.dup_name_groups_total.toLocaleString('en-IN')} name groups exist more than once.
+      Most are legitimate size/brand variants — review manually in the Master Catalogue; nothing here is auto-deleted.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Name (top ${d.dup_names.length})</th><th>Rows</th><th>Catalogues</th></tr></thead>
+      <tbody>${d.dup_names.map(n => `<tr><td>${escHtml(n.name)}</td><td>${n.n}</td><td>${n.files}</td></tr>`).join('')}</tbody>
+    </table></div>` : '';
+
+  view.innerHTML = `
+    <div class="card"><h2 data-icon="🗑">Junk rows <span class="mf-count">${d.junk.length}</span></h2>
+      <p style="color:var(--muted);font-size:var(--fs-sm);margin-bottom:10px;">Header fragments imported as products — safe to delete after a glance.</p>${junk}</div>
+    <div class="card"><h2 data-icon="📑">Possible double imports <span class="mf-count">${d.overlapping_imports.length}</span></h2>
+      <p style="color:var(--muted);font-size:var(--fs-sm);margin-bottom:10px;">Catalogue pairs sharing many model codes — usually the same supplier list imported twice. Keep one, delete the other. <b>Check both in the Master Catalogue before deleting.</b></p>${pairs}</div>
+    <div class="card"><h2 data-icon="👥">Duplicate product names</h2>${dups}</div>`;
+}
+
+async function deleteJunkRows() {
+  const ids = [...document.querySelectorAll('.junk-cb:checked')].map(c => +c.value);
+  if (!ids.length) return;
+  if (!confirm(`Delete ${ids.length} junk row(s) from the master table? This cannot be undone.`)) return;
+  const res = await fetch(`${API}/api/master-table/delete-rows`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ ids })
+  });
+  const d = await res.json();
+  alert(res.ok ? d.message : apiErr(d));
+  masterAllItems = [];        // master view cache is now stale
+  loadDedupe();
+}
+
+async function deleteWholeImport(fname, rows) {
+  if (!confirm(`Delete the ENTIRE import "${fname}" — all ${rows} products?\n\nDo this only if you have confirmed it duplicates another catalogue. This cannot be undone.`)) return;
+  const res = await fetch(`${API}/api/master-table/${encodeURIComponent(fname)}`, { method: 'DELETE' });
+  const d = await res.json();
+  alert(res.ok ? (d.message || 'Deleted.') : apiErr(d));
+  masterAllItems = [];
+  loadDedupe();
 }
 
 // ── Users (admin only) ───────────────────────────────────────────────────────

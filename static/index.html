@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=128">
+<link rel="stylesheet" href="/static/css/main.css?v=90">
 </head>
 <body>
 
@@ -83,6 +83,7 @@
   <div class="snav" id="tab-upload" data-tab="upload" onclick="show('upload')" style="display:none"><span class="sic">⇪</span><span class="slbl"> Upload BOQ</span></div>
   <div class="snav" id="tab-audit" data-tab="audit" onclick="show('audit')" style="display:none"><span class="sic">◷</span><span class="slbl"> Activity</span></div>
   <div class="snav" id="tab-users" data-tab="users" onclick="show('users')" style="display:none"><span class="sic">◉</span><span class="slbl"> Users &amp; Roles</span></div>
+  <div class="snav" id="tab-dedupe" data-tab="dedupe" onclick="show('dedupe')" style="display:none"><span class="sic">🧹</span><span class="slbl"> Dedupe</span></div>
   <div class="side-user" id="side-user"></div>
 </aside>
 <div class="main-col">
@@ -464,6 +465,15 @@
 </section>
 
 
+<!-- ── SECTION: Dedupe (admin only) ── -->
+<section id="sec-dedupe" class="section">
+  <div class="page-head">
+    <h1>Data Dedupe</h1>
+    <p>Duplicate imports and junk rows confuse product matching — review and clean them here. Every deletion is explicit and audit-logged.</p>
+  </div>
+  <div id="dedupe-view"><div class="loading-state">Loading…</div></div>
+</section>
+
 <!-- ── SECTION: Users (admin only) ── -->
 <section id="sec-users" class="section">
   <div class="page-head">
@@ -501,6 +511,6 @@
 </div><!--/shell-->
 
 
-<script src="/static/js/app.js?v=131"></script>
+<script src="/static/js/app.js?v=90"></script>
 </body>
 </html>
