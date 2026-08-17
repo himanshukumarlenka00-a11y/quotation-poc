@@ -122,7 +122,9 @@ def main():
     key = os.environ.get("GROQ_API_KEY", "")
     if not key:
         sys.exit("GROQ_API_KEY not set")
-    client = Groq(api_key=key)
+    # timeout guards against a dropped connection hanging a request forever
+    # (observed on this LAN); llm_classify's retry loop handles the failure.
+    client = Groq(api_key=key, timeout=90, max_retries=0)
     done = 0
     for i in range(0, len(leftovers), BATCH):
         chunk = leftovers[i:i + BATCH]
