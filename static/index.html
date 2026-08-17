@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=90">
+<link rel="stylesheet" href="/static/css/main.css?v=91">
 </head>
 <body>
 
@@ -77,7 +77,11 @@
   <div class="snav" data-tab="generate" onclick="show('generate')"><span class="sic">⚡</span><span class="slbl"> Generate Quotation</span></div>
   <div class="snav" data-tab="result" onclick="show('result')"><span class="sic">📋</span><span class="slbl"> Current Quote</span></div>
   <div class="snav" data-tab="repository" onclick="show('repository')"><span class="sic">🗂</span><span class="slbl"> Quotations</span></div>
-  <div class="snav" data-tab="master" onclick="show('master')"><span class="sic">📦</span><span class="slbl"> Master Catalogue</span></div>
+  <div class="snav" data-tab="master" onclick="masterNavClick()"><span class="sic">📦</span><span class="slbl"> Master Catalogue</span><span class="slbl sub-arrow">▾</span></div>
+  <div id="master-sub" class="snav-sub" style="display:none">
+    <div class="snav sub" data-sub="file" onclick="setMasterMode('file')"><span class="sic">🗂</span><span class="slbl"> Batch wise</span></div>
+    <div class="snav sub" data-sub="category" onclick="setMasterMode('category')"><span class="sic">🏷</span><span class="slbl"> Category wise</span></div>
+  </div>
   <div class="snav" data-tab="coverage" onclick="showBoqCoverage()"><span class="sic">☑</span><span class="slbl"> BOQ Coverage</span></div>
   <div class="snav" data-tab="margin" onclick="showMargins()"><span class="sic">◔</span><span class="slbl"> Margin Analysis</span></div>
   <div class="snav" id="tab-upload" data-tab="upload" onclick="show('upload')" style="display:none"><span class="sic">⇪</span><span class="slbl"> Upload BOQ</span></div>
@@ -511,6 +515,6 @@
 </div><!--/shell-->
 
 
-<script src="/static/js/app.js?v=90"></script>
+<script src="/static/js/app.js?v=91"></script>
 </body>
 </html>

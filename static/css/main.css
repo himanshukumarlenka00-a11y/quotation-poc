@@ -2066,3 +2066,9 @@ body.sb-mini .main-col { margin-left: 72px; }
 .dp-badge { background: var(--amber-soft2, #fef3c7); color: #92400e; font-size: 11px;
   font-weight: 800; padding: 3px 10px; border-radius: 999px; margin-left: 10px; }
 .dp-actions { display: flex; gap: 8px; }
+
+/* Master Catalogue submenu */
+.snav-sub { margin-left: 18px; border-left: 2px solid var(--border); padding-left: 6px; }
+.snav-sub .snav.sub { padding: 8px 12px; font-size: var(--fs-sm); }
+.snav .sub-arrow { margin-left: auto; font-size: 10px; color: var(--muted); }
+body.sb-mini .snav-sub, body.sb-mini .sub-arrow { display: none !important; }

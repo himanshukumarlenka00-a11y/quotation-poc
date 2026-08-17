@@ -1442,10 +1442,37 @@ function onMasterSearchBlur() {
 // Phase 2 paging: the page loads a names+counts summary only; product rows
 // come per catalogue on expand / "Load more" (200 a page), and search runs
 // server-side — so a 3-lakh master table can't flood the browser.
-let masterSummary = [];        // [{file_name, count}]
-let masterFolders = {};        // fname -> {items: [], total: N}
+let masterSummary = [];        // [{file_name, count}] — key is file OR category label
+let masterFolders = {};        // group key -> {items: [], total: N}
 let masterSearchTerm = '';
 const MASTER_PAGE = 200;
+
+// Batch wise (per uploaded file) or Category wise (per CATEGORY column) —
+// same folder renderer, different grouping. Sticky per browser.
+let masterMode = localStorage.getItem('master-mode') || 'file';
+function _groupParam(key) {
+  return (masterMode === 'file' ? 'file=' : 'category=') + encodeURIComponent(key);
+}
+function masterNavClick() {
+  const sub = document.getElementById('master-sub');
+  if (sub) sub.style.display = sub.style.display === 'none' ? '' : 'none';
+  show('master');
+  _syncMasterSub();
+}
+function setMasterMode(m) {
+  if (m !== masterMode) {
+    masterMode = m;
+    localStorage.setItem('master-mode', m);
+    masterSummary = []; masterFolders = {};
+  }
+  show('master');
+  _syncMasterSub();  // after show(), which resets .snav active states
+  loadMasterTable();
+}
+function _syncMasterSub() {
+  document.querySelectorAll('#master-sub .snav').forEach(n =>
+    n.classList.toggle('active', n.dataset.sub === masterMode));
+}
 
 function _currentGroups() {
   const g = {};
@@ -1465,7 +1492,7 @@ function _expandedMasterFolders() {
 
 async function loadMasterTable() {
   const openSet = _expandedMasterFolders();
-  const res = await fetch(`${API}/api/master-table/summary`);
+  const res = await fetch(`${API}/api/master-table/summary?by=${masterMode === 'category' ? 'category' : 'file'}`);
   masterSummary = await res.json();
   document.getElementById('master-count').textContent =
     masterSummary.reduce((s, f) => s + f.count, 0);
@@ -1476,7 +1503,7 @@ async function loadMasterTable() {
     const g = masterFolders[f.file_name];
     if (openSet.has(f.file_name)) {
       const want = Math.max((g && g.items.length) || 0, MASTER_PAGE);
-      const r = await fetch(`${API}/api/master-table/page?file=${encodeURIComponent(f.file_name)}&limit=${want}`);
+      const r = await fetch(`${API}/api/master-table/page?${_groupParam(f.file_name)}&limit=${want}`);
       const d = await r.json();
       masterFolders[f.file_name] = { items: d.items, total: d.total };
     } else if (!g) {
@@ -1507,7 +1534,9 @@ async function _doMasterSearch() {
   if (masterSearchTerm !== term) return;   // a newer keystroke superseded this response
   const groups = {};
   d.items.forEach(i => {
-    const k = i.file_name || 'Unknown';
+    const k = masterMode === 'category'
+      ? ((i.category || '').trim() || 'Uncategorised')
+      : (i.file_name || 'Unknown');
     (groups[k] = groups[k] || { items: [], total: 0 }).items.push(i);
   });
   Object.values(groups).forEach(g => g.total = g.items.length);
@@ -1518,7 +1547,7 @@ async function _doMasterSearch() {
 
 async function loadMoreFolder(fname) {
   const g = masterFolders[fname] || (masterFolders[fname] = { items: [], total: 0 });
-  const r = await fetch(`${API}/api/master-table/page?file=${encodeURIComponent(fname)}&offset=${g.items.length}&limit=${MASTER_PAGE}`);
+  const r = await fetch(`${API}/api/master-table/page?${_groupParam(fname)}&offset=${g.items.length}&limit=${MASTER_PAGE}`);
   const d = await r.json();
   g.total = d.total;
   g.items = g.items.concat(d.items);
@@ -1604,7 +1633,10 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
     };
 
     const fnameEsc = fname.replace(/'/g, "\\'");
-    const bulkPricingBar = isAdminView ? `
+    // Bulk pricing + file download are per-CATALOGUE tools — meaningless
+    // when the group key is a category spanning many files.
+    const fileMode = masterMode === 'file' && !searchTerm;
+    const bulkPricingBar = (isAdminView && fileMode) ? `
       <div class="master-bulk-pricing">
         <span class="mbp-icon">%</span>
         <span class="mbp-label">Set whole catalog</span>
@@ -1641,7 +1673,7 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
           <span class="mf-count">${searchTerm ? `${prods.length} match(es)` : `${g.total} products`}</span>
         </div>
         <span style="display:flex;align-items:center;gap:8px;">
-          ${isAdminView ? `<button class="mf-dl" title="Download the original file"
+          ${(isAdminView && fileMode) ? `<button class="mf-dl" title="Download the original file"
             onclick="event.stopPropagation();window.open(API+'/api/master-table/download-file/'+encodeURIComponent('${fnameEsc}'))">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/></svg></button>` : ''}
           <span id="master-arrow-${gIdx}" class="master-arrow${wasExpanded ? ' open' : ''}">▶</span>

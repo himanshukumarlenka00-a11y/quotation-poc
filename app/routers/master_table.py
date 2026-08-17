@@ -315,21 +315,32 @@ def list_master_products(user: dict = Depends(get_current_user)):
     return result
 
 
+_CATEGORY_EXPR = "COALESCE(NULLIF(TRIM(category), ''), 'Uncategorised')"
+
+
 @router.get("/api/master-table/summary")
-def master_table_summary(user: dict = Depends(get_current_user)):
-    """Catalogue names + product counts only — what the folder list needs to
+def master_table_summary(by: str = "file", user: dict = Depends(get_current_user)):
+    """Group names + product counts only — what the folder list needs to
     draw itself without shipping every product row (Phase 2: the master page
-    must survive lakh-scale catalogues)."""
+    must survive lakh-scale catalogues). by=file groups per catalogue,
+    by=category per the CATEGORY column. Both shapes use the file_name key
+    so the folder renderer stays one code path."""
     conn = get_db()
-    rows = conn.execute(
-        "SELECT file_name, COUNT(*) AS count FROM master_products "
-        "GROUP BY file_name ORDER BY file_name").fetchall()
+    if by == "category":
+        rows = conn.execute(
+            f"SELECT {_CATEGORY_EXPR} AS file_name, COUNT(*) AS count "
+            "FROM master_products GROUP BY 1 ORDER BY 1").fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT file_name, COUNT(*) AS count FROM master_products "
+            "GROUP BY file_name ORDER BY file_name").fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 
 @router.get("/api/master-table/page")
-def master_table_page(file: str = "", q: str = "", limit: int = 200, offset: int = 0,
+def master_table_page(file: str = "", q: str = "", category: str = "",
+                      limit: int = 200, offset: int = 0,
                       user: dict = Depends(get_current_user)):
     """One page of master products — by catalogue (folder expand / Load more)
     or by search term across all catalogues. Same read rules as the full
@@ -341,6 +352,8 @@ def master_table_page(file: str = "", q: str = "", limit: int = 200, offset: int
     where, params = [], []
     if file:
         where.append("file_name = ?"); params.append(file)
+    if category:
+        where.append(f"{_CATEGORY_EXPR} = ?"); params.append(category)
     if q.strip():
         like = f"%{q.strip()}%"
         where.append("(product LIKE ? OR brand LIKE ? OR original_model LIKE ?)")
