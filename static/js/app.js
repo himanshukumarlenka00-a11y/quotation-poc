@@ -1457,10 +1457,16 @@ let masterSelMode = false;
 const masterSel = new Set();
 let masterCatList = [];    // category names for the "Set category…" dropdown
 
-function toggleMasterSelect() {
+function toggleMasterSelect(gIdx, fname) {
   masterSelMode = !masterSelMode;
   masterSel.clear();
   renderMasterProducts(_currentGroups(), _expandedMasterFolders());
+  // Entering select mode on a closed folder: open it right away, otherwise
+  // the checkboxes sit inside a collapsed body and the click looks dead.
+  if (masterSelMode && fname !== undefined) {
+    const content = document.getElementById(`master-folder-${gIdx}`);
+    if (content && !content.classList.contains('open')) toggleMasterFolder(gIdx, fname);
+  }
 }
 function toggleMasterRow(id, on) {
   if (on) masterSel.add(id); else masterSel.delete(id);
@@ -1501,9 +1507,15 @@ function masterSelMove(sel) {
   if (fname) _selApply('/api/master-table/update-rows', { file_name: fname }, 'Move');
 }
 function masterSelCategory(sel) {
-  let cat = sel.value; sel.value = '';
-  if (cat === '__new__') cat = (prompt('New category name:') || '').trim();
+  const cat = sel.value; sel.value = '';
   if (cat) _selApply('/api/master-table/update-rows', { category: cat }, 'Categorise');
+}
+function masterSelNewCat() {
+  const inp = document.getElementById('msel-newcat');
+  const cat = (inp.value || '').trim();
+  if (!cat) { toast('Type the new category name first.', 'error'); return; }
+  inp.value = '';
+  _selApply('/api/master-table/update-rows', { category: cat }, 'Categorise');
 }
 function masterSelDelete() {
   if (!masterSel.size) { toast('Tick some products first.', 'error'); return; }
@@ -1720,7 +1732,7 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
         </div>
         <span style="display:flex;align-items:center;gap:8px;">
           ${(isAdminView && fileMode) ? `<button class="mf-sel${masterSelMode ? ' on' : ''}" title="Select rows to move, recategorise or delete"
-            onclick="event.stopPropagation();toggleMasterSelect()">☑ Select</button>` : ''}
+            onclick="event.stopPropagation();toggleMasterSelect(${gIdx}, '${fnameEsc}')">☑ Select</button>` : ''}
           ${(isAdminView && fileMode) ? `<button class="mf-dl" title="Download the original file"
             onclick="event.stopPropagation();window.open(API+'/api/master-table/download-file/'+encodeURIComponent('${fnameEsc}'))">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/></svg></button>
@@ -1771,7 +1783,10 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
       <strong id="msel-count">${masterSel.size} selected</strong>
       <span style="flex:1"></span>
       <select onchange="masterSelMove(this)"><option value="">Move to batch…</option>${batchOpts}</select>
-      <select onchange="masterSelCategory(this)"><option value="">Set category…</option>${catOpts}<option value="__new__">＋ New category…</option></select>
+      <select onchange="masterSelCategory(this)"><option value="">Set category…</option>${catOpts}</select>
+      <input id="msel-newcat" type="text" placeholder="…or new category name" style="width:170px"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();masterSelNewCat();}">
+      <button class="btn btn-sm" onclick="masterSelNewCat()">Set</button>
       <button class="btn btn-sm btn-danger" onclick="masterSelDelete()">🗑 Delete</button>
       <button class="btn btn-sm" onclick="toggleMasterSelect()">Done</button>
     </div>`;
