@@ -373,6 +373,19 @@ def _strip_price_constraint(text):
     return re.sub(r"\s+", " ", t).strip(" ,.-"), pmin, pmax
 
 
+def _model_exact(model, mtoks, t, t_is_code, numtoks):
+    """True when a requested code equals the row's model exactly
+    (separator-insensitive) — not merely a substring of a longer code."""
+    model_n = re.sub(r"[^a-z0-9]", "", model)
+    if not model_n:
+        return False
+    cand = [re.sub(r"[^a-z0-9]", "", mt) for mt in mtoks]
+    if t_is_code:
+        cand.append(re.sub(r"[^a-z0-9]", "", t))
+    cand += [nt for nt in numtoks if len(nt) >= 5]
+    return any(c and c == model_n for c in cand)
+
+
 def _strip_cost(data, user):
     """Remove purchase cost from a quotation payload for non-admins.
 
@@ -808,12 +821,15 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             if tn and (re.sub(r"[^a-z0-9]+", " ", name).strip() == tn
                        or re.sub(r"[^a-z0-9]+", " ", human).strip() == tn):
                 score = 2000                                   # exact name — supreme
-            elif model and ((mtoks and any(mt in model for mt in mtoks))
-                          or (t_is_code and t in model)
-                          # digit-only codes (AndyManhart "1052418") are real
-                          # model numbers too — primary match, not tie-break
-                          or any(len(nt) >= 5 and nt in model for nt in numtoks)):
-                score = 1000                                   # model-number match (most specific)
+            elif model and (_model_exact(model, mtoks, t, t_is_code, numtoks)
+                            or (mtoks and any(mt in model for mt in mtoks))
+                            or (t_is_code and t in model)
+                            or any(len(nt) >= 5 and nt in model for nt in numtoks)):
+                # EXACT model equality must beat substring containment: asking
+                # for WBS001-SS repeatedly matched EEWBS001-SS (a longer code
+                # CONTAINING it) — every correction the team has logged was
+                # this one bug. Separators stripped on both sides.
+                score = 1500 if _model_exact(model, mtoks, t, t_is_code, numtoks) else 1000
             elif core and all(_covered(w, name, name_ns) for w in core):
                 score = 600 - min(len(name), 120)              # full name match; tighter ranks higher
             elif name_core and all(_covered(w, t, t_ns) for w in name_core):
