@@ -63,10 +63,12 @@ def llm_classify(client, names):
         f"Reply with ONLY a JSON array of {len(names)} integers (the category "
         "number for each product, in order). No other text."
     )
-    for attempt in range(4):
+    attempt = 0
+    while attempt < 4:
         try:
             r = client.chat.completions.create(
                 model=MODEL, temperature=0, max_tokens=4000,
+                reasoning_effort="low",
                 messages=[{"role": "user", "content": prompt}])
             text = r.choices[0].message.content
             m = re.search(r"\[[\d,\s]+\]", text)
@@ -74,15 +76,21 @@ def llm_classify(client, names):
             if len(arr) == len(names) and all(0 <= int(x) < len(CATS) for x in arr):
                 return [int(x) for x in arr]
             print(f"  bad shape (got {len(arr)}), retrying")
+            attempt += 1
         except Exception as e:
             msg = str(e)
-            if "429" in msg or "rate" in msg.lower():
-                wait = 60 * (attempt + 1)
-                print(f"  rate limited, sleeping {wait}s")
-                time.sleep(wait)
+            if "per day" in msg or "TPD" in msg:
+                # Daily quota exhausted — tokens free up on a rolling 24h
+                # window, so wait it out instead of burning retry attempts.
+                print("  daily quota hit, sleeping 30min", flush=True)
+                time.sleep(1800)
+            elif "429" in msg or "rate" in msg.lower():
+                print("  rate limited, sleeping 60s", flush=True)
+                time.sleep(60)
             else:
-                print(f"  LLM error: {msg[:200]}")
+                print(f"  LLM error: {msg[:200]}", flush=True)
                 time.sleep(5)
+                attempt += 1
     return None
 
 
