@@ -96,3 +96,15 @@ the typo penalty is gone; the residual is ordinary ambiguity.
 
 Audit scripts: /tmp/search_audit.py, /tmp/search_audit2.py on the server
 (rerunnable read-only; regenerate from this session's scratchpad if lost).
+
+## Cleanup executed 2026-08-17 (with user approval per pair)
+
+Deleted: 6 junk rows; KUTAHYA COPY (799, fully contained in DONE); WALTHR
+double-space copy (966, base prices — user chose to keep the +14.12%
+repriced copy); BONNA 2024-25 PART 3 (3,468, stale year, 179 unique items
+accepted as lost — re-importable from the stored file). Master 51,938 ->
+46,699. Post-cleanup audit: model-spaced 96%, unit-spacing 92%, exact-core
+59%, dup-name groups 3,538 -> 1,555, junk 0. Remaining ambiguity is mostly
+color variants sharing a model code (GOP231-PNK vs -CHM) — human Switch
+territory. Remaining cross-file model overlaps are small (6-12 rows) and
+look like genuinely shared items, not double imports.
