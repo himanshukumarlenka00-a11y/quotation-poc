@@ -1474,6 +1474,65 @@ function _syncMasterSub() {
     n.classList.toggle('active', n.dataset.sub === masterMode));
 }
 
+// ── Batch-wise selection mode: tick rows, then move / recategorise / delete ──
+let masterSelMode = false;
+const masterSel = new Set();
+let masterCatList = [];    // category names for the "Set category…" dropdown
+
+function toggleMasterSelect() {
+  masterSelMode = !masterSelMode;
+  masterSel.clear();
+  renderMasterProducts(_currentGroups(), _expandedMasterFolders());
+}
+function toggleMasterRow(id, on) {
+  if (on) masterSel.add(id); else masterSel.delete(id);
+  _updSelBar();
+}
+function toggleMasterFolderAll(fname, on) {
+  const g = masterFolders[fname];
+  if (!g) return;
+  g.items.forEach(i => {
+    if (on) masterSel.add(i.id); else masterSel.delete(i.id);
+    const cb = document.getElementById(`msel-${i.id}`);
+    if (cb) cb.checked = on;
+  });
+  _updSelBar();
+}
+function _updSelBar() {
+  const e = document.getElementById('msel-count');
+  if (e) e.textContent = `${masterSel.size} selected`;
+}
+async function _selApply(url, body, verb) {
+  if (!masterSel.size) { toast('Tick some products first.', 'error'); return; }
+  if (masterSel.size > 200) { toast('Max 200 rows at a time — narrow the selection.', 'error'); return; }
+  try {
+    const res = await fetch(`${API}${url}`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ ids: [...masterSel], ...body })
+    });
+    const d = await res.json();
+    if (!res.ok) { toast(d.detail || `${verb} failed`, 'error'); return; }
+    toast(d.message, 'success');
+    masterSel.clear();
+    masterFolders = {}; masterAllItems = [];
+    loadMasterTable();
+  } catch (e) { toast(`${verb} failed: ${e.message}`, 'error'); }
+}
+function masterSelMove(sel) {
+  const fname = sel.value; sel.value = '';
+  if (fname) _selApply('/api/master-table/update-rows', { file_name: fname }, 'Move');
+}
+function masterSelCategory(sel) {
+  let cat = sel.value; sel.value = '';
+  if (cat === '__new__') cat = (prompt('New category name:') || '').trim();
+  if (cat) _selApply('/api/master-table/update-rows', { category: cat }, 'Categorise');
+}
+function masterSelDelete() {
+  if (!masterSel.size) { toast('Tick some products first.', 'error'); return; }
+  if (!confirm(`Delete ${masterSel.size} product(s) from the master table? This can't be undone.`)) return;
+  _selApply('/api/master-table/delete-rows', {}, 'Delete');
+}
+
 function _currentGroups() {
   const g = {};
   masterSummary.forEach(f => g[f.file_name] = masterFolders[f.file_name] || { items: [], total: f.count });
@@ -1496,6 +1555,12 @@ async function loadMasterTable() {
   masterSummary = await res.json();
   document.getElementById('master-count').textContent =
     masterSummary.reduce((s, f) => s + f.count, 0);
+  if (masterMode === 'file' && currentUser && currentUser.role === 'admin') {
+    try {
+      const cats = await (await fetch(`${API}/api/master-table/summary?by=category`)).json();
+      masterCatList = cats.map(c => c.file_name).filter(c => c !== 'Uncategorised');
+    } catch (e) { /* dropdown just stays shorter */ }
+  }
   // Folders the user has open must show fresh rows (a bulk-price apply or an
   // inline edit reloads through here) — refetch what was loaded, first page
   // minimum. Closed folders keep whatever they had; they refetch on expand.
@@ -1587,6 +1652,9 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
     ? `<p style="color:var(--muted);font-size:var(--fs-sm);margin-bottom:10px;">Showing the first 500 of ${searchTotal} matches — refine the search to narrow it down.</p>`
     : '';
 
+  const selOn = masterSelMode && isAdminView && masterMode === 'file' && !searchTerm;
+  const esc = s => s.replace(/"/g, '&quot;');
+
   el.innerHTML = capNote + Object.entries(groups).map(([fname, g], gIdx) => {
     const prods = g.items;
     const headerCells = `<th class="num">Original (₹)</th><th class="num">3★ Price (₹)</th><th class="num">3★ Price ($)</th><th class="num">4★ Price (₹)</th><th class="num">4★ Price ($)</th>`;
@@ -1673,6 +1741,8 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
           <span class="mf-count">${searchTerm ? `${prods.length} match(es)` : `${g.total} products`}</span>
         </div>
         <span style="display:flex;align-items:center;gap:8px;">
+          ${(isAdminView && fileMode) ? `<button class="mf-sel${masterSelMode ? ' on' : ''}" title="Select rows to move, recategorise or delete"
+            onclick="event.stopPropagation();toggleMasterSelect()">☑ Select</button>` : ''}
           ${(isAdminView && fileMode) ? `<button class="mf-dl" title="Download the original file"
             onclick="event.stopPropagation();window.open(API+'/api/master-table/download-file/'+encodeURIComponent('${fnameEsc}'))">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/></svg></button>` : ''}
@@ -1684,8 +1754,9 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
         ${bulkPricingBar}
         <div class="table-wrap">
           <table>
-            <thead><tr><th class="c">Image</th><th>Product</th><th>Brand</th><th>Model</th>${headerCells}<th class="c">GST%</th><th class="c">HSN</th></tr></thead>
+            <thead><tr>${selOn ? `<th class="c"><input type="checkbox" onclick="event.stopPropagation();toggleMasterFolderAll('${fnameEsc}', this.checked)" title="Select all loaded rows"></th>` : ''}<th class="c">Image</th><th>Product</th><th>Brand</th><th>Model</th>${headerCells}<th class="c">GST%</th><th class="c">HSN</th></tr></thead>
             <tbody>${prods.map(i => `<tr>
+              ${selOn ? `<td class="c"><input type="checkbox" id="msel-${i.id}" ${masterSel.has(i.id) ? 'checked' : ''} onclick="toggleMasterRow(${i.id}, this.checked)"></td>` : ''}
               <td class="c">${i.has_image
                 ? `<img src="${API}/api/image/${i.image_path}" style="width:64px;height:52px;object-fit:contain;border-radius:4px;border:1px solid #ddd;cursor:zoom-in;" onclick="showImageLightbox('${API}/api/image/${i.image_path}')" title="Click to enlarge" onerror="this.style.display='none'">`
                 : `<span style="color:#ccc;font-size:var(--fs-xs);">—</span>`}</td>
@@ -1708,6 +1779,22 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
       </div>
     </div>`;
   }).join('');
+
+  if (selOn) {
+    const batchOpts = masterSummary.map(f =>
+      `<option value="${esc(f.file_name)}">${f.file_name}</option>`).join('');
+    const catOpts = masterCatList.map(c =>
+      `<option value="${esc(c)}">${c}</option>`).join('');
+    el.innerHTML += `
+    <div class="master-sel-bar">
+      <strong id="msel-count">${masterSel.size} selected</strong>
+      <span style="flex:1"></span>
+      <select onchange="masterSelMove(this)"><option value="">Move to batch…</option>${batchOpts}</select>
+      <select onchange="masterSelCategory(this)"><option value="">Set category…</option>${catOpts}<option value="__new__">＋ New category…</option></select>
+      <button class="btn btn-sm btn-danger" onclick="masterSelDelete()">🗑 Delete</button>
+      <button class="btn btn-sm" onclick="toggleMasterSelect()">Done</button>
+    </div>`;
+  }
 }
 
 async function updateMasterPrice(id, price3, price4) {

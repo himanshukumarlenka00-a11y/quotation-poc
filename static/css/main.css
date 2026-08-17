@@ -2072,3 +2072,12 @@ body.sb-mini .main-col { margin-left: 72px; }
 .snav-sub .snav.sub { padding: 8px 12px; font-size: var(--fs-sm); }
 .snav .sub-arrow { margin-left: auto; font-size: 10px; color: var(--muted); }
 body.sb-mini .snav-sub, body.sb-mini .sub-arrow { display: none !important; }
+
+/* Master selection mode */
+.mf-sel { border: 1px solid var(--border); background: var(--card); color: var(--muted);
+  border-radius: 6px; padding: 3px 10px; font-size: var(--fs-sm); cursor: pointer; }
+.mf-sel.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.master-sel-bar { position: sticky; bottom: 12px; display: flex; align-items: center; gap: 10px;
+  background: var(--card); border: 1px solid var(--accent); border-radius: 10px;
+  padding: 10px 16px; margin-top: 14px; box-shadow: 0 4px 16px rgba(0,0,0,.12); z-index: 5; }
+.master-sel-bar select { max-width: 260px; }

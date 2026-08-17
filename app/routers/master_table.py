@@ -572,6 +572,42 @@ def delete_master_rows(req: DeleteRowsRequest, admin: dict = Depends(require_rol
     return {"message": f"Deleted {n} row(s).", "deleted": n}
 
 
+class UpdateRowsRequest(BaseModel):
+    ids: list
+    file_name: str = ""
+    category: str = ""
+
+
+@router.post("/api/master-table/update-rows")
+def update_master_rows(req: UpdateRowsRequest, admin: dict = Depends(require_role("admin"))):
+    """Move rows to another batch (file_name) and/or set their category —
+    the master-table selection bar. DB-only: the original Excel files on
+    disk are never touched, so a re-upload restores the old grouping."""
+    ids = [int(i) for i in (req.ids or [])][:200]
+    if not ids:
+        raise HTTPException(400, "No rows given.")
+    sets, vals = [], []
+    if req.file_name.strip():
+        sets.append("file_name=?"); vals.append(req.file_name.strip())
+    if req.category.strip():
+        sets.append("category=?"); vals.append(req.category.strip())
+    if not sets:
+        raise HTTPException(400, "Nothing to change — give a batch or a category.")
+    conn = get_db()
+    try:
+        ph = ",".join("?" * len(ids))
+        cur = conn.execute(
+            f"UPDATE master_products SET {', '.join(sets)} WHERE id IN ({ph})",
+            vals + ids)
+        conn.commit()
+        n = cur.rowcount
+    finally:
+        conn.close()
+    log_action(admin, "update_master_rows", target=f"{n} row(s)",
+               after={"file_name": req.file_name or None, "category": req.category or None})
+    return {"message": f"Updated {n} row(s).", "updated": n}
+
+
 @router.get("/api/master-table/download-file/{filename:path}")
 def download_master_file(filename: str, admin: dict = Depends(require_role("admin"))):
     """Download the original uploaded catalogue file. Admin-only — source
