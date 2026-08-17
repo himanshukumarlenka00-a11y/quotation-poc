@@ -2082,3 +2082,5 @@ body.sb-mini .snav-sub, body.sb-mini .sub-arrow { display: none !important; }
   padding: 10px 16px; margin-top: 14px; box-shadow: 0 4px 16px rgba(0,0,0,.12); z-index: 5; }
 .master-sel-bar select { max-width: 260px; }
 .mf-del:hover { color: #c0392b; border-color: #c0392b; }
+.master-sel-bar { flex-wrap: wrap; }
+.master-sel-bar #msel-newcat { min-width: 150px; }
