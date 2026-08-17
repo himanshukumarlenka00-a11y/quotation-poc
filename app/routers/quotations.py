@@ -51,7 +51,7 @@ def _llm_chat(groq_client, messages, max_tokens, temperature):
     reasoning before the answer."""
     try:
         r = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile", messages=messages,
+            model="openai/gpt-oss-120b", messages=messages,
             max_tokens=max_tokens, temperature=temperature)
         return r.choices[0].message.content
     except Exception as e:
