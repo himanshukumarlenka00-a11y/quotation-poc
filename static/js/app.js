@@ -301,7 +301,7 @@ function show(tab) {
   document.getElementById('sec-' + tab).classList.add('active');
   window.scrollTo({ top: 0, behavior: 'instant' in document.documentElement.style ? 'instant' : 'auto' });
   if (tab === 'upload')    { loadCatalog(); loadUploadedFiles(); }
-  if (tab === 'master')    { loadMasterFiles(); if (!masterSummary.length) loadMasterTable(); }
+  if (tab === 'master')    { if (!masterSummary.length) loadMasterTable(); }
   if (tab === 'generate')  { document.getElementById('sec-generate').classList.remove('boq-only'); loadCatalogSelector(); }
   if (tab === 'repository') { window._marginOnly = false; loadRepository(); }
   if (tab === 'audit')     loadAuditLog();
@@ -1375,7 +1375,6 @@ async function uploadMasterFile() {
   btn.disabled = false; btn.textContent = '✅ Confirm & Import';
   btn.style.display = 'none';
   document.getElementById('master-scan-result').innerHTML = '';
-  loadMasterFiles();
   loadMasterTable();
 }
 
@@ -1390,39 +1389,18 @@ async function forceImportMaster(idx) {
     const res = await fetch(`${API}/api/master-table/upload`, { method: 'POST', body: fd });
     const data = await res.json();
     status.innerHTML += `<div class="alert alert-${res.ok ? 'success' : 'error'}">${res.ok ? data.message : apiErr(data)}</div>`;
-    if (res.ok) { loadMasterFiles(); loadMasterTable(); }
+    if (res.ok) { loadMasterTable(); }
   } catch (e) {
     status.innerHTML += `<div class="alert alert-error">${e.message}</div>`;
   }
 }
 
-function toggleImportedFiles() {
-  document.getElementById('master-files-body').classList.toggle('collapsed');
-  document.getElementById('imported-files-toggle').classList.toggle('collapsed');
-}
-
-async function loadMasterFiles() {
-  const res = await fetch(`${API}/api/master-table/files`);
-  const files = await res.json();
-  const el = document.getElementById('master-files');
-  if (!files.length) { el.innerHTML = '<div class="empty-state"><span class="es-icon">📁</span><div class="es-title">No files imported yet</div><div class="es-hint">Imported catalogues will be listed here.</div></div>'; return; }
-  const isAdmin = currentUser && currentUser.role === 'admin';
-  el.innerHTML = files.map(f => `
-    <div class="repo-item">
-      <div>
-        <strong>📄 ${f.file_name}</strong>
-        <div class="meta">${f.count} products &nbsp;·&nbsp; imported ${new Date(f.uploaded_at).toLocaleDateString('en-IN')}</div>
-      </div>
-      ${isAdmin ? `<button class="btn btn-sm btn-danger" onclick="deleteMasterFile('${f.file_name}')">🗑 Delete</button>` : ''}
-    </div>`).join('');
-}
-
 async function deleteMasterFile(filename) {
-  if (!confirm(`Remove '${filename}' from the master table?`)) return;
+  if (!confirm(`Remove '${filename}' and all its products from the master table?`)) return;
   const res = await fetch(`${API}/api/master-table/${encodeURIComponent(filename)}`, { method: 'DELETE' });
   const d = await res.json();
-  toast(d.message, 'success');
-  loadMasterFiles();
+  toast(d.message, res.ok ? 'success' : 'error');
+  masterFolders = {}; masterAllItems = [];
   loadMasterTable();
 }
 
@@ -1745,7 +1723,10 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
             onclick="event.stopPropagation();toggleMasterSelect()">☑ Select</button>` : ''}
           ${(isAdminView && fileMode) ? `<button class="mf-dl" title="Download the original file"
             onclick="event.stopPropagation();window.open(API+'/api/master-table/download-file/'+encodeURIComponent('${fnameEsc}'))">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/></svg></button>` : ''}
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/></svg></button>
+          <button class="mf-dl mf-del" title="Delete this catalogue and all its products"
+            onclick="event.stopPropagation();deleteMasterFile('${fnameEsc}')">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''}
           <span id="master-arrow-${gIdx}" class="master-arrow${wasExpanded ? ' open' : ''}">▶</span>
         </span>
       </div>
