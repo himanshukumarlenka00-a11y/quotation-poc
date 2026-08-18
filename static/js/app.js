@@ -1636,12 +1636,6 @@ function toggleMasterSelect(gIdx, fname) {
   masterSelMode = masterSelFolders.size > 0;
   if (!masterSelMode) masterSel.clear();
   renderMasterProducts(_currentGroups(), _expandedMasterFolders());
-  // Entering select mode on a closed folder: open it right away, otherwise
-  // the checkboxes sit inside a collapsed body and the click looks dead.
-  if (fname !== undefined && masterSelFolders.has(fname)) {
-    const content = document.getElementById(`master-folder-${gIdx}`);
-    if (content && !content.classList.contains('open')) toggleMasterFolder(gIdx, fname);
-  }
 }
 function toggleMasterRow(id, on) {
   if (on) masterSel.add(id); else masterSel.delete(id);
