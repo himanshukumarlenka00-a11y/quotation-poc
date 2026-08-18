@@ -1463,6 +1463,23 @@ function _syncMasterSub() {
     n.classList.toggle('active', n.dataset.sub === masterMode));
 }
 
+// ── Per-folder filter: server-side search scoped to one catalogue/category ──
+const masterFolderQ = {};
+let _ffTimer = null;
+function filterFolder(gIdx, fname, val) {
+  masterFolderQ[fname] = val;
+  clearTimeout(_ffTimer);
+  _ffTimer = setTimeout(async () => {
+    const q = (masterFolderQ[fname] || '').trim();
+    const r = await fetch(`${API}/api/master-table/page?${_groupParam(fname)}&q=${encodeURIComponent(q)}&limit=${MASTER_PAGE}`);
+    const d = await r.json();
+    masterFolders[fname] = { items: d.items, total: d.total };
+    renderMasterProducts(_currentGroups(), _expandedMasterFolders());
+    const inp = document.getElementById(`mf-q-${gIdx}`);
+    if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+  }, 300);
+}
+
 // ── Batch-wise selection mode: tick rows, then move / recategorise / delete ──
 let masterSelMode = false;
 const masterSel = new Set();
@@ -1613,7 +1630,8 @@ async function _doMasterSearch() {
 
 async function loadMoreFolder(fname) {
   const g = masterFolders[fname] || (masterFolders[fname] = { items: [], total: 0 });
-  const r = await fetch(`${API}/api/master-table/page?${_groupParam(fname)}&offset=${g.items.length}&limit=${MASTER_PAGE}`);
+  const fq = (masterFolderQ[fname] || '').trim();
+  const r = await fetch(`${API}/api/master-table/page?${_groupParam(fname)}${fq ? `&q=${encodeURIComponent(fq)}` : ''}&offset=${g.items.length}&limit=${MASTER_PAGE}`);
   const d = await r.json();
   g.total = d.total;
   g.items = g.items.concat(d.items);
@@ -1758,6 +1776,9 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
       </div>
       <div id="master-folder-${gIdx}" class="master-folder-body${wasExpanded ? ' open' : ''}">
         <div class="master-folder-content">
+        ${!searchTerm ? `<input id="mf-q-${gIdx}" class="mf-q" type="text" placeholder="🔍 Filter within this ${masterMode === 'category' ? 'category' : 'catalogue'}…"
+          value="${esc(masterFolderQ[fname] || '')}" oninput="filterFolder(${gIdx}, '${fnameEsc}', this.value)"
+          onkeydown="stopEnterSubmit(event)">` : ''}
         ${bulkPricingBar}
         <div class="table-wrap">
           <table>

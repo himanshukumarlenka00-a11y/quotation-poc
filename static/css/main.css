@@ -2084,3 +2084,7 @@ body.sb-mini .snav-sub, body.sb-mini .sub-arrow { display: none !important; }
 .mf-del:hover { color: #c0392b; border-color: #c0392b; }
 .master-sel-bar { flex-wrap: wrap; }
 .master-sel-bar #msel-newcat { min-width: 150px; }
+.mf-q { width: 100%; max-width: 340px; margin-bottom: 10px; padding: 7px 12px;
+  border: 1px solid var(--border); border-radius: 8px; font-size: var(--fs-sm);
+  background: var(--card); color: var(--text); }
+.mf-q:focus { outline: none; border-color: var(--accent); }
