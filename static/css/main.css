@@ -2294,3 +2294,5 @@ html[data-theme=dark] .sic svg [fill="#1a1a1a"] { fill: #cfd6e4; }
 .man-footer .manual-add-actions { margin: 0; }
 .man-footer .man-master-row { flex-wrap: nowrap; flex: 1 1 auto; min-width: 0; }
 .man-footer .man-master-row select { flex: 0 1 auto; min-width: 140px; }
+.man-footer { justify-content: flex-end; }
+.man-footer .man-master-row { flex: 0 1 auto; }
