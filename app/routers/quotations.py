@@ -603,8 +603,12 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         from collections import Counter
         freq = Counter(w for p in all_products
                        for w in re.findall(r"[a-z]{3,}", (p or "").lower()))
-        _VOCAB_CACHE = (len(all_products), freq)
+        # One lowercase blob of every name — cheap "does this exact phrase
+        # appear anywhere in the catalogue" checks for the compound merger.
+        blob = "\n".join((p or "").lower() for p in all_products)
+        _VOCAB_CACHE = (len(all_products), freq, blob)
     _vocab = _VOCAB_CACHE[1]
+    _name_blob = _VOCAB_CACHE[2]
 
     def _ed1(a, b):
         """Edit distance <= 1 (substitute / insert / delete one char)."""
@@ -646,10 +650,35 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             out.append(w)
         return " ".join(out)
 
+    def _merge_compounds(term):
+        """'pop corn' finds nothing while the catalogue says POPCORN — join
+        adjacent words when the joined form is a catalogue word at least as
+        common as both halves (so 'bar spoon' is never mangled)."""
+        words = re.findall(r"\S+", term or "")
+        out, i = [], 0
+        while i < len(words):
+            if i + 1 < len(words):
+                a, b = words[i].lower(), words[i + 1].lower()
+                j = a + b
+                # Merge only when the joined word is real catalogue vocabulary
+                # AND the two-word phrase never occurs in any product name —
+                # 'tea pot' (155 phrase rows) stays split, 'pop corn' (0
+                # phrase rows, POPCORN exists) joins.
+                if (a.isalpha() and b.isalpha() and _vocab.get(j, 0) >= 2
+                        and f"{a} {b}" not in _name_blob):
+                    out.append(words[i] + words[i + 1])
+                    i += 2
+                    continue
+            out.append(words[i])
+            i += 1
+        return " ".join(out)
+
     for it in extracted:
         for key in ("product", "search_term"):
             if it.get(key):
-                fixed = _fix_typos(it[key])
+                # Merge BEFORE typo-fixing: 'corn' alone is unknown to the
+                # catalogue and would get "corrected" to 'cork' first.
+                fixed = _fix_typos(_merge_compounds(it[key]))
                 if fixed != it[key]:
                     it[key] = fixed
 
@@ -877,8 +906,11 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             return []
         # Keep only same-tier matches so the variant switcher shows genuine
         # alternatives. Drops weak partials (e.g. a row matching only "electric"
-        # for a request of "electric kettle").
-        cutoff = scored[0][0] * 0.6
+        # for a request of "electric kettle"). Capped at 420: an exact-name or
+        # exact-model top hit (1500-2000) must not starve the switcher — "food
+        # warmer" matched 5 rows named exactly that and hid the other 23
+        # full-coverage food warmers behind a 1200 cutoff.
+        cutoff = min(scored[0][0] * 0.6, 420)
         result = [r for s, r in scored if s >= cutoff]
 
         # Progressive refinement: if the request carries a spec value (wattage,
