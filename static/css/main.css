@@ -2146,3 +2146,8 @@ body.sb-mini .snav-sub, body.sb-mini .sub-arrow { display: none !important; }
 html[data-theme=dark] .mgn-chip.mgn-good { background: rgba(30,124,58,.22); color: #6fd18a; }
 html[data-theme=dark] .mgn-chip.mgn-mid { background: rgba(154,107,0,.22); color: #e5b95c; }
 html[data-theme=dark] .mgn-chip.mgn-low { background: rgba(192,57,43,.22); color: #ef8a80; }
+
+/* Quote table: content follows its column's alignment exactly */
+#items-table .col-3star .tier-price-cell, #items-table .col-4star .tier-price-cell { justify-content: center; }
+#items-table .qty-input, #items-table .gst-input { text-align: center; }
+#items-table .price-input { text-align: right; }
