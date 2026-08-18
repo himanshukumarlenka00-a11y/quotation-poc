@@ -55,6 +55,7 @@ class AddProductRequest(BaseModel):
     price: float = 0     # single price — mirrored into 3★/4★ (house rule)
     cost: float = 0
     image_data: str = ""  # optional data URL from the manual-add form
+    file_name: str = ""   # which existing batch to file it under; default below
 
 
 @router.post("/api/master-table/add-product")
@@ -84,7 +85,8 @@ def add_master_product(req: AddProductRequest, admin: dict = Depends(require_rol
             except Exception:
                 pass
         _insert_master_items(conn, [{
-            "file_name": "Added manually", "sl_no": "", "product": product,
+            "file_name": req.file_name.strip() or "Added manually",
+            "sl_no": "", "product": product,
             "original_model": model, "brand": req.brand.strip(),
             "specification": req.specification.strip(),
             "price_3star": req.price, "price_4star": req.price,

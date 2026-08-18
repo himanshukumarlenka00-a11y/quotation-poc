@@ -3870,10 +3870,13 @@ function toggleManualAdd() {
             </select></div>
           ${field('man-hsn', 'HSN Code', 'e.g. 73239390')}
         </div>
-        ${isAdminUser ? `<label class="man-master-check">
-          <input type="checkbox" id="man-to-master" checked>
-          <span>💾 Save to the <b>Master Catalogue</b> too — future quotes find it automatically</span>
-        </label>` : ''}
+        ${isAdminUser ? `<div class="man-master-row">
+          <label class="man-master-check">
+            <input type="checkbox" id="man-to-master" checked>
+            <span>💾 Save to the <b>Master Catalogue</b> too, in batch:</span>
+          </label>
+          <select id="man-master-batch"><option value="Added manually">Added manually</option></select>
+        </div>` : ''}
         <div id="man-error" class="man-error" style="display:none;"></div>
         <div class="manual-add-actions">
           <button type="button" class="btn-manual-cancel" onclick="toggleManualAdd()">Cancel</button>
@@ -3885,6 +3888,17 @@ function toggleManualAdd() {
   }
   form.style.display = opening ? 'block' : 'none';
   btn.style.display = opening ? 'none' : 'inline-flex';
+  // Fill the batch picker with the existing catalogues (admins only).
+  if (opening && currentUser && currentUser.role === 'admin') {
+    fetch(`${API}/api/master-table/summary?by=file`).then(r => r.json()).then(files => {
+      const sel = document.getElementById('man-master-batch');
+      if (!sel || !Array.isArray(files)) return;
+      const esc = s => String(s).replace(/"/g, '&quot;').replace(/</g, '&lt;');
+      sel.innerHTML = '<option value="Added manually">Added manually (default)</option>' +
+        files.filter(f => f.file_name !== 'Added manually')
+             .map(f => `<option value="${esc(f.file_name)}">${esc(f.file_name)}</option>`).join('');
+    }).catch(() => {});
+  }
 }
 
 function handleManualImage(input) {
@@ -3943,7 +3957,8 @@ function addManualItem() {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ product, original_model: val('man-model'), brand: val('man-brand'),
         specification: val('man-spec'), hsn_code: val('man-hsn'), gst_pct: gst,
-        price, cost, image_data: imgData })
+        price, cost, image_data: imgData,
+        file_name: val('man-master-batch') || 'Added manually' })
     }).then(async r => {
       const d = await r.json().catch(() => ({}));
       toast(r.ok ? d.message : (d.detail || 'Master table add failed'), r.ok ? 'success' : 'error');

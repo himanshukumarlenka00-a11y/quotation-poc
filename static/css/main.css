@@ -2255,3 +2255,6 @@ html[data-theme=dark] .sic svg [fill="#1a1a1a"] { fill: #cfd6e4; }
   flex: none; margin: 0; padding: 0 !important; }
 .man-spec-slot { grid-column: 1 / -1; }
 .manual-add-top-fields { align-content: start; }
+.man-master-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 2px 0 12px; }
+.man-master-row .man-master-check { margin: 0; }
+.manual-add-card .man-master-row select { width: auto; max-width: 320px; }
