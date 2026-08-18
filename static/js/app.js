@@ -417,9 +417,9 @@ function renderDashboard(d) {
     <div class="dcard">
       <h3>Quick Actions</h3>
       <div class="dqa">
-        <button onclick="showBoqCoverage()">☑ Check What We Stock<small>BOQ coverage</small></button>
         <button onclick="show('generate')">⚡ Generate a Quotation<small>plain English or BOQ</small></button>
-        ${d.is_admin ? `<button onclick="showMargins()">◔ Margin Analysis<small>cost & profit</small></button>
+        <button onclick="show('master')">📦 Master Catalogue<small>browse & manage</small></button>
+        ${d.is_admin ? `
         <button onclick="show('audit')">◷ Activity Log<small>audit & history</small></button>` : `
         <button onclick="show('master')">📦 Browse Master Catalogue<small>${d.products.toLocaleString('en-IN')} products</small></button>
         <button onclick="show('repository')">🗂 My Quotations<small>drafts & approved</small></button>`}
