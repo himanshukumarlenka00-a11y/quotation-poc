@@ -1900,6 +1900,8 @@ html[data-theme=dark] .mlg-sweep { background: linear-gradient(90deg, transparen
    column — never let them wrap or butt up against the GST input box. */
 #items-table .amount-cell, #items-table .gst-val-cell { min-width: 96px; white-space: nowrap; padding-right: 18px; }
 #items-table th.num { padding-right: 18px !important; }
+#items-table td.num { padding-right: 18px; white-space: nowrap; vertical-align: middle; }
+#items-table .cost-cell, #items-table .profit-cell, #items-table .margin-cell { min-width: 78px; }
 #items-table .gst-input { margin-left: 4px; }
 /* Alignment by class, not position — a positional nth-last-child window
    shifts onto the wrong columns whenever the optional 3★/4★ columns hide. */
