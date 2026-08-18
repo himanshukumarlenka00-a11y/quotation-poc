@@ -630,12 +630,19 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         out = []
         for w in re.findall(r"\S+", term or ""):
             lw = w.lower()
-            if (len(lw) >= 4 and lw.isalpha() and lw not in _vocab
-                    and lw.rstrip("s") not in _vocab):
+            # Unknown words get corrected; so do words the catalogue knows
+            # only from 1-2 (likely misspelt) rows when a hugely more common
+            # neighbour exists — two products named "Coktail ..." once made
+            # 'coktail' a "legitimate" word and blocked its own correction.
+            known = _vocab.get(lw, 0) or _vocab.get(lw.rstrip("s"), 0)
+            if len(lw) >= 4 and lw.isalpha() and known <= 2:
                 cands = [(v, n) for v, n in _vocab.items()
-                         if v[0] == lw[0] and _ed1(lw, v)]
+                         if v[0] == lw[0] and _ed1(lw, v)
+                         and (known == 0 or n >= 25 * known)]
                 if cands:
-                    w = max(cands, key=lambda x: x[1])[0]
+                    best = max(cands, key=lambda x: x[1])
+                    if known == 0 or best[1] > known:
+                        w = best[0]
             out.append(w)
         return " ".join(out)
 
