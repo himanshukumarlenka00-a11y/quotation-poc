@@ -1889,7 +1889,19 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
 
   el.innerHTML = capNote + Object.entries(groups).map(([fname, g], gIdx) => {
     const prods = g.items;
-    const headerCells = `<th class="num">Original (₹)</th><th class="num">3★ Price (₹)</th><th class="num">3★ Price ($)</th><th class="num">4★ Price (₹)</th><th class="num">4★ Price ($)</th>`;
+    const headerCells = `${isAdminView ? '<th class="num">Cost (₹)</th>' : ''}<th class="num">Original (₹)</th><th class="num">3★ Price (₹)</th><th class="num">3★ Price ($)</th><th class="num">4★ Price (₹)</th><th class="num">4★ Price ($)</th>${isAdminView ? '<th class="c">Margin</th>' : ''}`;
+
+    // Cost + live margin vs the 3★ selling price — admin only (the API
+    // already strips cost for employees, so this renders nothing for them).
+    const costCell = i => !isAdminView ? '' :
+      `<td class="num" style="color:var(--muted)">${i.cost > 0 ? '₹' + (+i.cost).toLocaleString('en-IN') : '—'}</td>`;
+    const marginCell = i => {
+      if (!isAdminView) return '';
+      if (!(i.cost > 0) || !(i.price_3star > 0)) return '<td class="c" style="color:var(--muted)">—</td>';
+      const m = (i.price_3star - i.cost) / i.cost * 100;
+      const cls = m >= 20 ? 'mgn-good' : m >= 5 ? 'mgn-mid' : 'mgn-low';
+      return `<td class="c"><span class="mgn-chip ${cls}">${m >= 0 ? '+' : ''}${m.toFixed(1)}%</span></td>`;
+    };
 
     // The original price always exists — it's the pre-bulk-discount snapshot
     // (orig_price_*) when one was taken, or simply today's price when the
@@ -2004,7 +2016,7 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
               <td><strong>${i.product}</strong></td>
               <td>${i.brand||'—'}</td>
               <td style="font-size:var(--fs-sm)">${i.original_model||'—'}</td>
-              ${priceCells(i)}
+              ${costCell(i)}${priceCells(i)}${marginCell(i)}
               <td class="c">${i.gst_pct||0}%</td>
               <td class="c">${i.hsn_code||'—'}</td>
             </tr>`).join('')}</tbody>

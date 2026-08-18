@@ -2136,3 +2136,10 @@ body.sb-mini .snav-sub, body.sb-mini .sub-arrow { display: none !important; }
 .ncp-row small { color: var(--muted); max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ncp-hint { color: var(--muted); font-size: var(--fs-sm); text-align: center; padding: 10px; margin: 0; }
 .cfm-alt { flex: 0 0 auto !important; padding: 11px 14px !important; }
+.mgn-chip { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: var(--fs-xs); font-weight: 700; }
+.mgn-chip.mgn-good { background: #e5f6e9; color: #1e7c3a; }
+.mgn-chip.mgn-mid { background: #fdf3dd; color: #9a6b00; }
+.mgn-chip.mgn-low { background: #fdecec; color: #c0392b; }
+html[data-theme=dark] .mgn-chip.mgn-good { background: rgba(30,124,58,.22); color: #6fd18a; }
+html[data-theme=dark] .mgn-chip.mgn-mid { background: rgba(154,107,0,.22); color: #e5b95c; }
+html[data-theme=dark] .mgn-chip.mgn-low { background: rgba(192,57,43,.22); color: #ef8a80; }
