@@ -1899,8 +1899,9 @@ html[data-theme=dark] .mlg-sweep { background: linear-gradient(90deg, transparen
 /* Amount / GST% / GST Val: keep the money figures off the neighbouring
    column — never let them wrap or butt up against the GST input box. */
 #items-table .amount-cell, #items-table .gst-val-cell { min-width: 96px; white-space: nowrap; padding-right: 18px; }
-#items-table th.num { padding-right: 18px !important; }
-#items-table td.num { padding-right: 18px; white-space: nowrap; vertical-align: middle; }
+#items-table thead th.num { text-align: right !important; padding-right: 18px !important; }
+#items-table td.num { text-align: right !important; padding-right: 18px !important;
+  white-space: nowrap; vertical-align: middle; }
 #items-table .cost-cell, #items-table .profit-cell, #items-table .margin-cell { min-width: 78px; }
 #items-table .gst-input { margin-left: 4px; }
 /* Alignment by class, not position — a positional nth-last-child window
