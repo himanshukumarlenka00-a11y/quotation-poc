@@ -2210,3 +2210,18 @@ html[data-theme=dark] .gh-mini circle[fill="#1a1a1a"] { fill: #cfd6e4; }
 .sic svg { vertical-align: -6px; }
 html[data-theme=dark] .sic svg [stroke="#1a1a1a"] { stroke: #cfd6e4; }
 html[data-theme=dark] .sic svg [fill="#1a1a1a"] { fill: #cfd6e4; }
+
+/* At icon size the standard amplitudes are sub-pixel — the sidebar minis get
+   exaggerated motion so the animation actually reads at 24px. */
+.sic .ghm-mag { animation: sicMagSearch 3s ease-in-out infinite; }
+@keyframes sicMagSearch {
+  0%,100% { transform: translate(0,0); }
+  30% { transform: translate(-16px,-11px); }
+  65% { transform: translate(14px,-4px); } }
+.sic .ghb { animation: sicBlockPulse 2s ease-in-out infinite; }
+.sic .ghb-2 { animation-delay: .25s; } .sic .ghb-3 { animation-delay: .5s; } .sic .ghb-4 { animation-delay: .75s; }
+@keyframes sicBlockPulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(.45); opacity: .25; } }
+@media (prefers-reduced-motion: reduce) {
+  .sic .ghm-mag { animation-duration: 3s !important; }
+  .sic .ghb { animation-duration: 2s !important; }
+}
