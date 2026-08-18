@@ -29,14 +29,15 @@ CATS = [
 KEYWORDS = [
     (r"\b(plate|bowl|cup|saucer|mug|platter|dish\b|porcelain|dinner set|ramekin|tureen)", "Crockery"),
     (r"\b(fork|spoon|knife set|flatware|cutlery|teaspoon|ladle spoon)", "Cutlery & Flatware"),
-    (r"\b(glass|tumbler|goblet|decanter|carafe|wine|champagne|highball|stemware)", "Glassware"),
+    (r"\b(glass(es|ware)?\b|tumbler|goblet|decanter|carafe|wine|champagne|highball|stemware)", "Glassware"),
     (r"\b(bar |cocktail|shaker|jigger|muddler|strainer|corkscrew|ice bucket|bottle opener)", "Barware"),
-    (r"\b(chafing|chafer|buffet|induction warmer|food warmer|display stand|juice dispenser|cereal dispenser)", "Buffetware & Chafers"),
+    (r"\b(chafing|chafer|buffet|induction warmer|food warmer|display stand|juice dispenser|cereal dispenser|station\b|plinth|riser)", "Buffetware & Chafers"),
     (r"\b(fry ?pan|saucepan|stockpot|casserole|wok|cookware|kadai|tawa|sauteuse|braising)", "Cookware"),
     (r"\b(baking|bakeware|cake|muffin|tart|loaf|pastry|dough|piping|mould|mold)", "Bakeware"),
     (r"\b(whisk|spatula|tong|peeler|grater|masher|scoop|turner|skimmer|colander|strainer|opener|utensil)", "Kitchen Utensils"),
     (r"\b(chef knife|paring|cleaver|santoku|boning|filleting|sharpen)", "Knives"),
     (r"\b(machine|mixer|blender|grinder|cooktop|oven|refrigerat|freezer|griddle|fryer|slicer|toaster|equipment)", "Kitchen Equipment"),
+    (r"\b(waste|garbage|dustbin|pedal bin|trash|ash ?bin)", "Waste Management"),
     (r"\b(gn pan|gastronorm|container|storage|crate|bin\b|canister|dispenser)", "Storage & GN Pans"),
     (r"\b(trolley|cart\b|caddy)", "Trolleys"),
     (r"\b(housekeep|mop|broom|dustpan|cleaning|janitor|caution|lobby|squeegee)", "Housekeeping"),
@@ -45,7 +46,6 @@ KEYWORDS = [
     (r"\b(lamp|candle|menu stand|table number|holder|vase|centerpiece|centrepiece)", "Table Accessories"),
     (r"\b(copper)", "Copperware"),
     (r"\b(wooden|wood\b|bamboo|acacia)", "Woodenware"),
-    (r"\b(waste|garbage|dustbin|pedal bin)", "Waste Management"),
 ]
 KEYWORDS = [(re.compile(p, re.I), c) for p, c in KEYWORDS]
 
