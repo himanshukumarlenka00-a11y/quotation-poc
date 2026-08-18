@@ -149,3 +149,10 @@ Post-fix: no product-phrase family under 50% coverage. Remaining flags are
 (a) umbrella words (7,900 "plate" rows — pool caps trim these by design) and
 (b) brand+model-prefix queries where the hard model constraint intentionally
 returns one row. Re-run after any scoring change.
+
+Round 5 addendum: the "brand+model-prefix shows 1 of N" flags (melange smle,
+cambro mpsk) were audit artifacts — the bigram generator sliced letter-only
+fragments out of SKU codes and counted unrelated products as one family.
+Verified real code-prefix queries list their full family already (SMLEDCB ->
+7/7, MPSK30 -> 24/24). No matcher change needed; treat letter-only fragments
+of alphanumeric codes as noise when reading the coverage audit.
