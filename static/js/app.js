@@ -3828,59 +3828,78 @@ function toggleManualAdd() {
   if (opening) {
     _manualImageData = '';
     const isAdminUser = currentUser && currentUser.role === 'admin';
-    const field = (id, label, ph, extra, required) =>
-      `<div class="man-field"><label>${label}${required ? ' <span class="man-req">*</span>' : ''}</label>
+    const ic = p => `<svg class="man-lic" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+    const ICO = {
+      name:  ic('<path d="M20.59 13.41 11 3H4v7l9.59 9.59a2 2 0 0 0 2.82 0l4.18-4.18a2 2 0 0 0 0-2.82z"/><circle cx="7.5" cy="6.5" r=".5"/>'),
+      model: ic('<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.3 7 12 12 20.7 7"/><line x1="12" y1="22" x2="12" y2="12"/>'),
+      brand: ic('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>'),
+      hsn:   ic('<line x1="4" y1="5" x2="4" y2="19"/><line x1="8" y1="5" x2="8" y2="19"/><line x1="12" y1="5" x2="12" y2="19"/><line x1="17" y1="5" x2="17" y2="19"/><line x1="21" y1="5" x2="21" y2="19"/>'),
+      spec:  ic('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>'),
+      qty:   ic('<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>'),
+      price: ic('<circle cx="12" cy="12" r="9"/><path d="M9 8h6M9 12h6m-5.5 0L14 16"/>'),
+      cost:  ic('<rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/>'),
+      gst:   ic('<line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>'),
+    };
+    const field = (id, label, ph, extra, required, icon) =>
+      `<div class="man-field"><label>${icon || ''}${label}${required ? ' <span class="man-req">*</span>' : ''}</label>
          <input id="${id}" placeholder="${ph||''}" ${extra||''} onkeydown="stopEnterSubmit(event)"></div>`;
     form.innerHTML = `
-      <div class="manual-add-card">
-        <div class="manual-add-head">
-          <span class="manual-add-ico">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+      <div class="manual-add-card man-v2">
+        <div class="man-v2-head">
+          <button type="button" class="man-back" onclick="toggleManualAdd()" aria-label="Close">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <span class="man-cart">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
           </span>
-          <span>Add Product Manually</span>
+          <div class="man-v2-title"><b>Add Product Manually</b><small>Add a new product to your catalogue</small></div>
         </div>
+        <div class="man-sec">
         <div class="manual-add-row1">
           <div>
             <label class="man-field-label">Product Image</label>
             <label id="man-img-box" class="man-img-box">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              <span class="man-img-label">Upload</span>
+              <span class="man-img-label">Upload Image</span>
               <span class="man-img-hint">JPG, PNG (Max. 2MB)</span>
               <input type="file" accept="image/*" style="display:none" onchange="handleManualImage(this)">
             </label>
           </div>
           <div class="manual-add-top-fields">
-            ${field('man-product', 'Product Name', 'e.g. Cup Dispenser', 'oninput="this.style.borderColor=\'\';manualAddError(\'\')"', true)}
-            ${field('man-model', 'Model No', 'e.g. PCD01')}
-            ${field('man-brand', 'Brand', 'e.g. KMW')}
-            ${field('man-hsn', 'HSN Code', 'e.g. 73239390')}
-            <div class="man-field man-spec-slot"><label>Specification</label>
+            ${field('man-product', 'Product Name', 'e.g. Cup Dispenser', 'oninput="this.style.borderColor=\'\';manualAddError(\'\')"', true, ICO.name)}
+            ${field('man-model', 'Model No', 'e.g. PCD01', '', false, ICO.model)}
+            ${field('man-brand', 'Brand', 'e.g. KMW', '', false, ICO.brand)}
+            ${field('man-hsn', 'HSN Code', 'e.g. 73239390', '', false, ICO.hsn)}
+            <div class="man-field man-spec-slot"><label>${ICO.spec}Specification</label>
               <textarea id="man-spec" placeholder="e.g. Cup Dispenser (Disposable Cup, Cone, Glass Dispenser 16in W/SS Flip Cap...)" style="min-height:52px;width:100%;"></textarea>
             </div>
           </div>
         </div>
-        <div class="manual-add-row2">
-          <div class="man-field"><label>Qty <span class="man-req">*</span></label>
+        </div>
+        <div class="man-sec">
+        <div class="manual-add-row2 man-divided">
+          <div class="man-field"><label>${ICO.qty}Qty <span class="man-req">*</span></label>
             <input id="man-qty" type="number" value="1" onkeydown="stopEnterSubmit(event)"></div>
-          ${field('man-price', 'Price/PC (₹)', 'e.g. 679', 'type="number" step="0.01"', true)}
-          ${isAdminUser ? field('man-cost', 'Cost (₹)', 'e.g. 450', 'type="number" step="0.01"') : ''}
-          <div class="man-field"><label>GST % <span class="man-req">*</span></label>
+          ${field('man-price', 'Price/PC (₹)', 'e.g. 679', 'type="number" step="0.01"', true, ICO.price)}
+          ${isAdminUser ? field('man-cost', 'Cost (₹)', 'e.g. 450', 'type="number" step="0.01"', false, ICO.cost) : ''}
+          <div class="man-field"><label>${ICO.gst}GST % <span class="man-req">*</span></label>
             <select id="man-gst">
               <option value="0">0</option><option value="5">5</option><option value="12">12</option>
               <option value="18" selected>18</option><option value="28">28</option>
             </select></div>
         </div>
+        </div>
         ${isAdminUser ? `<div class="man-master-row">
-          <label class="man-master-check">
+          <label class="man-master-check man-v2-check">
             <input type="checkbox" id="man-to-master" checked>
-            <span>💾 Save to the <b>Master Catalogue</b> too, in batch:</span>
+            <span>Save to the <b>Master Catalogue</b> too, in batch:</span>
           </label>
           <select id="man-master-batch"><option value="Added manually">Added manually</option></select>
         </div>` : ''}
         <div id="man-error" class="man-error" style="display:none;"></div>
         <div class="manual-add-actions">
           <button type="button" class="btn-manual-cancel" onclick="toggleManualAdd()">Cancel</button>
-          <button type="button" class="btn-manual-submit" onclick="addManualItem()">Add Product</button>
+          <button type="button" class="btn-manual-submit" onclick="addManualItem()">＋ Add Product</button>
         </div>
       </div>`;
   } else {
