@@ -2232,3 +2232,13 @@ html[data-theme=dark] .sic svg [fill="#1a1a1a"] { fill: #cfd6e4; }
 @keyframes sicCheckPop { 0%,100% { transform: scale(1) rotate(0deg); }
   40% { transform: scale(1.35) rotate(8deg); } 60% { transform: scale(1.35) rotate(-4deg); } }
 @media (prefers-reduced-motion: reduce) { .sic-check { animation-duration: 2.4s !important; } }
+.sic-lid { transform-box: fill-box; transform-origin: 20% 80%;
+  animation: sicLidTilt 3s ease-in-out infinite; }
+@keyframes sicLidTilt { 0%,100% { transform: rotate(0deg) translateY(0); }
+  45% { transform: rotate(9deg) translateY(-5px); } }
+.sic-docs { transform-box: fill-box; transform-origin: center bottom;
+  animation: sicDocsRise 3s ease-in-out infinite; }
+@keyframes sicDocsRise { 0%,100% { transform: translateY(0); } 45% { transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) {
+  .sic-lid, .sic-docs { animation-duration: 3s !important; }
+}
