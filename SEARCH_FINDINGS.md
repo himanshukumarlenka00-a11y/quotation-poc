@@ -108,3 +108,28 @@ accepted as lost — re-importable from the stored file). Master 51,938 ->
 color variants sharing a model code (GOP231-PNK vs -CHM) — human Switch
 territory. Remaining cross-file model overlaps are small (6-12 rows) and
 look like genuinely shared items, not double imports.
+
+## Round 4 — 2026-08-18 (fair-metric audit + vocabulary pollution fix)
+
+Strict row-identity scoring was penalising correct answers (size twins like
+BLHTON10KS vs 14KS share a name; mixed-case brands defeated the core stripper).
+Re-scored fairly: result must contain everything the query asked for
+(plural/prefix tolerant), model queries must match the returned model.
+
+| pass | fair accuracy |
+|---|---|
+| baseline (strict scoring) | 46% (misleading) |
+| fair scoring, same matcher | 96% |
+| + name cleanup + typo-pollution fix | **98% (650/661)** |
+
+Fixes this round:
+1. **Data**: 1,787 product names contained embedded newlines / whitespace runs
+   (e.g. "\nWAFFLE MACHINES") — could never exact-match. Cleaned + FTS rebuilt
+   (scripts/clean_names.py, idempotent).
+2. **Matcher**: typo layer refused to correct words "known" to the catalogue
+   even when known only from 1-2 misspelt rows ('coktail' from two dirty
+   names blocked correction of every Cocktail query). Now corrects words with
+   ≤2 occurrences when an edit-distance-1 neighbour is ≥25× more frequent.
+
+Remaining 11 failures: genuinely ambiguous fragments ("Size Crock", "Andy 10")
+where multiple catalogue rows are equally valid answers.
