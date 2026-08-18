@@ -2242,3 +2242,6 @@ html[data-theme=dark] .sic svg [fill="#1a1a1a"] { fill: #cfd6e4; }
 @media (prefers-reduced-motion: reduce) {
   .sic-lid, .sic-docs { animation-duration: 3s !important; }
 }
+@media (prefers-reduced-motion: reduce) {
+  .sic-check, .sic-lid, .sic-docs { animation-iteration-count: infinite !important; }
+}
