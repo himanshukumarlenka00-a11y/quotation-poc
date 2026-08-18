@@ -2258,3 +2258,10 @@ html[data-theme=dark] .sic svg [fill="#1a1a1a"] { fill: #cfd6e4; }
 .man-master-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 2px 0 12px; }
 .man-master-row .man-master-check { margin: 0; }
 .manual-add-card .man-master-row select { width: auto; max-width: 320px; }
+.update-pill { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: var(--primary, #6d5df0); color: #fff; padding: 12px 22px; border-radius: 99px;
+  font-size: var(--fs-base); cursor: pointer; z-index: 4000;
+  box-shadow: 0 10px 30px rgba(80,70,220,.4); animation: pillIn .4s cubic-bezier(.34,1.5,.64,1); }
+.update-pill:hover { filter: brightness(1.08); }
+@keyframes pillIn { from { transform: translateX(-50%) translateY(30px); opacity: 0; }
+  to { transform: translateX(-50%) translateY(0); opacity: 1; } }

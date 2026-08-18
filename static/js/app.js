@@ -4271,3 +4271,23 @@ fetchUsdRate();
 loadCatalog();
 loadUploadedFiles();
 loadCatalogSelector();
+// ── Auto-update nudge ────────────────────────────────────────────────────────
+// A stale SPA tab never sees a deploy: clicking around the sidebar re-renders
+// but never refetches app.js. Poll the (no-cache) index page for its version
+// stamp and offer a one-click refresh when it moves past ours.
+async function _checkForUpdate() {
+  const my = (document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/) || [])[1];
+  if (!my || document.querySelector('.update-pill')) return;
+  try {
+    const html = await (await fetch(`${API}/`, { cache: 'no-store' })).text();
+    const latest = (html.match(/app\.js\?v=(\d+)/) || [])[1];
+    if (latest && latest !== my) {
+      const el = document.createElement('div');
+      el.className = 'update-pill';
+      el.innerHTML = '⬆ A new version is ready — <b>click to refresh</b>';
+      el.onclick = () => location.reload();
+      document.body.appendChild(el);
+    }
+  } catch (e) { /* offline blip — try again next round */ }
+}
+setInterval(_checkForUpdate, 4 * 60 * 1000);
