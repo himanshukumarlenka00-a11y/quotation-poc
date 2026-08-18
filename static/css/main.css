@@ -2227,3 +2227,8 @@ html[data-theme=dark] .sic svg [fill="#1a1a1a"] { fill: #cfd6e4; }
 }
 .snav { font-size: 15px; padding-top: 11px; padding-bottom: 11px; }
 .sic svg[width="24"] { width: 28px; height: 28px; }
+.sic-check { transform-box: fill-box; transform-origin: center;
+  animation: sicCheckPop 2.4s cubic-bezier(.34,1.5,.64,1) infinite; }
+@keyframes sicCheckPop { 0%,100% { transform: scale(1) rotate(0deg); }
+  40% { transform: scale(1.35) rotate(8deg); } 60% { transform: scale(1.35) rotate(-4deg); } }
+@media (prefers-reduced-motion: reduce) { .sic-check { animation-duration: 2.4s !important; } }
