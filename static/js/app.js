@@ -3827,6 +3827,7 @@ function toggleManualAdd() {
   const opening = form.style.display === 'none';
   if (opening) {
     _manualImageData = '';
+    const isAdminUser = currentUser && currentUser.role === 'admin';
     const field = (id, label, ph, extra, required) =>
       `<div class="man-field"><label>${label}${required ? ' <span class="man-req">*</span>' : ''}</label>
          <input id="${id}" placeholder="${ph||''}" ${extra||''} onkeydown="stopEnterSubmit(event)"></div>`;
@@ -3862,6 +3863,7 @@ function toggleManualAdd() {
           <div class="man-field"><label>Qty <span class="man-req">*</span></label>
             <input id="man-qty" type="number" value="1" onkeydown="stopEnterSubmit(event)"></div>
           ${field('man-price', 'Price/PC (₹)', 'e.g. 679', 'type="number" step="0.01"', true)}
+          ${isAdminUser ? field('man-cost', 'Cost (₹)', 'e.g. 450', 'type="number" step="0.01"') : ''}
           <div class="man-field"><label>GST % <span class="man-req">*</span></label>
             <select id="man-gst">
               <option value="0">0</option><option value="5">5</option><option value="12">12</option>
@@ -3869,6 +3871,10 @@ function toggleManualAdd() {
             </select></div>
           ${field('man-hsn', 'HSN Code', 'e.g. 73239390')}
         </div>
+        ${isAdminUser ? `<label class="man-master-check">
+          <input type="checkbox" id="man-to-master" checked>
+          <span>💾 Also save to the <b>Master Catalogue</b> (with cost) — future quotes will find it automatically</span>
+        </label>` : ''}
         <div id="man-error" class="man-error" style="display:none;"></div>
         <div class="manual-add-actions">
           <button type="button" class="btn-manual-cancel" onclick="toggleManualAdd()">Cancel</button>
@@ -3914,7 +3920,10 @@ function addManualItem() {
   }
   const qty = parseInt(val('man-qty')) || 1;
   const price = parseFloat(val('man-price')) || 0;
+  const cost = parseFloat(val('man-cost')) || 0;
   const gst = val('man-gst') === '' ? 18 : parseFloat(val('man-gst'));
+  const toMaster = !!document.getElementById('man-to-master')?.checked;
+  const imgData = _manualImageData;
 
   try {
   currentQuotation.items.push({
@@ -3922,13 +3931,26 @@ function addManualItem() {
     product, qty,
     description: val('man-spec'), specification: val('man-spec'),
     model_no: val('man-model'), brand: val('man-brand'), hsn_code: val('man-hsn'),
-    price_per_pc: price, price_currency: 'INR', cost: 0, gst_pct: gst,
+    price_per_pc: price, price_currency: 'INR', cost: cost, gst_pct: gst,
     image_path: '', local_image: _manualImageData,
     tiers: (currentQuotation.tiers && currentQuotation.tiers.length) ? currentQuotation.tiers : ['3star'],
     price_3star: 0, price_3star_usd: 0, price_4star: 0, price_4star_usd: 0,
     _variants: [], _requested: product, requested: product,
     matched_by: 'manual', not_in_catalog: false, boq_price: 0,
   });
+  if (toMaster) {
+    // Fire-and-report: the quote row is already added either way.
+    fetch(`${API}/api/master-table/add-product`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ product, original_model: val('man-model'), brand: val('man-brand'),
+        specification: val('man-spec'), hsn_code: val('man-hsn'), gst_pct: gst,
+        price, cost, image_data: imgData })
+    }).then(async r => {
+      const d = await r.json().catch(() => ({}));
+      toast(r.ok ? d.message : (d.detail || 'Master table add failed'), r.ok ? 'success' : 'error');
+      if (r.ok) { masterFolders = {}; masterSummary = []; }
+    }).catch(e => toast('Master table add failed: ' + e.message, 'error'));
+  }
   _manualImageData = '';
   renderResult(currentQuotation);
   saveEdits(true);

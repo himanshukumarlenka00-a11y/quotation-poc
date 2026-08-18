@@ -45,6 +45,67 @@ def _insert_master_items(conn, items):
         )
 
 
+class AddProductRequest(BaseModel):
+    product: str
+    original_model: str = ""
+    brand: str = ""
+    specification: str = ""
+    hsn_code: str = ""
+    gst_pct: float = 18
+    price: float = 0     # single price — mirrored into 3★/4★ (house rule)
+    cost: float = 0
+    image_data: str = ""  # optional data URL from the manual-add form
+
+
+@router.post("/api/master-table/add-product")
+def add_master_product(req: AddProductRequest, admin: dict = Depends(require_role("admin"))):
+    """One product straight into the master table — the quote screen's
+    'Add Product Manually' can persist its entry so the next quote finds it."""
+    product = req.product.strip()
+    if not product:
+        raise HTTPException(400, "Product name is required")
+    model = req.original_model.strip()
+    conn = get_db()
+    try:
+        dup = conn.execute(
+            """SELECT 1 FROM master_products
+                WHERE LOWER(TRIM(product))=LOWER(?)
+                  AND LOWER(TRIM(COALESCE(original_model,'')))=LOWER(?) LIMIT 1""",
+            (product, model)).fetchone()
+        if dup:
+            raise HTTPException(409, "Already in the master table (same name and model).")
+        image_path = ""
+        if req.image_data.startswith("data:"):
+            import base64
+            from app.images import _save_image_to_disk
+            try:
+                image_path = _save_image_to_disk(
+                    base64.b64decode(req.image_data.split(",", 1)[1]))
+            except Exception:
+                pass
+        _insert_master_items(conn, [{
+            "file_name": "Added manually", "sl_no": "", "product": product,
+            "original_model": model, "brand": req.brand.strip(),
+            "specification": req.specification.strip(),
+            "price_3star": req.price, "price_4star": req.price,
+            "price_3star_usd": 0, "price_4star_usd": 0,
+            "hsn_code": req.hsn_code.strip(), "gst_pct": req.gst_pct,
+            "original_brand": req.brand.strip(), "mrp": 0,
+            "cost": req.cost, "cost_currency": "INR",
+            "category": "", "unit": "", "product_group": "",
+            "image_path": image_path,
+            "image_match": "exact" if image_path else "",
+            "uploaded_at": datetime.now().isoformat(),
+        }])
+        conn.commit()
+        rebuild_master_fts(conn)
+    finally:
+        conn.close()
+    log_action(admin, "add_master_product", target=product,
+               after={"model": model, "price": req.price, "cost": req.cost})
+    return {"message": f"'{product}' added to the master table."}
+
+
 @router.post("/api/master-table/scan")
 async def scan_master_table(file: UploadFile = File(...), admin: dict = Depends(require_role("admin"))):
     """Preview a master-table file — parses it but never touches the

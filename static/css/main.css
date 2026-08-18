@@ -2245,3 +2245,7 @@ html[data-theme=dark] .sic svg [fill="#1a1a1a"] { fill: #cfd6e4; }
 @media (prefers-reduced-motion: reduce) {
   .sic-check, .sic-lid, .sic-docs { animation-iteration-count: infinite !important; }
 }
+.man-master-check { display: flex; align-items: center; gap: 10px; margin: 4px 0 14px;
+  padding: 10px 14px; background: rgba(232,160,32,.08); border: 1px dashed var(--accent);
+  border-radius: 10px; font-size: var(--fs-sm); cursor: pointer; }
+.man-master-check input { accent-color: var(--accent); width: 16px; height: 16px; }
