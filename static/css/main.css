@@ -2174,3 +2174,4 @@ html[data-theme=dark] .gh-mini circle[fill="#1a1a1a"] { fill: #cfd6e4; }
     transition-duration: 0s !important;
   }
 }
+.sic svg { vertical-align: -4px; }
