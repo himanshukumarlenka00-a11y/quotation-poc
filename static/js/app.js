@@ -853,7 +853,7 @@ function renderDedupe(d) {
     <button class="btn btn-sm btn-danger" style="margin-top:10px" onclick="deleteJunkRows()">🗑 Delete selected rows</button>`
     : '<div class="alert alert-success">No junk rows found.</div>';
 
-  const pairs = d.overlapping_imports.length ? d.overlapping_imports.map(p => `
+  const pairs = d.overlapping_imports.length ? d.overlapping_imports.map((p, i) => `
     <div class="dedupe-pair">
       <div class="dp-info">
         <b>${escHtml(p.file_a)}</b> <small>(${p.rows_a} products)</small>
@@ -861,9 +861,11 @@ function renderDedupe(d) {
         <span class="dp-badge">${p.shared_models} shared model codes</span>
       </div>
       <div class="dp-actions">
+        <button class="btn btn-sm" onclick="previewPair(${i}, '${escHtml(p.file_a).replace(/'/g, "\\'")}', '${escHtml(p.file_b).replace(/'/g, "\\'")}')">👁 Preview</button>
         <button class="btn btn-sm btn-danger" onclick="deleteWholeImport('${escHtml(p.file_a).replace(/'/g, "\\'")}', ${p.rows_a})">Delete left import</button>
         <button class="btn btn-sm btn-danger" onclick="deleteWholeImport('${escHtml(p.file_b).replace(/'/g, "\\'")}', ${p.rows_b})">Delete right import</button>
       </div>
+      <div id="dp-prev-${i}" class="dp-preview" style="display:none"></div>
     </div>`).join('')
     : '<div class="alert alert-success">No overlapping imports found.</div>';
 
@@ -882,6 +884,26 @@ function renderDedupe(d) {
     <div class="card"><h2 data-icon="📑">Possible double imports <span class="mf-count">${d.overlapping_imports.length}</span></h2>
       <p style="color:var(--muted);font-size:var(--fs-sm);margin-bottom:10px;">Catalogue pairs sharing many model codes — usually the same supplier list imported twice. Keep one, delete the other. <b>Check both in the Master Catalogue before deleting.</b></p>${pairs}</div>
     <div class="card"><h2 data-icon="👥">Duplicate product names</h2>${dups}</div>`;
+}
+
+async function previewPair(idx, fileA, fileB) {
+  const el = document.getElementById(`dp-prev-${idx}`);
+  if (el.style.display !== 'none') { el.style.display = 'none'; return; }
+  el.style.display = '';
+  el.innerHTML = '<div class="loading-state">Loading shared models…</div>';
+  const r = await fetch(`${API}/api/master-table/dedupe-pair-preview?file_a=${encodeURIComponent(fileA)}&file_b=${encodeURIComponent(fileB)}`);
+  const rows = await r.json();
+  if (!r.ok || !rows.length) { el.innerHTML = '<div class="alert alert-error">Nothing to preview.</div>'; return; }
+  el.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th>Model</th><th>Left product</th><th class="num">Left ₹</th><th>Right product</th><th class="num">Right ₹</th><th class="c">Same price?</th></tr></thead>
+    <tbody>${rows.map(x => `<tr>
+      <td style="font-size:var(--fs-sm)">${escHtml(x.model)}</td>
+      <td>${escHtml(x.product_a)}</td><td class="num">₹${(x.price_a||0).toLocaleString('en-IN')}</td>
+      <td>${escHtml(x.product_b)}</td><td class="num">₹${(x.price_b||0).toLocaleString('en-IN')}</td>
+      <td class="c">${x.price_a === x.price_b ? '✔' : `<b style="color:#e04444">✘</b>`}</td>
+    </tr>`).join('')}</tbody>
+  </table></div>
+  <p style="color:var(--muted);font-size:var(--fs-sm);margin-top:6px;">Showing up to 30 shared models. ✘ means the two imports carry different prices — check which is current before deleting.</p>`;
 }
 
 async function deleteJunkRows() {

@@ -2122,3 +2122,4 @@ body.sb-mini .snav-sub, body.sb-mini .sub-arrow { display: none !important; }
 [data-theme="dark"] .cfm-icon.danger { background: rgba(224,68,68,.16); }
 [data-theme="dark"] .cfm-icon.accent { background: rgba(232,160,32,.16); }
 [data-theme="dark"] .cfm-note { background: rgba(232,160,32,.12); color: #d9b36a; }
+.dp-preview { margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 10px; }

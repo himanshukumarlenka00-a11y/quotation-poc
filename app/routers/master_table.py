@@ -551,6 +551,28 @@ def dedupe_report(admin: dict = Depends(require_role("admin"))):
             "dup_names": dup_names, "dup_name_groups_total": dup_total}
 
 
+@router.get("/api/master-table/dedupe-pair-preview")
+def dedupe_pair_preview(file_a: str, file_b: str,
+                        admin: dict = Depends(require_role("admin"))):
+    """Side-by-side sample of the models two catalogues share — the evidence
+    an admin needs before deleting one of a suspected double import."""
+    conn = get_db()
+    try:
+        rows = conn.execute("""
+            SELECT a.original_model AS model,
+                   a.product AS product_a, a.price_3star AS price_a,
+                   b.product AS product_b, b.price_3star AS price_b
+            FROM master_products a
+            JOIN master_products b
+              ON LOWER(a.original_model) = LOWER(b.original_model)
+            WHERE a.file_name = ? AND b.file_name = ?
+              AND LENGTH(a.original_model) >= 5
+            LIMIT 30""", (file_a, file_b)).fetchall()
+    finally:
+        conn.close()
+    return [dict(r) for r in rows]
+
+
 class DeleteRowsRequest(BaseModel):
     ids: list
 
