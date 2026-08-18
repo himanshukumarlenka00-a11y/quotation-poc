@@ -106,6 +106,10 @@ function onAuthed() {
   // don't offer employees a button that would 403.
   document.getElementById('margin-analyse-btn').style.display =
     currentUser.role === 'admin' ? '' : 'none';
+  // Cost & margin toggle on the quote table — same admin-only rule; the
+  // server strips cost from employee payloads either way.
+  const smw = document.getElementById('show-margin-wrap');
+  if (smw) smw.style.display = currentUser.role === 'admin' ? '' : 'none';
   const su = document.getElementById('side-user');
   if (su) su.innerHTML = `<div class="savatar">${(currentUser.name || '?')[0].toUpperCase()}</div>
     <div><b>${(currentUser.name || '').split(' ')[0]}</b><small>${currentUser.role}</small></div>`;
@@ -3590,10 +3594,15 @@ function renderResult(q) {
   // typed or from a file — is about what we stock and what the client pays;
   // putting our purchase cost on that screen answers a question nobody asked
   // and is the wrong thing to have open in front of a client.
-  // Two conditions, both needed: the intent (show_margin) and the data
-  // (_strip_cost deletes cost from an employee's payload entirely, so its
-  // presence is the permission check, not a hidden column).
-  const showMargin = !!q.show_margin && items.some(i => (i.cost || 0) > 0);
+  // Two conditions, both needed: the intent (the admin-only "Cost & margin"
+  // checkbox, on by default; falls back to show_margin for the Margin
+  // Analysis flow) and the data (_strip_cost deletes cost from an employee's
+  // payload entirely, so its presence is the permission check, not a hidden
+  // column).
+  const smChk = document.getElementById('show-margin-col');
+  const wantMargin = (currentUser && currentUser.role === 'admin' && smChk)
+    ? smChk.checked : !!q.show_margin;
+  const showMargin = wantMargin && items.some(i => (i.cost || 0) > 0);
 
   // Single unified header — all in INR
   const thead = document.querySelector('#items-table thead tr');
