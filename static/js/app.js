@@ -3412,9 +3412,17 @@ function switchVariant(idx) {
   // the underlying array would silently re-point every quote at the cheapest
   // unrelated row. Unpriced variants (0) sink to the bottom: "no price" isn't
   // cheap.
-  const ordered = item._variants
+  let ordered = item._variants
     .map((v, i) => ({ v, i }))
     .sort((a, b) => ((a.v.price || Infinity) - (b.v.price || Infinity)));
+
+  // Active search filter: show ONLY the cards the search matched. The full
+  // list stays in _variants (indices must not move); this is display-only.
+  const vkey = v => `${(v.product || '').trim().toLowerCase()}|${(v.model_no || '').trim().toLowerCase()}`;
+  const totalLoaded = ordered.length;
+  if (item._filterKeys && item._filterKeys.size) {
+    ordered = ordered.filter(({ v }) => item._filterKeys.has(vkey(v)));
+  }
 
   const cards = ordered.map(({ v, i: vi }, pos) => {
     const isCur    = v.product === item.product && String(v.price) === String(item.price_per_pc);
@@ -3446,10 +3454,12 @@ function switchVariant(idx) {
     <div class="switch-panel-inner">
       <div class="switch-panel-title">🔄 Switch Variant — "${item._requested || item.product}"</div>
       <div class="switch-search">
-        <input type="text" id="swsearch-${idx}" placeholder="Not here? Search the whole catalogue — e.g. just 'kettle'…"
+        <input type="text" id="swsearch-${idx}" placeholder="Filter these, or search the whole catalogue…"
           value="${escHtml(item._searchTerm || '')}"
+          oninput="liveFilterVariants(${idx}, this.value)"
           onkeydown="if(event.key==='Enter'){event.preventDefault();searchMoreVariants(${idx});}">
         <button class="btn btn-sm" onclick="searchMoreVariants(${idx})">Search</button>
+        ${(item._filterKeys && item._filterKeys.size) ? `<button class="btn btn-sm" onclick="clearVariantFilter(${idx})">✕ Show all ${totalLoaded}</button>` : ''}
         ${item._searchNote ? `<span class="switch-more-note">${escHtml(item._searchNote)}</span>` : ''}
       </div>
       <div class="switch-cards">${cards}</div>
@@ -3495,27 +3505,37 @@ async function searchMoreVariants(idx) {
     const added = (d.items || []).filter(v => !have.has(key(v)));
     item._variants.push(...added);
     item._searchTerm = term;
-    item._searchNote = added.length
-      ? `＋${added.length} from "${term}" — highlighted below`
-      : (d.items && d.items.length
-          ? `Already in the list — highlighted below`
-          : `No catalogue match for "${term}".`);
+    // The search FILTERS the grid to its matches; ✕ Show all brings the
+    // rest back. Matches not yet loaded were appended above.
+    item._filterKeys = new Set((d.items || []).map(key));
+    item._searchNote = (d.items && d.items.length)
+      ? `${d.items.length} match(es) for "${term}"`
+      : `No catalogue match for "${term}".`;
     document.querySelectorAll('.switch-panel').forEach(p => p.remove());
     switchVariant(idx);
     const again = document.getElementById(`swsearch-${idx}`);
     if (again) again.focus();
-    // Jump to the best search result instead of leaving the user to hunt
-    // for it in a price-sorted grid of hundreds of cards.
-    if (d.items && d.items.length) {
-      const vi = item._variants.findIndex(v => key(v) === key(d.items[0]));
-      const card = document.querySelector(`.switch-panel .switch-card[data-hpos="${vi}"]`);
-      if (card) {
-        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        card.classList.add('sc-flash');
-        setTimeout(() => card.classList.remove('sc-flash'), 2600);
-      }
-    }
   } catch (e) { toast('Search failed: ' + e.message, 'error'); }
+}
+
+// Instant, display-only narrowing of the cards already on screen while the
+// user types. Enter / Search does the full-catalogue version.
+function liveFilterVariants(idx, term) {
+  const t = (term || '').trim().toLowerCase();
+  document.querySelectorAll('.switch-panel .switch-card').forEach(c => {
+    const hay = (c.querySelector('.sc-name')?.textContent || '').toLowerCase();
+    c.style.display = (!t || hay.includes(t)) ? '' : 'none';
+  });
+}
+
+function clearVariantFilter(idx) {
+  const item = currentQuotation && currentQuotation.items[idx];
+  if (!item) return;
+  item._filterKeys = null;
+  item._searchTerm = '';
+  item._searchNote = '';
+  document.querySelectorAll('.switch-panel').forEach(p => p.remove());
+  switchVariant(idx);
 }
 
 // Loads the next batch of alternatives and reopens the panel. Fetched
