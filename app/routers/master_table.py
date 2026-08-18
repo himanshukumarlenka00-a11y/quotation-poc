@@ -608,6 +608,33 @@ def update_master_rows(req: UpdateRowsRequest, admin: dict = Depends(require_rol
     return {"message": f"Updated {n} row(s).", "updated": n}
 
 
+class ClearCategoryRequest(BaseModel):
+    category: str
+
+
+@router.post("/api/master-table/clear-category")
+def clear_category(req: ClearCategoryRequest, admin: dict = Depends(require_role("admin"))):
+    """Dissolve a category: its products keep existing, just move back to
+    Uncategorised. Deleting actual products stays in batch view / selection."""
+    cat = req.category.strip()
+    if not cat:
+        raise HTTPException(400, "No category given.")
+    conn = get_db()
+    try:
+        if cat == "Uncategorised":
+            raise HTTPException(400, "Uncategorised isn't a real category — nothing to clear.")
+        cur = conn.execute(
+            f"UPDATE master_products SET category='' WHERE {_CATEGORY_EXPR} = ?", (cat,))
+        conn.commit()
+        n = cur.rowcount
+    finally:
+        conn.close()
+    if not n:
+        raise HTTPException(404, "No products found in that category.")
+    log_action(admin, "clear_category", target=cat, after={"rows": n})
+    return {"message": f"Removed category '{cat}' — {n} product(s) moved to Uncategorised.", "cleared": n}
+
+
 @router.get("/api/master-table/download-file/{filename:path}")
 def download_master_file(filename: str, admin: dict = Depends(require_role("admin"))):
     """Download the original uploaded catalogue file. Admin-only — source
