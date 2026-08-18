@@ -2300,3 +2300,5 @@ html[data-theme=dark] .sic svg [fill="#1a1a1a"] { fill: #cfd6e4; }
 .switch-search input { flex: 0 1 380px; padding: 8px 14px; border: 1px solid var(--border);
   border-radius: 99px; font-size: var(--fs-sm); background: var(--card); color: var(--text); }
 .switch-search input:focus { outline: none; border-color: var(--accent); }
+@keyframes scFlash { 0%,100% { box-shadow: none; } 25%,75% { box-shadow: 0 0 0 3px var(--accent); } }
+.switch-card.sc-flash { animation: scFlash 1.3s ease-in-out 2; }

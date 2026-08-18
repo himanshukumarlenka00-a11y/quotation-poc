@@ -3496,12 +3496,25 @@ async function searchMoreVariants(idx) {
     item._variants.push(...added);
     item._searchTerm = term;
     item._searchNote = added.length
-      ? `＋${added.length} from "${term}"`
-      : `Nothing new for "${term}".`;
+      ? `＋${added.length} from "${term}" — highlighted below`
+      : (d.items && d.items.length
+          ? `Already in the list — highlighted below`
+          : `No catalogue match for "${term}".`);
     document.querySelectorAll('.switch-panel').forEach(p => p.remove());
     switchVariant(idx);
     const again = document.getElementById(`swsearch-${idx}`);
     if (again) again.focus();
+    // Jump to the best search result instead of leaving the user to hunt
+    // for it in a price-sorted grid of hundreds of cards.
+    if (d.items && d.items.length) {
+      const vi = item._variants.findIndex(v => key(v) === key(d.items[0]));
+      const card = document.querySelector(`.switch-panel .switch-card[data-hpos="${vi}"]`);
+      if (card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        card.classList.add('sc-flash');
+        setTimeout(() => card.classList.remove('sc-flash'), 2600);
+      }
+    }
   } catch (e) { toast('Search failed: ' + e.message, 'error'); }
 }
 
