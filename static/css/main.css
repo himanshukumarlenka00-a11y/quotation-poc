@@ -2288,3 +2288,9 @@ html[data-theme=dark] .sic svg [fill="#1a1a1a"] { fill: #cfd6e4; }
 .man-v2 .man-master-check { background: rgba(109,93,240,.08); border: none; border-radius: 10px; }
 .man-v2 .btn-manual-submit { background: var(--primary, #6d5df0); border-radius: 12px; padding: 11px 22px; }
 .man-v2 .btn-manual-cancel { border-radius: 12px; padding: 11px 22px; }
+.man-footer { display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap; }
+.man-footer .man-master-row { margin: 0; }
+.man-footer .manual-add-actions { margin: 0; }
+.man-footer .man-master-row { flex-wrap: nowrap; flex: 1 1 auto; min-width: 0; }
+.man-footer .man-master-row select { flex: 0 1 auto; min-width: 140px; }

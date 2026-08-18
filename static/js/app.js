@@ -3889,17 +3889,19 @@ function toggleManualAdd() {
             </select></div>
         </div>
         </div>
-        ${isAdminUser ? `<div class="man-master-row">
-          <label class="man-master-check man-v2-check">
-            <input type="checkbox" id="man-to-master" checked>
-            <span>Save to the <b>Master Catalogue</b> too, in batch:</span>
-          </label>
-          <select id="man-master-batch"><option value="Added manually">Added manually</option></select>
-        </div>` : ''}
         <div id="man-error" class="man-error" style="display:none;"></div>
-        <div class="manual-add-actions">
-          <button type="button" class="btn-manual-cancel" onclick="toggleManualAdd()">Cancel</button>
-          <button type="button" class="btn-manual-submit" onclick="addManualItem()">＋ Add Product</button>
+        <div class="man-footer">
+          ${isAdminUser ? `<div class="man-master-row">
+            <label class="man-master-check man-v2-check">
+              <input type="checkbox" id="man-to-master" checked>
+              <span>Save to the <b>Master Catalogue</b> too, in batch:</span>
+            </label>
+            <select id="man-master-batch"><option value="Added manually">Added manually</option></select>
+          </div>` : '<span></span>'}
+          <div class="manual-add-actions">
+            <button type="button" class="btn-manual-cancel" onclick="toggleManualAdd()">Cancel</button>
+            <button type="button" class="btn-manual-submit" onclick="addManualItem()">＋ Add Product</button>
+          </div>
         </div>
       </div>`;
   } else {
