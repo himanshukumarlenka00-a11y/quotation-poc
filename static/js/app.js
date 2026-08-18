@@ -1617,17 +1617,28 @@ function filterFolder(gIdx, fname, val) {
 }
 
 // ── Batch-wise selection mode: tick rows, then move / recategorise / delete ──
-let masterSelMode = false;
+let masterSelMode = false;          // true while ANY folder is in select mode
+const masterSelFolders = new Set(); // which folders show checkboxes
 const masterSel = new Set();
 let masterCatList = [];    // category names for the "Set category…" dropdown
 
 function toggleMasterSelect(gIdx, fname) {
-  masterSelMode = !masterSelMode;
-  masterSel.clear();
+  // Per-folder: only the clicked batch enters/leaves select mode. Ticks from
+  // several batches can still be combined by clicking Select on each.
+  if (fname === undefined) {           // "Done" in the bottom bar: clear all
+    masterSelFolders.clear();
+  } else if (masterSelFolders.has(fname)) {
+    masterSelFolders.delete(fname);
+    (masterFolders[fname]?.items || []).forEach(i => masterSel.delete(i.id));
+  } else {
+    masterSelFolders.add(fname);
+  }
+  masterSelMode = masterSelFolders.size > 0;
+  if (!masterSelMode) masterSel.clear();
   renderMasterProducts(_currentGroups(), _expandedMasterFolders());
   // Entering select mode on a closed folder: open it right away, otherwise
   // the checkboxes sit inside a collapsed body and the click looks dead.
-  if (masterSelMode && fname !== undefined) {
+  if (fname !== undefined && masterSelFolders.has(fname)) {
     const content = document.getElementById(`master-folder-${gIdx}`);
     if (content && !content.classList.contains('open')) toggleMasterFolder(gIdx, fname);
   }
@@ -1812,7 +1823,7 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
     ? `<p style="color:var(--muted);font-size:var(--fs-sm);margin-bottom:10px;">Showing the first 500 of ${searchTotal} matches — refine the search to narrow it down.</p>`
     : '';
 
-  const selOn = masterSelMode && isAdminView && masterMode === 'file' && !searchTerm;
+  const selAny = masterSelMode && isAdminView && masterMode === 'file' && !searchTerm;
   const esc = s => s.replace(/"/g, '&quot;');
 
   el.innerHTML = capNote + Object.entries(groups).map(([fname, g], gIdx) => {
@@ -1901,7 +1912,7 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
           <span class="mf-count">${searchTerm ? `${prods.length} match(es)` : `${g.total} products`}</span>
         </div>
         <span style="display:flex;align-items:center;gap:8px;">
-          ${(isAdminView && fileMode) ? `<button class="mf-sel${masterSelMode ? ' on' : ''}" title="Select rows to move, recategorise or delete"
+          ${(isAdminView && fileMode) ? `<button class="mf-sel${masterSelFolders.has(fname) ? ' on' : ''}" title="Select rows to move, recategorise or delete"
             onclick="event.stopPropagation();toggleMasterSelect(${gIdx}, '${fnameEsc}')">☑ Select</button>` : ''}
           ${(isAdminView && fileMode) ? `<button class="mf-dl" title="Download the original file"
             onclick="event.stopPropagation();window.open(API+'/api/master-table/download-file/'+encodeURIComponent('${fnameEsc}'))">
@@ -1923,9 +1934,9 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
         ${bulkPricingBar}
         <div class="table-wrap">
           <table>
-            <thead><tr>${selOn ? `<th class="c"><input type="checkbox" onclick="event.stopPropagation();toggleMasterFolderAll('${fnameEsc}', this.checked)" title="Select all loaded rows"></th>` : ''}<th class="c">Image</th><th>Product</th><th>Brand</th><th>Model</th>${headerCells}<th class="c">GST%</th><th class="c">HSN</th></tr></thead>
+            <thead><tr>${(selAny && masterSelFolders.has(fname)) ? `<th class="c"><input type="checkbox" onclick="event.stopPropagation();toggleMasterFolderAll('${fnameEsc}', this.checked)" title="Select all loaded rows"></th>` : ''}<th class="c">Image</th><th>Product</th><th>Brand</th><th>Model</th>${headerCells}<th class="c">GST%</th><th class="c">HSN</th></tr></thead>
             <tbody>${prods.map(i => `<tr>
-              ${selOn ? `<td class="c"><input type="checkbox" id="msel-${i.id}" ${masterSel.has(i.id) ? 'checked' : ''} onclick="toggleMasterRow(${i.id}, this.checked)"></td>` : ''}
+              ${(selAny && masterSelFolders.has(fname)) ? `<td class="c"><input type="checkbox" id="msel-${i.id}" ${masterSel.has(i.id) ? 'checked' : ''} onclick="toggleMasterRow(${i.id}, this.checked)"></td>` : ''}
               <td class="c">${i.has_image
                 ? `<img src="${API}/api/image/${i.image_path}" style="width:64px;height:52px;object-fit:contain;border-radius:4px;border:1px solid #ddd;cursor:zoom-in;" onclick="showImageLightbox('${API}/api/image/${i.image_path}')" title="Click to enlarge" onerror="this.style.display='none'">`
                 : `<span style="color:#ccc;font-size:var(--fs-xs);">—</span>`}</td>
@@ -1949,7 +1960,7 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
     </div>`;
   }).join('');
 
-  if (selOn) {
+  if (selAny) {
     const batchOpts = masterSummary.map(f =>
       `<option value="${esc(f.file_name)}">${f.file_name}</option>`).join('');
     const catOpts = masterCatList.map(c =>
