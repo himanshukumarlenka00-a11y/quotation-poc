@@ -2249,3 +2249,9 @@ html[data-theme=dark] .sic svg [fill="#1a1a1a"] { fill: #cfd6e4; }
   padding: 10px 14px; background: rgba(232,160,32,.08); border: 1px dashed var(--accent);
   border-radius: 10px; font-size: var(--fs-sm); cursor: pointer; }
 .man-master-check input { accent-color: var(--accent); width: 16px; height: 16px; }
+/* checkbox must stay a checkbox — global input sizing was stretching it */
+.manual-add-card .man-master-check { display: inline-flex; width: auto; padding: 8px 14px; margin: 2px 0 12px; }
+.manual-add-card .man-master-check input { width: 16px !important; height: 16px !important;
+  flex: none; margin: 0; padding: 0 !important; }
+.man-spec-slot { grid-column: 1 / -1; }
+.manual-add-top-fields { align-content: start; }

@@ -3853,11 +3853,10 @@ function toggleManualAdd() {
             ${field('man-product', 'Product Name', 'e.g. Cup Dispenser', 'oninput="this.style.borderColor=\'\';manualAddError(\'\')"', true)}
             ${field('man-model', 'Model No', 'e.g. PCD01')}
             ${field('man-brand', 'Brand', 'e.g. KMW')}
+            <div class="man-field man-spec-slot"><label>Specification</label>
+              <textarea id="man-spec" placeholder="e.g. Cup Dispenser (Disposable Cup, Cone, Glass Dispenser 16in W/SS Flip Cap...)" style="min-height:52px;width:100%;"></textarea>
+            </div>
           </div>
-        </div>
-        <div class="man-field" style="margin-bottom:16px;">
-          <label>Specification</label>
-          <textarea id="man-spec" placeholder="e.g. Cup Dispenser (Disposable Cup, Cone, Glass Dispenser 16in W/SS Flip Cap...)" style="min-height:60px;width:100%;"></textarea>
         </div>
         <div class="manual-add-row2">
           <div class="man-field"><label>Qty <span class="man-req">*</span></label>
@@ -3873,7 +3872,7 @@ function toggleManualAdd() {
         </div>
         ${isAdminUser ? `<label class="man-master-check">
           <input type="checkbox" id="man-to-master" checked>
-          <span>💾 Also save to the <b>Master Catalogue</b> (with cost) — future quotes will find it automatically</span>
+          <span>💾 Save to the <b>Master Catalogue</b> too — future quotes find it automatically</span>
         </label>` : ''}
         <div id="man-error" class="man-error" style="display:none;"></div>
         <div class="manual-add-actions">
