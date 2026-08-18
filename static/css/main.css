@@ -2077,9 +2077,9 @@ body.sb-mini .snav-sub, body.sb-mini .sub-arrow { display: none !important; }
 .mf-sel { border: 1px solid var(--border); background: var(--card); color: var(--muted);
   border-radius: 6px; padding: 3px 10px; font-size: var(--fs-sm); cursor: pointer; }
 .mf-sel.on { background: var(--accent); color: #fff; border-color: var(--accent); }
-.master-sel-bar { position: sticky; bottom: 12px; display: flex; align-items: center; gap: 10px;
+.master-sel-bar { position: sticky; top: 8px; display: flex; align-items: center; gap: 10px;
   background: var(--card); border: 1px solid var(--accent); border-radius: 10px;
-  padding: 10px 16px; margin-top: 14px; box-shadow: 0 4px 16px rgba(0,0,0,.12); z-index: 5; }
+  padding: 10px 16px; margin: 14px 0 0; box-shadow: 0 4px 16px rgba(0,0,0,.12); z-index: 5; }
 .master-sel-bar select { max-width: 260px; }
 .mf-del:hover { color: #c0392b; border-color: #c0392b; }
 .master-sel-bar { flex-wrap: wrap; }

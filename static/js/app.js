@@ -1954,24 +1954,29 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
     </div>`;
   }).join('');
 
-  if (selAny) {
-    const batchOpts = masterSummary.map(f =>
-      `<option value="${esc(f.file_name)}">${f.file_name}</option>`).join('');
-    const catOpts = masterCatList.map(c =>
-      `<option value="${esc(c)}">${c}</option>`).join('');
-    el.innerHTML += `
-    <div class="master-sel-bar">
-      <strong id="msel-count">${masterSel.size} selected</strong>
-      <span style="flex:1"></span>
-      <select onchange="masterSelMove(this)"><option value="">Move to batch…</option>${batchOpts}</select>
-      <select onchange="masterSelCategory(this)"><option value="">Set category…</option>${catOpts}</select>
-      <input id="msel-newcat" type="text" placeholder="…or new category name" style="width:170px"
-        value="${esc(pendingNewCat)}"
-        onkeydown="if(event.key==='Enter'){event.preventDefault();masterSelNewCat();}">
-      <button class="btn btn-sm" onclick="masterSelNewCat()">Set</button>
-      <button class="btn btn-sm btn-danger" onclick="masterSelDelete()">🗑 Delete</button>
-      <button class="btn btn-sm" onclick="toggleMasterSelect()">Done</button>
-    </div>`;
+  const barSlot = document.getElementById('master-sel-bar-slot');
+  if (barSlot) {
+    if (selAny) {
+      const batchOpts = masterSummary.map(f =>
+        `<option value="${esc(f.file_name)}">${f.file_name}</option>`).join('');
+      const catOpts = masterCatList.map(c =>
+        `<option value="${esc(c)}">${c}</option>`).join('');
+      barSlot.innerHTML = `
+      <div class="master-sel-bar">
+        <strong id="msel-count">${masterSel.size} selected</strong>
+        <span style="flex:1"></span>
+        <select onchange="masterSelMove(this)"><option value="">Move to batch…</option>${batchOpts}</select>
+        <select onchange="masterSelCategory(this)"><option value="">Set category…</option>${catOpts}</select>
+        <input id="msel-newcat" type="text" placeholder="…or new category name" style="width:170px"
+          value="${esc(pendingNewCat)}"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();masterSelNewCat();}">
+        <button class="btn btn-sm" onclick="masterSelNewCat()">Set</button>
+        <button class="btn btn-sm btn-danger" onclick="masterSelDelete()">🗑 Delete</button>
+        <button class="btn btn-sm" onclick="toggleMasterSelect()">Done</button>
+      </div>`;
+    } else {
+      barSlot.innerHTML = '';
+    }
   }
 }
 
