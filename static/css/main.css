@@ -2207,3 +2207,6 @@ html[data-theme=dark] .gh-mini circle[fill="#1a1a1a"] { fill: #cfd6e4; }
   .sic-bolt { animation-duration: 2.6s !important; }
   .ghm-mag, .ghm-dot, .ghb, .sict, .sic-bolt { animation-iteration-count: infinite !important; }
 }
+.sic svg { vertical-align: -6px; }
+html[data-theme=dark] .sic svg [stroke="#1a1a1a"] { stroke: #cfd6e4; }
+html[data-theme=dark] .sic svg [fill="#1a1a1a"] { fill: #cfd6e4; }
