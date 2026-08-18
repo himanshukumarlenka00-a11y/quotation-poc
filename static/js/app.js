@@ -1545,6 +1545,60 @@ function appConfirm(o) {
   });
 }
 
+// appPrompt: appConfirm with a text input — resolves the typed string, or null.
+function appPrompt(o) {
+  return new Promise(resolve => {
+    const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const wrap = document.createElement('div');
+    wrap.className = 'cfm-overlay';
+    wrap.innerHTML = `
+      <div class="cfm-card" role="dialog" aria-modal="true">
+        <button class="cfm-x" aria-label="Close">×</button>
+        <div class="cfm-icon accent">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </div>
+        <h3 class="cfm-title">${esc(o.title)}</h3>
+        <p class="cfm-msg">${esc(o.message || '')}</p>
+        <input type="text" class="cfm-input" placeholder="${esc(o.placeholder || '')}">
+        <div class="cfm-actions">
+          <button class="btn cfm-cancel">✕ Cancel</button>
+          <button class="btn btn-primary cfm-ok">${esc(o.confirmLabel || 'OK')}</button>
+        </div>
+      </div>`;
+    const inp = wrap.querySelector('.cfm-input');
+    const done = val => {
+      wrap.classList.remove('open');
+      document.removeEventListener('keydown', onKey);
+      setTimeout(() => wrap.remove(), 200);
+      resolve(val);
+    };
+    const ok = () => { const v = inp.value.trim(); if (!v) { inp.focus(); return; } done(v); };
+    const onKey = e => { if (e.key === 'Escape') done(null); };
+    document.addEventListener('keydown', onKey);
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); ok(); } });
+    wrap.addEventListener('click', e => { if (e.target === wrap) done(null); });
+    wrap.querySelector('.cfm-x').onclick = () => done(null);
+    wrap.querySelector('.cfm-cancel').onclick = () => done(null);
+    wrap.querySelector('.cfm-ok').onclick = ok;
+    document.body.appendChild(wrap);
+    requestAnimationFrame(() => requestAnimationFrame(() => { wrap.classList.add('open'); inp.focus(); }));
+  });
+}
+
+// "＋ New category" (category view): name it, then jump to Batch wise select
+// mode with the name pre-filled — tick rows, hit Set, done.
+let pendingNewCat = '';
+async function newCategoryFlow() {
+  const name = await appPrompt({ title: 'Create a new category',
+    message: 'Name it, then tick products in the Batch wise view and press Set — they become the category.',
+    placeholder: 'e.g. Chafing Dishes', confirmLabel: 'Next: pick products' });
+  if (!name) return;
+  pendingNewCat = name;
+  masterSelMode = true; masterSel.clear();
+  setMasterMode('file');
+  toast(`Tick products for '${name}', then press Set in the bottom bar.`, 'success');
+}
+
 // ── Per-folder filter: server-side search scoped to one catalogue/category ──
 const masterFolderQ = {};
 let _ffTimer = null;
@@ -1624,7 +1678,7 @@ function masterSelNewCat() {
   const inp = document.getElementById('msel-newcat');
   const cat = (inp.value || '').trim();
   if (!cat) { toast('Type the new category name first.', 'error'); return; }
-  inp.value = '';
+  inp.value = ''; pendingNewCat = '';
   _selApply('/api/master-table/update-rows', { category: cat }, 'Categorise');
 }
 async function masterSelDelete() {
@@ -1657,6 +1711,9 @@ async function loadMasterTable() {
   masterSummary = await res.json();
   document.getElementById('master-count').textContent =
     masterSummary.reduce((s, f) => s + f.count, 0);
+  const ncBtn = document.getElementById('btn-new-cat');
+  if (ncBtn) ncBtn.style.display =
+    (masterMode === 'category' && currentUser && currentUser.role === 'admin') ? '' : 'none';
   if (masterMode === 'file' && currentUser && currentUser.role === 'admin') {
     try {
       const cats = await (await fetch(`${API}/api/master-table/summary?by=category`)).json();
@@ -1904,6 +1961,7 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
       <select onchange="masterSelMove(this)"><option value="">Move to batch…</option>${batchOpts}</select>
       <select onchange="masterSelCategory(this)"><option value="">Set category…</option>${catOpts}</select>
       <input id="msel-newcat" type="text" placeholder="…or new category name" style="width:170px"
+        value="${esc(pendingNewCat)}"
         onkeydown="if(event.key==='Enter'){event.preventDefault();masterSelNewCat();}">
       <button class="btn btn-sm" onclick="masterSelNewCat()">Set</button>
       <button class="btn btn-sm btn-danger" onclick="masterSelDelete()">🗑 Delete</button>

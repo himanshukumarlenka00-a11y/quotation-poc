@@ -2123,3 +2123,6 @@ body.sb-mini .snav-sub, body.sb-mini .sub-arrow { display: none !important; }
 [data-theme="dark"] .cfm-icon.accent { background: rgba(232,160,32,.16); }
 [data-theme="dark"] .cfm-note { background: rgba(232,160,32,.12); color: #d9b36a; }
 .dp-preview { margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 10px; }
+.cfm-input { width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px;
+  font-size: var(--fs-base); margin-bottom: 16px; background: var(--card); color: var(--text); }
+.cfm-input:focus { outline: none; border-color: var(--accent); }
