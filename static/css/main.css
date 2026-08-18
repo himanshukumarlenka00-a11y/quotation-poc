@@ -2225,3 +2225,5 @@ html[data-theme=dark] .sic svg [fill="#1a1a1a"] { fill: #cfd6e4; }
   .sic .ghm-mag { animation-duration: 3s !important; }
   .sic .ghb { animation-duration: 2s !important; }
 }
+.snav { font-size: 15px; padding-top: 11px; padding-bottom: 11px; }
+.sic svg[width="24"] { width: 28px; height: 28px; }
