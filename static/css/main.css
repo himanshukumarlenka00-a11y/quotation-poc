@@ -2155,7 +2155,7 @@ html[data-theme=dark] .mgn-chip.mgn-low { background: rgba(192,57,43,.22); color
 /* Generate hero: illustration trio with a soft float */
 .gh-art-row { display: flex; align-items: center; gap: 10px; flex: none; }
 .gh-mini { width: 96px; height: 84px; filter: drop-shadow(0 6px 12px rgba(30,30,60,.14)); }
-@keyframes ghFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+@keyframes ghFloat { 0%,100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-10px) rotate(2deg); } }
 .gh-float1 { animation: ghFloat 4.2s ease-in-out infinite; }
 .gh-float2 { animation: ghFloat 4.2s ease-in-out 1.1s infinite; }
 .gh-art { animation: ghFloat 4.2s ease-in-out 2.2s infinite; }
@@ -2164,3 +2164,13 @@ html[data-theme=dark] .gh-mini path[stroke="#1a1a1a"],
 html[data-theme=dark] .gh-mini line[stroke="#1a1a1a"] { stroke: #cfd6e4; }
 html[data-theme=dark] .gh-mini circle[fill="#1a1a1a"] { fill: #cfd6e4; }
 @media (max-width: 800px) { .gh-art-row { display: none; } }
+
+/* The hero float is decorative-but-wanted: keep it alive even when the OS
+   reduced-motion preference switches everything else off. */
+@media (prefers-reduced-motion: reduce) {
+  .gh-mini, .gh-art {
+    animation-duration: 4.2s !important;
+    animation-iteration-count: infinite !important;
+    transition-duration: 0s !important;
+  }
+}
