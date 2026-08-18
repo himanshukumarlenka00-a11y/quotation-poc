@@ -2943,7 +2943,9 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing, showOrig, showMar
 
   const activeTier = item.active_tier || (item.tiers && item.tiers[0]) || '3star';
 
-  const hasVariants = item._variants && item._variants.length > 1;
+  // >= 1 (not > 1): a surgical single-variant match still deserves Switch —
+  // the panel's search box lets the user widen from there.
+  const hasVariants = item._variants && item._variants.length >= 1;
   // Placeholder rows get a catalogue search instead — the matcher found
   // nothing, so the user picks the right product by hand. Once picked, the
   // row keeps Find (choose differently) and gains Revert (back to the
@@ -3400,7 +3402,7 @@ function switchVariant(idx) {
   document.querySelectorAll('.switch-panel').forEach(p => p.remove());
 
   const item = currentQuotation && currentQuotation.items[idx];
-  if (!item || !item._variants || item._variants.length <= 1) return;
+  if (!item || !item._variants || !item._variants.length) return;
 
   const row = document.querySelector(`#items-body tr[data-idx="${idx}"]`);
   if (!row) return;
