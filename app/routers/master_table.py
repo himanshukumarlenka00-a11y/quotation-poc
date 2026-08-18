@@ -515,17 +515,23 @@ def dedupe_report(admin: dict = Depends(require_role("admin"))):
             "SELECT id, product, file_name, price_3star FROM master_products "
             "WHERE LENGTH(TRIM(product)) < 6 "
             "OR product NOT GLOB '*[A-Za-z][A-Za-z][A-Za-z]*' LIMIT 100")]
-        pairs = [dict(r) for r in conn.execute("""
-            SELECT a.file_name AS file_a, b.file_name AS file_b,
-                   COUNT(DISTINCT LOWER(a.original_model)) AS shared_models
-            FROM master_products a
-            JOIN master_products b
-              ON LOWER(a.original_model) = LOWER(b.original_model)
-             AND a.file_name < b.file_name
-            WHERE LENGTH(a.original_model) >= 5
-            GROUP BY a.file_name, b.file_name
-            HAVING shared_models >= 5
-            ORDER BY shared_models DESC LIMIT 20""")]
+        # One linear pass instead of a self-join — the join version took
+        # minutes on a lakh-scale table and timed out the browser request.
+        from collections import defaultdict, Counter
+        files_by_model = defaultdict(set)
+        for m, f in conn.execute(
+                "SELECT LOWER(original_model), file_name FROM master_products "
+                "WHERE LENGTH(original_model) >= 5"):
+            files_by_model[m].add(f)
+        pair_counts = Counter()
+        for fs in files_by_model.values():
+            if 1 < len(fs) <= 8:   # a model in 9+ files is generic, not a dup import
+                fl = sorted(fs)
+                for i in range(len(fl)):
+                    for j in range(i + 1, len(fl)):
+                        pair_counts[(fl[i], fl[j])] += 1
+        pairs = [{"file_a": a, "file_b": b, "shared_models": n}
+                 for (a, b), n in pair_counts.most_common(20) if n >= 5]
         counts = {r["file_name"]: r["n"] for r in conn.execute(
             "SELECT file_name, COUNT(*) n FROM master_products GROUP BY file_name")}
         for p in pairs:

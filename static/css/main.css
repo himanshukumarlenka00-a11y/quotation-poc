@@ -2088,3 +2088,37 @@ body.sb-mini .snav-sub, body.sb-mini .sub-arrow { display: none !important; }
   border: 1px solid var(--border); border-radius: 8px; font-size: var(--fs-sm);
   background: var(--card); color: var(--text); }
 .mf-q:focus { outline: none; border-color: var(--accent); }
+
+/* In-app confirm modal */
+.cfm-overlay { position: fixed; inset: 0; background: rgba(12,15,28,.48); backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center; z-index: 3000;
+  opacity: 0; transition: opacity .2s ease; }
+.cfm-overlay.open { opacity: 1; }
+.cfm-card { background: var(--card); border-radius: 18px; padding: 30px 28px 20px;
+  width: min(430px, calc(100vw - 40px)); text-align: center; position: relative;
+  box-shadow: 0 24px 70px rgba(0,0,0,.30);
+  transform: translateY(16px) scale(.93); opacity: 0;
+  transition: transform .24s cubic-bezier(.34,1.45,.64,1), opacity .18s ease; }
+.cfm-overlay.open .cfm-card { transform: none; opacity: 1; }
+.cfm-x { position: absolute; top: 10px; right: 14px; border: none; background: none;
+  font-size: 24px; line-height: 1; color: var(--muted); cursor: pointer; }
+.cfm-icon { width: 64px; height: 64px; border-radius: 50%; margin: 0 auto 14px;
+  display: flex; align-items: center; justify-content: center; }
+.cfm-icon.danger { background: #fdecec; color: #e04444; }
+.cfm-icon.accent { background: #fdf3e2; color: var(--accent); }
+.cfm-title { font-size: 20px; margin: 0 0 6px; color: var(--text); }
+.cfm-hl { color: #e04444; }
+.cfm-msg { color: var(--muted); font-size: var(--fs-base); margin: 0 0 16px; }
+.cfm-note { display: flex; gap: 10px; align-items: flex-start; text-align: left;
+  background: #fdf6e8; border-radius: 12px; padding: 12px 14px; margin-bottom: 18px;
+  font-size: var(--fs-sm); color: #7a5b16; line-height: 1.45; }
+.cfm-note svg { flex: none; color: #e8a020; margin-top: 1px; }
+.cfm-note b { color: #b07908; }
+.cfm-actions { display: flex; gap: 12px; }
+.cfm-actions .btn { flex: 1; justify-content: center; padding: 11px 0; border-radius: 10px; font-size: var(--fs-base); }
+.btn-danger-solid { background: #e04444; color: #fff; border: 1px solid #e04444; }
+.btn-danger-solid:hover { background: #c93636; }
+.cfm-foot { margin-top: 12px; font-size: var(--fs-xs); color: var(--muted); }
+[data-theme="dark"] .cfm-icon.danger { background: rgba(224,68,68,.16); }
+[data-theme="dark"] .cfm-icon.accent { background: rgba(232,160,32,.16); }
+[data-theme="dark"] .cfm-note { background: rgba(232,160,32,.12); color: #d9b36a; }

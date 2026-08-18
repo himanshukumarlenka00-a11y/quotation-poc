@@ -887,7 +887,9 @@ function renderDedupe(d) {
 async function deleteJunkRows() {
   const ids = [...document.querySelectorAll('.junk-cb:checked')].map(c => +c.value);
   if (!ids.length) return;
-  if (!confirm(`Delete ${ids.length} junk row(s) from the master table? This cannot be undone.`)) return;
+  if (!await appConfirm({ title: 'Delete junk rows', term: `${ids.length} selected`,
+    message: 'Header fragments and empty names removed from the master table.',
+    confirmLabel: '🗑 Delete rows', footer: 'This action cannot be undone.' })) return;
   const res = await fetch(`${API}/api/master-table/delete-rows`, {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({ ids })
@@ -899,7 +901,10 @@ async function deleteJunkRows() {
 }
 
 async function deleteWholeImport(fname, rows) {
-  if (!confirm(`Delete the ENTIRE import "${fname}" — all ${rows} products?\n\nDo this only if you have confirmed it duplicates another catalogue. This cannot be undone.`)) return;
+  if (!await appConfirm({ title: 'Delete import', term: fname,
+    message: `All ${rows} products in this import will be removed.`,
+    note: '<b>Check first.</b> Do this only if you have confirmed it duplicates another catalogue in the Master Catalogue view.',
+    confirmLabel: '🗑 Delete import', footer: 'This action cannot be undone.' })) return;
   const res = await fetch(`${API}/api/master-table/${encodeURIComponent(fname)}`, { method: 'DELETE' });
   const d = await res.json();
   alert(res.ok ? (d.message || 'Deleted.') : apiErr(d));
@@ -966,8 +971,11 @@ async function _updateUser(id, body) {
 }
 
 function setUserRole(id, role, sel) { _updateUser(id, { role }); }
-function setUserActive(id, active) {
-  if (!active && !confirm('End this person\'s access now? Their account and history stay, and you can reactivate later.')) {
+async function setUserActive(id, active) {
+  if (!active && !await appConfirm({ title: 'End this person\'s access', danger: false,
+    message: 'They are signed out and can no longer log in.',
+    note: '<b>Nothing is lost.</b> Their account and history stay, and you can reactivate them any time.',
+    confirmLabel: 'End access' })) {
     loadUsers();
     return;
   }
@@ -1184,7 +1192,9 @@ async function loadUploadedFiles() {
 }
 
 async function deleteFile(filename) {
-  if (!confirm(`Remove '${filename}' from catalog?`)) return;
+  if (!await appConfirm({ title: 'Remove file', term: filename,
+    message: 'The file and its learned products leave the BOQ catalog.',
+    confirmLabel: '🗑 Remove' })) return;
   const res = await fetch(`${API}/api/boq-files/${encodeURIComponent(filename)}`, { method: 'DELETE' });
   const d = await res.json();
   toast(d.message, 'success');
@@ -1396,7 +1406,10 @@ async function forceImportMaster(idx) {
 }
 
 async function clearCategory(cat) {
-  if (!confirm(`Remove category '${cat}'? Its products are NOT deleted — they move back to Uncategorised.`)) return;
+  if (!await appConfirm({ title: 'Remove category', term: cat,
+    message: 'This category will be removed from your list.',
+    note: '<b>Your products are safe.</b> All products currently in this category will move back to <b>Uncategorised</b>.',
+    confirmLabel: '🗑 Remove category' })) return;
   const res = await fetch(`${API}/api/master-table/clear-category`, {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({ category: cat })
@@ -1407,7 +1420,9 @@ async function clearCategory(cat) {
 }
 
 async function deleteMasterFile(filename) {
-  if (!confirm(`Remove '${filename}' and all its products from the master table?`)) return;
+  if (!await appConfirm({ title: 'Delete catalogue', term: filename,
+    message: 'All of its products are removed from the master table.',
+    confirmLabel: '🗑 Delete catalogue', footer: 'This action cannot be undone.' })) return;
   const res = await fetch(`${API}/api/master-table/${encodeURIComponent(filename)}`, { method: 'DELETE' });
   const d = await res.json();
   toast(d.message, res.ok ? 'success' : 'error');
@@ -1461,6 +1476,51 @@ function setMasterMode(m) {
 function _syncMasterSub() {
   document.querySelectorAll('#master-sub .snav').forEach(n =>
     n.classList.toggle('active', n.dataset.sub === masterMode));
+}
+
+// ── In-app confirm modal: replaces every browser confirm() popup ─────────────
+// appConfirm({title, term, message, note, confirmLabel, danger, footer}) -> Promise<bool>
+// term: highlighted (red) word inside the title. note: amber "your data is
+// safe" callout (app-authored HTML allowed). footer: small lock line.
+function appConfirm(o) {
+  return new Promise(resolve => {
+    const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const danger = o.danger !== false;
+    const wrap = document.createElement('div');
+    wrap.className = 'cfm-overlay';
+    wrap.innerHTML = `
+      <div class="cfm-card" role="dialog" aria-modal="true">
+        <button class="cfm-x" aria-label="Close">×</button>
+        <div class="cfm-icon ${danger ? 'danger' : 'accent'}">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        </div>
+        <h3 class="cfm-title">${esc(o.title)}${o.term ? ` <span class="cfm-hl">'${esc(o.term)}'</span>` : ''}?</h3>
+        <p class="cfm-msg">${esc(o.message || '')}</p>
+        ${o.note ? `<div class="cfm-note">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+          <div>${o.note}</div>
+        </div>` : ''}
+        <div class="cfm-actions">
+          <button class="btn cfm-cancel">✕ Cancel</button>
+          <button class="btn ${danger ? 'btn-danger-solid' : 'btn-primary'} cfm-ok">${esc(o.confirmLabel || 'Confirm')}</button>
+        </div>
+        ${o.footer ? `<div class="cfm-foot">🔒 ${esc(o.footer)}</div>` : ''}
+      </div>`;
+    const done = val => {
+      wrap.classList.remove('open');
+      document.removeEventListener('keydown', onKey);
+      setTimeout(() => wrap.remove(), 200);
+      resolve(val);
+    };
+    const onKey = e => { if (e.key === 'Escape') done(false); };
+    document.addEventListener('keydown', onKey);
+    wrap.addEventListener('click', e => { if (e.target === wrap) done(false); });
+    wrap.querySelector('.cfm-x').onclick = () => done(false);
+    wrap.querySelector('.cfm-cancel').onclick = () => done(false);
+    wrap.querySelector('.cfm-ok').onclick = () => done(true);
+    document.body.appendChild(wrap);
+    requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('open')));
+  });
 }
 
 // ── Per-folder filter: server-side search scoped to one catalogue/category ──
@@ -1545,9 +1605,11 @@ function masterSelNewCat() {
   inp.value = '';
   _selApply('/api/master-table/update-rows', { category: cat }, 'Categorise');
 }
-function masterSelDelete() {
+async function masterSelDelete() {
   if (!masterSel.size) { toast('Tick some products first.', 'error'); return; }
-  if (!confirm(`Delete ${masterSel.size} product(s) from the master table? This can't be undone.`)) return;
+  if (!await appConfirm({ title: 'Delete products', term: `${masterSel.size} selected`,
+    message: 'The ticked products are removed from the master table.',
+    confirmLabel: '🗑 Delete', footer: 'This action cannot be undone.' })) return;
   _selApply('/api/master-table/delete-rows', {}, 'Delete');
 }
 
@@ -3954,14 +4016,18 @@ function renderMarginPanel(panel, d) {
 }
 
 async function deleteQuote(id) {
-  if (!confirm('Delete this quotation?')) return;
+  if (!await appConfirm({ title: 'Delete this quotation',
+    message: 'It disappears from the repository for everyone.',
+    confirmLabel: '🗑 Delete' })) return;
   const res = await fetch(`${API}/api/quotations/${id}`, { method: 'DELETE' });
   if (res.ok) loadRepository();
   else toast('Delete failed', 'error');
 }
 
 async function clearAllQuotations() {
-  if (!confirm('Delete ALL quotations (approved + drafts)? This cannot be undone.')) return;
+  if (!await appConfirm({ title: 'Delete ALL quotations',
+    message: 'Every approved quotation and draft is removed for everyone.',
+    confirmLabel: '🗑 Delete everything', footer: 'This action cannot be undone.' })) return;
   const res = await fetch(`${API}/api/quotations/clear-all`, { method: 'DELETE' });
   if (res.ok) {
     loadRepository();
