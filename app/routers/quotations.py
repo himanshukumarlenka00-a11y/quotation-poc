@@ -435,6 +435,14 @@ def _covered(word, s, s_ns):
             return True
         if len(f) >= 5 and f in s_ns:
             return True
+    # Morphology: 'wood' must cover WOODEN, 'rect' RECTANGULAR, 'gold'
+    # GOLDEN — the request word as a PREFIX of a name word. Only for words
+    # of 4+ chars so short fragments ('pan' → PANINI) can't sneak back in,
+    # and only 4 extra chars of suffix so 'steel' never covers STEELMAX-ish
+    # unrelated brand tokens beyond recognisable inflections.
+    if len(word) >= 4 and re.search(
+            r"\b" + re.escape(word) + r"[a-z]{1,4}\b", s):
+        return True
     return False
 
 

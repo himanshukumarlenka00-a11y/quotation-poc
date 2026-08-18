@@ -156,3 +156,16 @@ fragments out of SKU codes and counted unrelated products as one family.
 Verified real code-prefix queries list their full family already (SMLEDCB ->
 7/7, MPSK30 -> 24/24). No matcher change needed; treat letter-only fragments
 of alphanumeric codes as noise when reading the coverage audit.
+
+## Round 6 — 2026-08-18 (attribute + compound sweep)
+
+New audit (scripts/attribute_audit.py): 290 attribute+noun queries generated
+from real catalogue pairs (steel kettle, copper mug, wooden tray...) in both
+word orders, plus 100 compound-split probes.
+
+Findings: word-form blindness — 'wood' did not cover WOODEN, 'rect' did not
+cover RECTANGULAR — cost 8/290. Fixed in _covered(): a 4+ char request word
+now also matches name words extending it by up to 4 letters. Post-fix:
+288/290 correct; the 2 flags are counter artifacts ('pot' inside SPOT-Glass).
+Compound layer: 96/100 resolve, 4 flags are checker artifacts (correct answers
+in singular form). Full fair audit after the change: 96%, no regression.
