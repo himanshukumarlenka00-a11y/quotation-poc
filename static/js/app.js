@@ -3853,6 +3853,7 @@ function toggleManualAdd() {
             ${field('man-product', 'Product Name', 'e.g. Cup Dispenser', 'oninput="this.style.borderColor=\'\';manualAddError(\'\')"', true)}
             ${field('man-model', 'Model No', 'e.g. PCD01')}
             ${field('man-brand', 'Brand', 'e.g. KMW')}
+            ${field('man-hsn', 'HSN Code', 'e.g. 73239390')}
             <div class="man-field man-spec-slot"><label>Specification</label>
               <textarea id="man-spec" placeholder="e.g. Cup Dispenser (Disposable Cup, Cone, Glass Dispenser 16in W/SS Flip Cap...)" style="min-height:52px;width:100%;"></textarea>
             </div>
@@ -3868,7 +3869,6 @@ function toggleManualAdd() {
               <option value="0">0</option><option value="5">5</option><option value="12">12</option>
               <option value="18" selected>18</option><option value="28">28</option>
             </select></div>
-          ${field('man-hsn', 'HSN Code', 'e.g. 73239390')}
         </div>
         ${isAdminUser ? `<div class="man-master-row">
           <label class="man-master-check">

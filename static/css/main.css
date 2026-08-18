@@ -290,8 +290,8 @@
   .man-img-box:hover { border-color:var(--primary); background:rgba(106,76,240,.05); }
   .man-img-label { font-size:var(--fs-sm); font-weight:600; color:var(--primary); margin-top:4px; }
   .man-img-hint { font-size:var(--fs-xs); color:var(--muted); }
-  .manual-add-top-fields { flex:1; display:grid; grid-template-columns:2fr 1fr 1fr; gap:16px; align-content:start; }
-  .manual-add-row2 { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:16px; margin-bottom:20px; }
+  .manual-add-top-fields { flex:1; display:grid; grid-template-columns:1.6fr 1fr 1fr 1fr; gap:16px; align-content:start; }
+  .manual-add-row2 { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:16px; margin-bottom:16px; }
   .man-field { display:flex; flex-direction:column; gap:6px; }
   .man-field label { font-size:var(--fs-sm); font-weight:600; color:var(--text); }
   .man-req { color:#e0453c; }
