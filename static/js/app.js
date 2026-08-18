@@ -3445,6 +3445,13 @@ function switchVariant(idx) {
   panel.innerHTML = `<td colspan="${colCount}">
     <div class="switch-panel-inner">
       <div class="switch-panel-title">🔄 Switch Variant — "${item._requested || item.product}"</div>
+      <div class="switch-search">
+        <input type="text" id="swsearch-${idx}" placeholder="Not here? Search the whole catalogue — e.g. just 'kettle'…"
+          value="${escHtml(item._searchTerm || '')}"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();searchMoreVariants(${idx});}">
+        <button class="btn btn-sm" onclick="searchMoreVariants(${idx})">Search</button>
+        ${item._searchNote ? `<span class="switch-more-note">${escHtml(item._searchNote)}</span>` : ''}
+      </div>
       <div class="switch-cards">${cards}</div>
       ${item._variantsFull ? `<div class="switch-more-note">Showing all ${ordered.length} matches.</div>` : `
         <div class="switch-more">
@@ -3468,6 +3475,35 @@ function switchVariant(idx) {
 }
 
 const VARIANT_BATCH = 30;   // how many more the Switch panel loads per click
+
+// Switch-panel search: pull ranked matches for ANY term into this row's
+// variants — "kettle stainless steel" found 24, typing "kettle" fetches the
+// rest of the family without leaving the panel. Results are APPENDED (never
+// substituted) so every existing card keeps its _variants index.
+async function searchMoreVariants(idx) {
+  const item = currentQuotation && currentQuotation.items[idx];
+  const inp = document.getElementById(`swsearch-${idx}`);
+  if (!item || !inp) return;
+  const term = inp.value.trim();
+  if (term.length < 2) { toast('Type at least 2 characters.', 'error'); return; }
+  try {
+    const res = await fetch(`${API}/api/product-variants?q=${encodeURIComponent(term)}&limit=40`);
+    const d = await res.json();
+    if (!res.ok) { toast(apiErr(d), 'error'); return; }
+    const key = v => `${(v.product || '').trim().toLowerCase()}|${(v.model_no || '').trim().toLowerCase()}`;
+    const have = new Set(item._variants.map(key));
+    const added = (d.items || []).filter(v => !have.has(key(v)));
+    item._variants.push(...added);
+    item._searchTerm = term;
+    item._searchNote = added.length
+      ? `＋${added.length} from "${term}"`
+      : `Nothing new for "${term}".`;
+    document.querySelectorAll('.switch-panel').forEach(p => p.remove());
+    switchVariant(idx);
+    const again = document.getElementById(`swsearch-${idx}`);
+    if (again) again.focus();
+  } catch (e) { toast('Search failed: ' + e.message, 'error'); }
+}
 
 // Loads the next batch of alternatives and reopens the panel. Fetched
 // variants are APPENDED, never substituted — applySwitch() indexes into

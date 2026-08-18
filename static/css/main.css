@@ -2296,3 +2296,7 @@ html[data-theme=dark] .sic svg [fill="#1a1a1a"] { fill: #cfd6e4; }
 .man-footer .man-master-row select { flex: 0 1 auto; min-width: 140px; }
 .man-footer { justify-content: flex-end; }
 .man-footer .man-master-row { flex: 0 1 auto; }
+.switch-search { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.switch-search input { flex: 0 1 380px; padding: 8px 14px; border: 1px solid var(--border);
+  border-radius: 99px; font-size: var(--fs-sm); background: var(--card); color: var(--text); }
+.switch-search input:focus { outline: none; border-color: var(--accent); }
