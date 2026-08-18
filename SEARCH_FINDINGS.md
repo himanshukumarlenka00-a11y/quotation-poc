@@ -133,3 +133,19 @@ Fixes this round:
 
 Remaining 11 failures: genuinely ambiguous fragments ("Size Crock", "Andy 10")
 where multiple catalogue rows are equally valid answers.
+
+## Round 5 — 2026-08-18 (variant starvation)
+
+"food warmer" showed only 5 switchable variants of 27: products named exactly
+"...FOOD WARMER" scored 2000 (exact-name supremacy) and the switcher's
+same-tier cutoff (60% of top) discarded every other family member. Fixed by
+capping the cutoff at 420 — the automatic pick is untouched, the alternatives
+list always keeps full-coverage matches. Also added compound-word merging
+("pop corn" -> POPCORN when the joined form exists and the phrase doesn't).
+
+Systematic check: scripts/variant_coverage_audit.py compares, for the ~140
+most common family terms, catalogue family size vs resolver variant count.
+Post-fix: no product-phrase family under 50% coverage. Remaining flags are
+(a) umbrella words (7,900 "plate" rows — pool caps trim these by design) and
+(b) brand+model-prefix queries where the hard model constraint intentionally
+returns one row. Re-run after any scoring change.
