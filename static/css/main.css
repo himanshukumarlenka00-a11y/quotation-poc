@@ -2126,3 +2126,13 @@ body.sb-mini .snav-sub, body.sb-mini .sub-arrow { display: none !important; }
 .cfm-input { width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px;
   font-size: var(--fs-base); margin-bottom: 16px; background: var(--card); color: var(--text); }
 .cfm-input:focus { outline: none; border-color: var(--accent); }
+.cfm-card.cfm-wide { width: min(560px, calc(100vw - 40px)); }
+.ncp-results { max-height: 300px; overflow-y: auto; text-align: left; margin-bottom: 16px;
+  border: 1px solid var(--border); border-radius: 10px; padding: 4px; }
+.ncp-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px;
+  cursor: pointer; font-size: var(--fs-sm); }
+.ncp-row:hover { background: var(--card-soft, rgba(0,0,0,.04)); }
+.ncp-row .ncp-name { flex: 1; font-weight: 600; }
+.ncp-row small { color: var(--muted); max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ncp-hint { color: var(--muted); font-size: var(--fs-sm); text-align: center; padding: 10px; margin: 0; }
+.cfm-alt { flex: 0 0 auto !important; padding: 11px 14px !important; }

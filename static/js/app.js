@@ -1585,18 +1585,85 @@ function appPrompt(o) {
   });
 }
 
-// "＋ New category" (category view): name it, then jump to Batch wise select
-// mode with the name pre-filled — tick rows, hit Set, done.
+// "＋ New category" (category view): name it, then add products right in the
+// dialog — search the whole master table and tick. No page-hopping needed.
 let pendingNewCat = '';
 async function newCategoryFlow() {
   const name = await appPrompt({ title: 'Create a new category',
-    message: 'Name it, then tick products in the Batch wise view and press Set — they become the category.',
+    message: 'Next you can search and tick products for it right here.',
     placeholder: 'e.g. Chafing Dishes', confirmLabel: 'Next: pick products' });
   if (!name) return;
-  pendingNewCat = name;
-  masterSelMode = true; masterSel.clear();
-  setMasterMode('file');
-  toast(`Tick products for '${name}', then press Set in the bottom bar.`, 'success');
+  openCategoryPicker(name);
+}
+
+// Search-and-tick picker modal: assigns the ticked products to the category.
+function openCategoryPicker(catName) {
+  const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const picked = new Set();
+  const wrap = document.createElement('div');
+  wrap.className = 'cfm-overlay';
+  wrap.innerHTML = `
+    <div class="cfm-card cfm-wide" role="dialog" aria-modal="true">
+      <button class="cfm-x" aria-label="Close">×</button>
+      <h3 class="cfm-title">Add products to <span class="cfm-hl">'${esc(catName)}'</span></h3>
+      <p class="cfm-msg">Search the whole master table, tick what belongs, then save.</p>
+      <input type="text" class="cfm-input" id="ncp-search" placeholder="Search by product, brand, or model…">
+      <div id="ncp-results" class="ncp-results"><p class="ncp-hint">Type to search 46,000+ products.</p></div>
+      <div class="cfm-actions">
+        <button class="btn cfm-cancel">✕ Cancel</button>
+        <button class="btn cfm-alt" title="Tick rows batch-by-batch in the catalogue view instead">Pick from catalogue</button>
+        <button class="btn btn-primary cfm-ok">Save (<span id="ncp-count">0</span>)</button>
+      </div>
+    </div>`;
+  const results = wrap.querySelector('#ncp-results');
+  const countEl = wrap.querySelector('#ncp-count');
+  const close = () => { wrap.classList.remove('open'); setTimeout(() => wrap.remove(), 200); };
+  let t = null;
+  wrap.querySelector('#ncp-search').addEventListener('input', e => {
+    clearTimeout(t);
+    const q = e.target.value.trim();
+    t = setTimeout(async () => {
+      if (!q) { results.innerHTML = '<p class="ncp-hint">Type to search 46,000+ products.</p>'; return; }
+      const r = await fetch(`${API}/api/master-table/page?q=${encodeURIComponent(q)}&limit=50`);
+      const d = await r.json();
+      if (!d.items || !d.items.length) { results.innerHTML = '<p class="ncp-hint">No matches.</p>'; return; }
+      results.innerHTML = d.items.map(i => `
+        <label class="ncp-row">
+          <input type="checkbox" ${picked.has(i.id) ? 'checked' : ''}
+            onchange="this.checked ? window._ncpPicked.add(${i.id}) : window._ncpPicked.delete(${i.id});
+                      document.getElementById('ncp-count').textContent = window._ncpPicked.size;">
+          <span class="ncp-name">${esc(i.product)}</span>
+          <small>${esc(i.brand || '')} · ${esc(i.file_name)}</small>
+        </label>`).join('') +
+        (d.total > 50 ? `<p class="ncp-hint">Showing 50 of ${d.total} — refine the search.</p>` : '');
+    }, 300);
+  });
+  window._ncpPicked = picked;
+  wrap.querySelector('.cfm-x').onclick = close;
+  wrap.querySelector('.cfm-cancel').onclick = close;
+  wrap.querySelector('.cfm-alt').onclick = () => {
+    close();
+    pendingNewCat = catName;
+    masterSelMode = true; masterSel.clear();
+    setMasterMode('file');
+    toast(`Tick products for '${catName}', then press Set in the top bar.`, 'success');
+  };
+  wrap.querySelector('.cfm-ok').onclick = async () => {
+    if (!picked.size) { toast('Tick at least one product.', 'error'); return; }
+    if (picked.size > 200) { toast('Max 200 at a time.', 'error'); return; }
+    const res = await fetch(`${API}/api/master-table/update-rows`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ ids: [...picked], category: catName })
+    });
+    const d = await res.json();
+    if (!res.ok) { toast(d.detail || 'Failed', 'error'); return; }
+    toast(d.message, 'success');
+    close();
+    masterFolders = {}; masterSummary = [];
+    loadMasterTable();
+  };
+  document.body.appendChild(wrap);
+  requestAnimationFrame(() => requestAnimationFrame(() => { wrap.classList.add('open'); wrap.querySelector('#ncp-search').focus(); }));
 }
 
 // ── Per-folder filter: server-side search scoped to one catalogue/category ──
