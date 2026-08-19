@@ -457,7 +457,7 @@ def _covered(word, s, s_ns):
     # and only 4 extra chars of suffix so 'steel' never covers STEELMAX-ish
     # unrelated brand tokens beyond recognisable inflections.
     if len(word) >= 4 and re.search(
-            r"\b" + re.escape(word) + r"[a-z]{1,4}\b", s):
+            r"\b" + re.escape(word) + r"[a-z]{1,5}\b", s):
         return True
     return False
 
@@ -697,12 +697,21 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             i += 1
         return " ".join(out)
 
+    def _norm_units(term):
+        # "1 litre" / "1 Ltr" / "1liter" all become "1l" so every capacity
+        # spelling takes the identical scoring path as "1L"; "1.0L" collapses
+        # to "1l" the same way.
+        s = re.sub(r"(\d+(?:\.\d+)?)\s*(litres?|liters?|ltrs?|lt)\b", r"\1l",
+                   term or "", flags=re.I)
+        return re.sub(r"(\d+)\.0\s*(l|ml|kw|w|v|hz|mm|cm|kg)\b", r"\1\2",
+                      s, flags=re.I)
+
     for it in extracted:
         for key in ("product", "search_term"):
             if it.get(key):
                 # Merge BEFORE typo-fixing: 'corn' alone is unknown to the
                 # catalogue and would get "corrected" to 'cork' first.
-                fixed = _fix_typos(_merge_compounds(it[key]))
+                fixed = _fix_typos(_merge_compounds(_norm_units(it[key])))
                 if fixed != it[key]:
                     it[key] = fixed
 
@@ -755,17 +764,50 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
     brand_pref = {b for b in _BRANDS_CACHE[1]
                   if re.search(r"\b" + re.escape(b) + r"\b", _pref_hay)}
 
+    # Catalogue-name preference: "only indigo products" names a FILE, not a
+    # brand (all INDIGO rows are branded MELANGE) — distinctive words from
+    # file names count as preference too, biasing rows from those files.
+    global _FILETOK_CACHE
+    try:
+        _FILETOK_CACHE
+    except NameError:
+        _FILETOK_CACHE = (None, None)
+    if _FILETOK_CACHE[0] != len(all_products):
+        _GENERIC_F = {"price", "list", "lists", "pricelist", "master", "final",
+                      "done", "copy", "part", "items", "item", "table", "preview",
+                      "quotation", "compressed", "digital", "added", "from",
+                      "boq", "products", "professional", "collection", "series"}
+        ftoks = {}
+        for (fn,) in conn.execute("SELECT DISTINCT file_name FROM master_products"):
+            for w in re.findall(r"[A-Za-z]{4,}", fn or ""):
+                lw = w.lower()
+                # A file token that is also a common PRODUCT word (induction,
+                # chafing, kitchen...) must not become a preference trigger —
+                # only distinctive catalogue identifiers (indigo, kutahya).
+                if lw not in _GENERIC_F and _vocab.get(lw, 0) < 25:
+                    ftoks.setdefault(lw.upper(), set()).add(fn)
+        _FILETOK_CACHE = (len(all_products), ftoks)
+    file_pref = set()
+    _pref_words = set()
+    for tok, fns in _FILETOK_CACHE[1].items():
+        if re.search(r"\b" + re.escape(tok) + r"\b", _pref_hay):
+            file_pref |= fns
+            _pref_words.add(tok.lower())
+
     # A line that is ONLY brand names + filler ("only nilkamal products") is
     # context, not an order line — it has done its job setting brand_pref
     # above; quoting it would just produce a junk placeholder row.
-    if brand_pref:
+    if brand_pref or file_pref:
         _FILLER = {"only", "items", "item", "products", "product", "all",
                    "from", "brand", "brands", "everything", "things", "stuff",
                    "pls", "plz", "please", "give", "want", "need", "needed"}
-        _brand_words = {w.lower() for b in brand_pref for w in b.split()}
+        _brand_words = ({w.lower() for b in brand_pref for w in b.split()}
+                        | _pref_words)
         def _is_context_line(it):
             toks = re.findall(r"[a-z]+", _fix_typos(it.get("product") or "").lower())
-            sig = [t for t in toks if t not in _FILLER and t not in _brand_words]
+            # 1-2 letter scraps ("me", "of") are filler by definition.
+            sig = [t for t in toks if len(t) > 2
+                   and t not in _FILLER and t not in _brand_words]
             return bool(toks) and not sig
         kept = [it for it in extracted if not _is_context_line(it)]
         if kept:                      # never drop everything
@@ -845,6 +887,28 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                         "WHERE master_fts MATCH ? ORDER BY f.rank LIMIT 400", (match,)).fetchall()]
             except Exception:
                 pool = []
+            # A named brand/catalogue preference is useless if the preferred
+            # rows never enter the pool: "plate" matches 7,900 rows and the
+            # 400-cap keeps none of INDIGO's 14. Pull the preferred sources'
+            # own matches in explicitly so the scoring boost has candidates.
+            if (file_pref or brand_pref) and not catalogs:
+                try:
+                    extra = []
+                    if file_pref:
+                        phf = ",".join("?" * len(file_pref))
+                        extra += conn.execute(
+                            f"SELECT m.* FROM master_fts f JOIN master_products m ON m.id = f.rowid "
+                            f"WHERE master_fts MATCH ? AND m.file_name IN ({phf}) "
+                            f"ORDER BY f.rank LIMIT 200", [match, *file_pref]).fetchall()
+                    for b in brand_pref:
+                        extra += conn.execute(
+                            "SELECT m.* FROM master_fts f JOIN master_products m ON m.id = f.rowid "
+                            "WHERE master_fts MATCH ? AND UPPER(m.brand) LIKE ? "
+                            "ORDER BY f.rank LIMIT 200", (match, f"%{b}%")).fetchall()
+                    seen_ids = {r["id"] for r in pool}
+                    pool += [dict(r) for r in extra if r["id"] not in seen_ids]
+                except Exception:
+                    pass
             pool = _merge_glued(conn, pool, words, catalogs)
         _pool_cache[key] = pool
         return pool
@@ -930,7 +994,11 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 score = 1500 if _model_exact(model, mtoks, t, t_is_code, numtoks) else 1000
             elif core and all(_covered(w, name, name_ns) for w in core):
                 score = 600 - min(len(name), 120)              # full name match; tighter ranks higher
-            elif name_core and all(_covered(w, t, t_ns) for w in name_core):
+            elif (name_core and all(_covered(w, t, t_ns) for w in name_core)
+                    and (len(name_core) >= 2 or len(core) < 2)):
+                # (single-word names only qualify against single-word
+                # requests: a product called just "Board" is not a credible
+                # option for "iron board" — it drops the defining modifier.)
                 # Reverse coverage: the product's ENTIRE name appears inside
                 # the request. Measuring request->name punishes the user for
                 # being specific — "Hair Dryer, Color - Black / Grey
@@ -955,10 +1023,20 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 # because the word sits in that glove's spec text.
                 score = 120                                    # specification match
             if score:
-                if brand_pref and score < 1000:
+                if ((brand_pref or file_pref) and score < 1000
+                        and not (numtoks or mtoks or t_is_code)):
+                    # Never on model-ish queries: "andy 27431" must resolve by
+                    # the CODE, not by which brand row has the nicest name.
                     rb = (r.get('brand') or '').strip().upper()
-                    if rb and any(b == rb or b in rb or rb in b for b in brand_pref):
-                        score += 1600      # the request named this brand
+                    if ((rb and any(b == rb or b in rb or rb in b for b in brand_pref))
+                            or r.get('file_name') in file_pref):
+                        # 1600: an explicitly named brand/catalogue outranks
+                        # even a foreign exact-name row — "only indigo
+                        # products; plate" wants INDIGO's plate, not whichever
+                        # product is literally named "PLATE". Model-code
+                        # queries never reach here (gate above), and generic
+                        # file tokens can't trigger preference (vocab filter).
+                        score += 1600      # the request named this brand/catalogue
                 if short:
                     score += 100 * sum(1 for w in short
                                        if re.search(r"\b" + re.escape(w) + r"\b", name))
@@ -982,7 +1060,21 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         # Progressive refinement: if the request carries a spec value (wattage,
         # capacity, voltage…) or a model code, narrow to the rows that actually
         # have it — e.g. "kettle" → all kettles, "kettle 1500W" → only the 1500W.
-        quals = re.findall(r"\d+(?:\.\d+)?\s*(?:kw|w|ml|l|v|hz|mm|cm|kg)\b", t)
+        # Every capacity/size notation for the same value must behave alike:
+        # "1L", "1.0L", "1 litre", "1 ltr" all narrow to the 1-litre rows.
+        # Each detected qual expands into its notation family; a row passes
+        # if it carries ANY spelling of ANY asked qual (same OR semantics).
+        _UNIT_FAMILY = {"litre": "l", "litres": "l", "liter": "l",
+                        "liters": "l", "ltr": "l", "ltrs": "l", "lt": "l"}
+        quals = []
+        for val, unit in re.findall(
+                r"(\d+(?:\.\d+)?)\s*(litres?|liters?|ltrs?|lt|kw|w|ml|l|v|hz|mm|cm|kg)\b",
+                t):
+            u = _UNIT_FAMILY.get(unit, unit)
+            vals = {val}
+            vals.add(val[:-2] if val.endswith(".0") else val + ".0")
+            units = {u, "litre", "liter", "ltr", "lt"} if u == "l" else {u}
+            quals += [v + un for v in vals for un in units]
         quals += re.findall(r"\b\d+\.\d+\b", t)
         # Inch sizes — 5", 9'', 6 inch. These name most of the catalog's
         # near-identical variants (Scraper 3"/4"/5") and were previously
