@@ -2306,3 +2306,9 @@ html[data-theme=dark] .sic svg [fill="#1a1a1a"] { fill: #cfd6e4; }
 /* App-wide density: the team judged 90% browser zoom "the perfect size —
    we see all things", so make that the built-in default at 100% zoom. */
 body { zoom: 0.9; }
+
+/* body{zoom:.9} makes 100vh render at 90% of the window — every full-height
+   element must compensate or it stops short, leaving a dead strip. */
+body { min-height: calc(100vh / 0.9); }
+.shell { min-height: calc(100vh / 0.9); }
+.sidebar { height: calc(100vh / 0.9); }
