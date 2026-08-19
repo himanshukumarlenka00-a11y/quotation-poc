@@ -456,8 +456,10 @@ def _covered(word, s, s_ns):
     # of 4+ chars so short fragments ('pan' → PANINI) can't sneak back in,
     # and only 4 extra chars of suffix so 'steel' never covers STEELMAX-ish
     # unrelated brand tokens beyond recognisable inflections.
+    # Suffix must be 2-5 letters or a bare plural 's': one free letter let
+    # "whisk" match WHISKY. (wood->WOODEN, iron->IRONBOARD still covered.)
     if len(word) >= 4 and re.search(
-            r"\b" + re.escape(word) + r"[a-z]{1,5}\b", s):
+            r"\b" + re.escape(word) + r"(?:[a-z]{2,5}|s)\b", s):
         return True
     return False
 
@@ -759,7 +761,20 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
               for (b,) in conn.execute(
                   "SELECT DISTINCT brand FROM master_products "
                   "WHERE LENGTH(TRIM(COALESCE(brand,''))) >= 3")}
-        _BRANDS_CACHE = (len(all_products), {b for b in bs if re.match(r"^[A-Z][A-Z &.'-]+$", b)})
+        bs = {b for b in bs if re.match(r"^[A-Z][A-Z &.'-]+$", b)}
+        # A brand whose name is an everyday product word ("BAR") must not
+        # hijack ordinary requests ("bar spoon"). Trigger only brands that
+        # rarely appear in OTHER brands' product names.
+        keep = set()
+        rows_bn = conn.execute(
+            "SELECT UPPER(COALESCE(brand,'')), UPPER(product) FROM master_products").fetchall()
+        for b in bs:
+            pat = re.compile(r"\b" + re.escape(b) + r"\b")
+            cross = sum(1 for rb, name in rows_bn
+                        if b not in rb and name and pat.search(name))
+            if cross < 25:
+                keep.add(b)
+        _BRANDS_CACHE = (len(all_products), keep)
     _pref_hay = _fix_typos((prompt or "") + " " + " ".join(search_terms)).upper()
     brand_pref = {b for b in _BRANDS_CACHE[1]
                   if re.search(r"\b" + re.escape(b) + r"\b", _pref_hay)}
@@ -1082,19 +1097,31 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         quals += [m + '"' for m in re.findall(r"(\d+(?:\.\d+)?)\s*(?:\"|''|inch|inches)", t)]
         quals += mtoks
         quals = [q.replace(" ", "") for q in quals if q.strip()]
+        def _hay(r):
+            # The product NAME must be searched too: "Scraper 5"" carries
+            # its size in the name, not the spec, so a model+spec-only
+            # haystack could never match it.
+            return ((r.get('product') or '') + ' ' +
+                    (r.get('original_model') or '') + ' ' +
+                    (r.get('specification') or '')).lower().replace(' ', '')
         if quals:
-            def _hay(r):
-                # The product NAME must be searched too: "Scraper 5"" carries
-                # its size in the name, not the spec, so a model+spec-only
-                # haystack could never match it.
-                return ((r.get('product') or '') + ' ' +
-                        (r.get('original_model') or '') + ' ' +
-                        (r.get('specification') or '')).lower().replace(' ', '')
             narrowed = [r for r in result if any(q in _hay(r) for q in quals)]
             # No silent fallback. If the request names a size and nothing
             # carries it, returning the other sizes is worse than returning
             # nothing — it quotes the wrong goods at full confidence.
             return narrowed
+        # A bare small number with no unit ("scraper 5 20" typed without the
+        # inch mark) is still a size hint: SOFT-narrow to rows carrying that
+        # number glued to a size marker (5", 5in, 5cm, 5qt...). Soft — if no
+        # row carries it as a size, keep the full list rather than failing,
+        # because a bare number might also be a harmless stray.
+        nums = re.findall(r"\b(\d{1,2})\b", t)
+        if nums and result:
+            alts = [n + suf for n in nums
+                    for suf in ('"', "''", 'in', 'inch', 'cm', 'mm', 'l', 'ml', 'qt', 'ltr')]
+            soft = [r for r in result if any(a in _hay(r) for a in alts)]
+            if soft:
+                return soft
         return result
 
     # Ensure model-number codes typed in the prompt (e.g. "IR-CHS002") are
