@@ -294,7 +294,12 @@ def _parse_items_deterministically(prompt):
     # "PRODUCT [WCCE001-SS] 5" is unambiguously a list row, and sending it to
     # the LLM burns quota to learn nothing (today's 429s came from exactly
     # this shape).
-    if len(lines) >= 2 or (len(lines) == 1 and re.search(r"\[[^\]\[]+\]", lines[0])):
+    # A single line that is a comma list or starts with a number belongs to
+    # the qty-first segment parser below ("100 soup bowl, 60 ice box").
+    _single_listy = (len(lines) == 1 and not re.search(r"\[[^\]\[]+\]", lines[0])
+                     and (re.search(r",|;|\band\b", lines[0], re.I)
+                          or re.match(r"^\d", lines[0])))
+    if lines and not _single_listy:
         items = []
         for line in lines:
             # Trailing qty is optional — a bare product line means qty 1.
@@ -306,12 +311,23 @@ def _parse_items_deterministically(prompt):
                                   and not re.search(r"\[[^\]\[]+\]", line)):
                 items = None
                 break
-            m = re.match(r"^(.{3,90}?)(?:[\s\-–]+(\d{1,5}))?$", line)
+            # Quantity styles the team actually types: "kettle 1000",
+            # "kettle 1000 qty", "kettle qty 50", "kettle /50 qty",
+            # "kettle x 50". A '/' separator only counts in the explicit
+            # qty-word forms, so product names like "set/4" keep their 4.
+            m = re.match(
+                r"^(.{3,90}?)"
+                r"(?:"
+                r"[\s\-–/]+(?:qty|x|nos\.?|pcs\.?)[\s.:]*(\d{1,5})"
+                r"|[\s\-–/]+(\d{1,5})\s*(?:qty|nos\.?|pcs\.?|pieces?|units?)\.?"
+                r"|[\s\-–]+(\d{1,5})"
+                r")?$", line, re.I)
             if not m or not re.search(r"[A-Za-z]", m.group(1)):
                 items = None
                 break
-            items.append({"product": m.group(1).strip(" .-"),
-                          "qty": int(m.group(2)) if m.group(2) else 1})
+            qty = next((g for g in m.groups()[1:] if g), None)
+            items.append({"product": m.group(1).strip(" .-/"),
+                          "qty": int(qty) if qty else 1})
         if items:
             return items
 
