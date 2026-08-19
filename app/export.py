@@ -564,6 +564,16 @@ def build_company_quotation(quotation: dict, items: list) -> str:
     new_last_row = new_footer_start + (footer_last_row - FOOTER_START)
     ws.print_area = f"A1:{get_column_letter(MAX_COL)}{new_last_row}"
 
+    # The template carries a literal SL "2" beside its PACKING, FORWARDING &
+    # FREIGHT CHARGES row — a charges line is not an item, so its SL cell
+    # stays blank on the final bill.
+    for r in range(FIRST_ITEM_ROW, new_last_row + 1):
+        for col in (2, 8):   # product (B) and specification (H) columns
+            v = ws.cell(r, col).value
+            if isinstance(v, str) and "PACKING, FORWARDING" in v.upper():
+                ws.cell(r, 1).value = None
+                break
+
     # openpyxl writes formulas with no cached result, so a workbook opened in
     # manual-calc mode would show every derived cell blank until someone hits
     # F9. This flag makes Excel recalculate the whole book on open, which is
