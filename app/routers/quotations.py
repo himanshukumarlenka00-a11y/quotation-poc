@@ -1922,17 +1922,23 @@ def refresh_quotation_prices(qid: int, user: dict = Depends(get_current_user)):
     data = json.loads(row["items_json"])
     items = data.get("items", [])
     updated = skipped = 0
+    # One pass over the master table instead of one LOWER(TRIM())-scan per
+    # line — that per-item query could not use an index and made this button
+    # feel stuck on longer quotes.
+    price_map = {}
+    for r in conn.execute(
+            "SELECT product, original_model, price_3star, price_3star_usd, "
+            "price_4star, price_4star_usd FROM master_products"):
+        k = ((r["product"] or "").strip().lower(),
+             (r["original_model"] or "").strip().lower())
+        price_map.setdefault(k, r)
     for item in items:
         product = (item.get("product") or "").strip()
         if not product:
             skipped += 1
             continue
-        m = conn.execute(
-            "SELECT price_3star, price_3star_usd, price_4star, price_4star_usd "
-            "FROM master_products WHERE LOWER(TRIM(product))=LOWER(TRIM(?)) "
-            "AND LOWER(TRIM(COALESCE(original_model,'')))=LOWER(TRIM(?)) LIMIT 1",
-            (product, (item.get("model_no") or "").strip())
-        ).fetchone()
+        m = price_map.get((product.lower(),
+                           (item.get("model_no") or "").strip().lower()))
         if not m:
             skipped += 1
             continue
