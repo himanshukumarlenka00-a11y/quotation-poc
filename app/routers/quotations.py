@@ -717,6 +717,27 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         return " OR ".join(f'"{w}"*' for w in sorted(words)[:40])
 
     search_terms = [it.get("search_term") or it.get("product") or "" for it in extracted]
+
+    # Brand preference: naming ANY catalogue brand in the request ("i need
+    # walther items / dustbin 10") biases every line toward that brand's
+    # rows — other brands stay right behind as switch options, nothing is
+    # filtered out. The typo layer runs on the haystack first so "walther"
+    # finds brand WALTHR. Boost is name-tier only, so typed model codes and
+    # human corrections still outrank it.
+    global _BRANDS_CACHE
+    try:
+        _BRANDS_CACHE
+    except NameError:
+        _BRANDS_CACHE = (None, None)
+    if _BRANDS_CACHE[0] != len(all_products):
+        bs = {str(b or "").strip().upper()
+              for (b,) in conn.execute(
+                  "SELECT DISTINCT brand FROM master_products "
+                  "WHERE LENGTH(TRIM(COALESCE(brand,''))) >= 3")}
+        _BRANDS_CACHE = (len(all_products), {b for b in bs if re.match(r"^[A-Z][A-Z &.'-]+$", b)})
+    _pref_hay = _fix_typos((prompt or "") + " " + " ".join(search_terms)).upper()
+    brand_pref = {b for b in _BRANDS_CACHE[1]
+                  if re.search(r"\b" + re.escape(b) + r"\b", _pref_hay)}
     rows_pool, used_fts = [], False
     try:
         match = _fts_query(search_terms)
@@ -901,6 +922,10 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 # because the word sits in that glove's spec text.
                 score = 120                                    # specification match
             if score:
+                if brand_pref and score < 1000:
+                    rb = (r.get('brand') or '').strip().upper()
+                    if rb and any(b == rb or b in rb or rb in b for b in brand_pref):
+                        score += 1600      # the request named this brand
                 if short:
                     score += 100 * sum(1 for w in short
                                        if re.search(r"\b" + re.escape(w) + r"\b", name))
