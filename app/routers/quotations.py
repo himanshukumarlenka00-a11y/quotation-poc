@@ -770,8 +770,11 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             "SELECT UPPER(COALESCE(brand,'')), UPPER(product) FROM master_products").fetchall()
         for b in bs:
             pat = re.compile(r"\b" + re.escape(b) + r"\b")
+            # Only FOREIGN-branded rows count as cross-use: unbranded rows
+            # named "WALTHR-…" are that brand's own products with a blank
+            # brand cell, not evidence the word is generic.
             cross = sum(1 for rb, name in rows_bn
-                        if b not in rb and name and pat.search(name))
+                        if rb and b not in rb and name and pat.search(name))
             if cross < 25:
                 keep.add(b)
         _BRANDS_CACHE = (len(all_products), keep)
@@ -947,7 +950,12 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         short = [w for w in toks if len(w) == 2 and w.isalpha() and w not in _UNITS]
         # model-number-like tokens in the request (mix of letters+digits, codes)
         mtoks = [w for w in re.findall(r"[a-z0-9][a-z0-9\-/\.]+", t)
-                 if any(c.isdigit() for c in w) and any(c.isalpha() for c in w)]
+                 if any(c.isdigit() for c in w) and any(c.isalpha() for c in w)
+                 # "1l" / "450ml" / "28cm" are SIZES, not model codes — they
+                 # must not trip the code gates (brand boost, semantic skip).
+                 and not re.fullmatch(
+                     r"\d+(?:\.\d+)?(?:l|ml|kw|w|v|hz|mm|cm|kg|qt|ltrs?|lt|in|inch)",
+                     w)]
         # Bare numbers are model codes too. mtoks needs letters AND digits, so
         # "WCCE001-SS" counted but "2688" did not — and "ARDACAM 2688 Plate"
         # then tied with ARDACAM-2447-Plate on name alone and picked whichever
@@ -1039,9 +1047,10 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 score = 120                                    # specification match
             if score:
                 if ((brand_pref or file_pref) and score < 1000
-                        and not (numtoks or mtoks or t_is_code)):
-                    # Never on model-ish queries: "andy 27431" must resolve by
-                    # the CODE, not by which brand row has the nicest name.
+                        and not (mtoks or t_is_code or re.search(r"\d{3}", t))):
+                    # Gate only on real code-like tokens (3+ digit runs):
+                    # "andy 27431" must resolve by the CODE, but a size like
+                    # "kettle 1l" keeps its brand preference.
                     rb = (r.get('brand') or '').strip().upper()
                     if ((rb and any(b == rb or b in rb or rb in b for b in brand_pref))
                             or r.get('file_name') in file_pref):
