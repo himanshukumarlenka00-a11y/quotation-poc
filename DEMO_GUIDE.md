@@ -47,9 +47,59 @@ JJ004-SS 6
 ```
 → Exact BARKRAFT products by code. Brand hints can never override a typed code.
 
-### Bigger themed lists (also verified)
-- **Hotel room**: `walther items` + kettle / minibar / safe / hair dryer / mirror / dustbin
-- **Banquet**: chafing dish 12 / soup station 2 / juice dispenser 4 / food warmer 6 / buffet stand 10 / serving tawa 8
+### Big list — Grand hotel room setup (15 lines, brand context)
+```
+walther items
+kettle 40
+minibar 40
+safe 40
+hairdryer 40
+mirror 40
+dustbin 80
+luggage rack 20
+iron board 40
+ironbox 40
+tea tray 40
+tissue box 40
+soap dispenser 40
+bathrobe 80
+hanger 200
+shoe horn 100
+```
+→ 15 clean rows, overwhelmingly WALTHR, zero placeholders.
+
+### Big list — Restaurant table setting (12 lines)
+```
+dinner plate 200
+deep plate 100
+soup bowl 100
+tea cup 100
+saucer 100
+wine glass 96
+highball glass 48
+table fork 200
+table spoon 200
+table knife 200
+teaspoon 100
+salt pepper set 40
+```
+→ Full crockery + cutlery + glassware spread, every line matched with images and prices.
+
+### Big list — Banquet / buffet (10 lines)
+```
+chafing dish 12
+soup station 2
+juice dispenser 4
+food warmer 6
+buffet stand 10
+serving tawa 8
+stock pot 6
+salad bowl 20
+serving spoon 40
+tong 40
+```
+
+### Smaller themed lists
 - **Bar**: cocktail shaker 6 / bar spoon 12 / jigger 12 / ice bucket 8 / wine glass 48 / muddler 6
 - **Kitchen**: fry pan 28cm 6 / sauce pan 6 / stock pot 4 / chef knife 8 / cutting board 10
 
