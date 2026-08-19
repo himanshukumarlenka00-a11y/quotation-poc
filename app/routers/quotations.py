@@ -738,6 +738,23 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
     _pref_hay = _fix_typos((prompt or "") + " " + " ".join(search_terms)).upper()
     brand_pref = {b for b in _BRANDS_CACHE[1]
                   if re.search(r"\b" + re.escape(b) + r"\b", _pref_hay)}
+
+    # A line that is ONLY brand names + filler ("only nilkamal products") is
+    # context, not an order line — it has done its job setting brand_pref
+    # above; quoting it would just produce a junk placeholder row.
+    if brand_pref:
+        _FILLER = {"only", "items", "item", "products", "product", "all",
+                   "from", "brand", "brands", "everything", "things", "stuff",
+                   "pls", "plz", "please", "give", "want", "need", "needed"}
+        _brand_words = {w.lower() for b in brand_pref for w in b.split()}
+        def _is_context_line(it):
+            toks = re.findall(r"[a-z]+", _fix_typos(it.get("product") or "").lower())
+            sig = [t for t in toks if t not in _FILLER and t not in _brand_words]
+            return bool(toks) and not sig
+        kept = [it for it in extracted if not _is_context_line(it)]
+        if kept:                      # never drop everything
+            extracted = kept
+            search_terms = [it.get("search_term") or it.get("product") or "" for it in extracted]
     rows_pool, used_fts = [], False
     try:
         match = _fts_query(search_terms)
