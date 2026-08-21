@@ -318,6 +318,13 @@ def _parse_items_deterministically(prompt):
     p = (prompt or "").strip()
     if not p or len(p) > 8000:
         return None
+    # Dimensions are atoms. "crate 300 x 200" must never lose its "x 200"
+    # to the qty-marker rule (qty=200, then bare "300" accidentally
+    # matched model JBC5436300 — a 540x360 crate). Gluing NUMxNUM before
+    # any qty parsing makes that split impossible, and the matcher's
+    # dimension qualifier already understands the glued form. 2-4 digit
+    # numbers only, so "2 x 40" (qty two) keeps meaning quantity.
+    p = re.sub(r"(?<=\d\d)\s*[x×*]\s*(?=\d{2,4}\b)", "x", p, flags=re.I)
 
     # Pasted-list shape: one product per LINE with the qty at the END —
     # "MIRROR KORIKO BOSTON SHAKER [WBS001-SS]  4". Common when copying
@@ -1016,10 +1023,12 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         # model-number-like tokens in the request (mix of letters+digits, codes)
         mtoks = [w for w in re.findall(r"[a-z0-9][a-z0-9\-/\.]+", t)
                  if any(c.isdigit() for c in w) and any(c.isalpha() for c in w)
-                 # "1l" / "450ml" / "28cm" are SIZES, not model codes — they
-                 # must not trip the code gates (brand boost, semantic skip).
+                 # "1l" / "450ml" / "28cm" / "300x200" are SIZES, not model
+                 # codes — they must not trip the code gates (brand boost,
+                 # semantic skip).
                  and not re.fullmatch(
-                     r"\d+(?:\.\d+)?(?:l|ml|kw|w|v|hz|mm|cm|kg|qt|ltrs?|lt|in|inch)",
+                     r"\d+(?:\.\d+)?(?:l|ml|kw|w|v|hz|mm|cm|kg|qt|ltrs?|lt|in|inch)"
+                     r"|\d{2,4}(?:x\d{2,4}){1,2}(?:mm|cm)?",
                      w)]
         # Bare numbers are model codes too. mtoks needs letters AND digits, so
         # "WCCE001-SS" counted but "2688" did not — and "ARDACAM 2688 Plate"
@@ -1028,6 +1037,12 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         # already matched, never conjures one, so a size like "500" cannot
         # drag in an unrelated model 500.
         numtoks = [w for w in re.findall(r"\d{3,}", t)]
+        # Numbers inside a dimension are sizes, not model references —
+        # "crate 540 x 360" once gave its +300 model bonus to LID5436000
+        # because that code happens to contain "360".
+        _dims = re.findall(r"\d{2,4}\s*[x*×]\s*\d{2,4}(?:\s*[x*×]\s*\d{2,4})?", t)
+        if _dims:
+            numtoks = [n for n in numtoks if not any(n in d for d in _dims)]
         t_ns = t.replace(" ", "")
         # this line's own candidates; rows_pool only as a fallback when FTS
         # is unavailable, so a missing index still cannot fail a quotation
