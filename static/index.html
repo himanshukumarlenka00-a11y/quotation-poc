@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=136">
+<link rel="stylesheet" href="/static/css/main.css?v=137">
 </head>
 <body>
 
@@ -165,6 +165,7 @@
     <div class="master-header-row">
       <h2 data-icon="🗄">Master Products <span id="master-count">0</span></h2>
       <button class="btn btn-sm btn-primary" id="btn-new-cat" style="display:none" onclick="newCategoryFlow()">＋ New category</button>
+      <button class="btn btn-sm btn-danger" id="btn-del-all" style="display:none" onclick="deleteAllMaster()">🗑 Delete all</button>
       <div class="master-search-slot">
         <div class="pill-search-box" id="master-search-box">
           <input type="text" id="master-search" class="pill-search-input" placeholder="Search by product, brand, or model..."
@@ -527,6 +528,6 @@
 </div><!--/shell-->
 
 
-<script src="/static/js/app.js?v=136"></script>
+<script src="/static/js/app.js?v=137"></script>
 </body>
 </html>

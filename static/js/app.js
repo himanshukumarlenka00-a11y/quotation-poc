@@ -1670,6 +1670,75 @@ function openCategoryPicker(catName) {
   requestAnimationFrame(() => requestAnimationFrame(() => { wrap.classList.add('open'); wrap.querySelector('#ncp-search').focus(); }));
 }
 
+// appPasswordConfirm: danger dialog that demands the admin's password —
+// resolves the typed password, or null on cancel.
+function appPasswordConfirm(o) {
+  return new Promise(resolve => {
+    const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const wrap = document.createElement('div');
+    wrap.className = 'cfm-overlay';
+    wrap.innerHTML = `
+      <div class="cfm-card" role="dialog" aria-modal="true">
+        <button class="cfm-x" aria-label="Close">×</button>
+        <div class="cfm-icon danger">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+        <h3 class="cfm-title">${esc(o.title)}${o.term ? ` <span class="cfm-hl">${esc(o.term)}</span>` : ''}</h3>
+        <p class="cfm-msg">${esc(o.message || '')}</p>
+        ${o.note ? `<div class="cfm-note">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+          <div>${o.note}</div>
+        </div>` : ''}
+        <input type="password" class="cfm-input" autocomplete="current-password"
+          placeholder="Enter your password to confirm">
+        <div class="cfm-actions">
+          <button class="btn cfm-cancel">✕ Cancel</button>
+          <button class="btn btn-danger-solid cfm-ok" disabled>${esc(o.confirmLabel || 'Confirm')}</button>
+        </div>
+        <div class="cfm-foot">🔒 Your password is required for this action.</div>
+      </div>`;
+    const inp = wrap.querySelector('.cfm-input');
+    const ok = wrap.querySelector('.cfm-ok');
+    inp.addEventListener('input', () => { ok.disabled = !inp.value; });
+    const done = val => {
+      wrap.classList.remove('open');
+      document.removeEventListener('keydown', onKey);
+      setTimeout(() => wrap.remove(), 200);
+      resolve(val);
+    };
+    const onKey = e => { if (e.key === 'Escape') done(null); };
+    document.addEventListener('keydown', onKey);
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter' && inp.value) { e.preventDefault(); done(inp.value); } });
+    wrap.addEventListener('click', e => { if (e.target === wrap) done(null); });
+    wrap.querySelector('.cfm-x').onclick = () => done(null);
+    wrap.querySelector('.cfm-cancel').onclick = () => done(null);
+    ok.onclick = () => done(inp.value);
+    document.body.appendChild(wrap);
+    requestAnimationFrame(() => requestAnimationFrame(() => { wrap.classList.add('open'); inp.focus(); }));
+  });
+}
+
+// Delete the ENTIRE master table — password-gated.
+async function deleteAllMaster() {
+  const total = masterSummary.reduce((s, f) => s + f.count, 0);
+  const pw = await appPasswordConfirm({
+    title: 'Delete the ENTIRE master table',
+    message: `All ${total.toLocaleString('en-IN')} products across every batch will be removed.`,
+    note: '<b>Recoverable:</b> the uploaded Excel files stay on the server — re-importing them restores the catalogue.',
+    confirmLabel: '🗑 Delete everything',
+  });
+  if (!pw) return;
+  try {
+    const res = await fetch(`${API}/api/master-table/delete-all`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ password: pw })
+    });
+    const d = await res.json();
+    toast(res.ok ? d.message : (d.detail || 'Failed'), res.ok ? 'success' : 'error');
+    if (res.ok) { masterFolders = {}; masterSummary = []; masterAllItems = []; loadMasterTable(); }
+  } catch (e) { toast('Failed: ' + e.message, 'error'); }
+}
+
 // ── Per-folder filter: server-side search scoped to one catalogue/category ──
 const masterFolderQ = {};
 let _ffTimer = null;
@@ -1790,6 +1859,9 @@ async function loadMasterTable() {
   const ncBtn = document.getElementById('btn-new-cat');
   if (ncBtn) ncBtn.style.display =
     (masterMode === 'category' && currentUser && currentUser.role === 'admin') ? '' : 'none';
+  const daBtn = document.getElementById('btn-del-all');
+  if (daBtn) daBtn.style.display =
+    (currentUser && currentUser.role === 'admin') ? '' : 'none';
   if (masterMode === 'file' && currentUser && currentUser.role === 'admin') {
     try {
       const cats = await (await fetch(`${API}/api/master-table/summary?by=category`)).json();

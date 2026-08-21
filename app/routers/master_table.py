@@ -45,6 +45,35 @@ def _insert_master_items(conn, items):
         )
 
 
+class DeleteAllRequest(BaseModel):
+    password: str
+
+
+@router.post("/api/master-table/delete-all")
+def delete_all_master(req: DeleteAllRequest, admin: dict = Depends(require_role("admin"))):
+    """Wipe the ENTIRE master table. Destructive enough to demand the admin
+    re-type their password — a session cookie alone must not be able to do
+    this. Original uploaded Excel files on disk are untouched, so a full
+    re-import restores everything."""
+    from app.auth import _verify_password
+    conn = get_db()
+    row = conn.execute("SELECT password_hash FROM users WHERE id=?",
+                       (admin["id"],)).fetchone()
+    if not row or not _verify_password(req.password or "", row["password_hash"]):
+        conn.close()
+        log_action(admin, "delete_all_master_denied", target="wrong password")
+        raise HTTPException(403, "Password incorrect — nothing was deleted.")
+    try:
+        n = conn.execute("SELECT COUNT(*) FROM master_products").fetchone()[0]
+        conn.execute("DELETE FROM master_products")
+        conn.commit()
+        rebuild_master_fts(conn)
+    finally:
+        conn.close()
+    log_action(admin, "delete_all_master", target=f"{n} rows")
+    return {"message": f"Master table cleared — {n:,} products deleted.", "deleted": n}
+
+
 class AddProductRequest(BaseModel):
     product: str
     original_model: str = ""
