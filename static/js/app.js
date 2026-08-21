@@ -3067,7 +3067,12 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing, showOrig, showMar
       style="cursor:grab;color:var(--muted);user-select:none;letter-spacing:1px;"
       onmousedown="this.closest('tr').draggable=true">⠿</span> ${item.sl_no||idx+1}</td>
     <td style="width:96px;text-align:center;">${imgCell}</td>
-    <td><strong>${item.product||''}</strong>${switchBtn}</td>
+    <td><strong>${item.product||''}</strong>${(() => {
+      const h = (item._hist || []).find(x =>
+        (x.product || '').trim().toLowerCase() === (item.product || '').trim().toLowerCase() &&
+        (x.model || '').trim().toLowerCase() === (item.model_no || '').trim().toLowerCase());
+      return h ? `<span class="hist-badge" title="A colleague chose this product for this phrase before${h.client ? ' (' + h.client + ')' : ''}">★ chosen ${h.count}× before</span>` : '';
+    })()}${switchBtn}</td>
     <td class="c"><input type="number" class="qty-input" value="${qty}" onchange="recalcRow(${idx})" style="width:60px"></td>
     <td style="font-size:var(--fs-sm)">${ph ? phInput('model_no', item.model_no, 90) : (item.model_no||'')}</td>
     <td>${ph ? phInput('brand', item.brand, 90) : (item.brand||'')}</td>
@@ -3500,6 +3505,20 @@ function switchVariant(idx) {
     ordered = ordered.filter(({ v }) => item._filterKeys.has(vkey(v)));
   }
 
+  // Previously-chosen products pin to the front, strongest history first —
+  // "go with last time, or pick fresh".
+  const histMap = {};
+  (item._hist || []).forEach(h => {
+    histMap[`${(h.product || '').trim().toLowerCase()}|${(h.model || '').trim().toLowerCase()}`] = h.count;
+  });
+  if (Object.keys(histMap).length) {
+    ordered = [
+      ...ordered.filter(({ v }) => histMap[vkey(v)])
+                .sort((a, b) => histMap[vkey(b.v)] - histMap[vkey(a.v)]),
+      ...ordered.filter(({ v }) => !histMap[vkey(v)]),
+    ];
+  }
+
   const cards = ordered.map(({ v, i: vi }, pos) => {
     const isCur    = v.product === item.product && String(v.price) === String(item.price_per_pc);
     const priceInr = v.price||0;   // USD column removed — show as-is in INR
@@ -3519,6 +3538,7 @@ function switchVariant(idx) {
           <div class="sc-name">${v.product||''}</div>
           <div class="sc-price">${priceStr}</div>
           <div class="sc-file">📁 ${fileShort}</div>
+          ${histMap[vkey(v)] ? `<div class="sc-hist">★ chosen ${histMap[vkey(v)]}× before</div>` : ''}
           ${isCur ? '<div class="sc-tick">✓ Currently selected</div>' : ''}
         </div>
       </div>`;

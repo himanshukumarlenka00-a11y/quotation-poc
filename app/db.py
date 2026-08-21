@@ -195,6 +195,24 @@ def migrate_db():
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_colmap_header ON column_mappings(header_norm)")
 
+    # Passive learning: every approved quote line and every Switch a human
+    # makes records phrase -> chosen product here. Unlike match_corrections
+    # (an explicit, absolute pin), this is EVIDENCE the matcher uses as a
+    # ranking boost — repeated choices rise, one-offs fade into the noise.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS match_history (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            phrase_norm    TEXT NOT NULL,
+            product        TEXT NOT NULL,
+            original_model TEXT DEFAULT '',
+            client_name    TEXT DEFAULT '',
+            source         TEXT DEFAULT '',   -- 'approved' | 'switch'
+            created_by     INTEGER,
+            created_at     TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_mhist_phrase ON match_history(phrase_norm)")
+
     # Access can be switched off without deleting the account. Deletion would
     # orphan the user's audit history and quotations; deactivation preserves
     # both while ending access — checked on every request, not just at login,

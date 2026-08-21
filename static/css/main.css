@@ -2312,3 +2312,9 @@ body { zoom: 0.9; }
 body { min-height: calc(100vh / 0.9); }
 .shell { min-height: calc(100vh / 0.9); }
 .sidebar { height: calc(100vh / 0.9); }
+.hist-badge { display: inline-block; margin-left: 8px; padding: 2px 9px; border-radius: 99px;
+  background: rgba(232,160,32,.14); color: #9a6b00; font-size: var(--fs-xs); font-weight: 700;
+  white-space: nowrap; vertical-align: 2px; }
+html[data-theme=dark] .hist-badge { background: rgba(232,160,32,.2); color: #e5b95c; }
+.sc-hist { color: #9a6b00; font-size: var(--fs-xs); font-weight: 700; margin-top: 2px; }
+html[data-theme=dark] .sc-hist { color: #e5b95c; }

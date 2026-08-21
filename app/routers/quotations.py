@@ -232,6 +232,42 @@ def _lookup_by_model(conn, req_model):
         return []
 
 
+def _record_history(conn, phrase, product, model, client, source, uid):
+    """One learning observation: this phrase resolved to this product and a
+    human stood by it (approved the quote / switched to it). Evidence only —
+    ranking boost, never a pin like match_corrections."""
+    pn = _norm_phrase(phrase)
+    if not pn or not (product or "").strip():
+        return
+    try:
+        conn.execute(
+            "INSERT INTO match_history (phrase_norm, product, original_model, "
+            "client_name, source, created_by, created_at) VALUES (?,?,?,?,?,?,?)",
+            (pn, product.strip(), (model or "").strip(), (client or "").strip(),
+             source, uid, datetime.now().isoformat()))
+    except Exception as e:
+        print(f"history record skipped (non-fatal): {e}")
+
+
+def _phrase_history(conn, phrase, limit=6):
+    """Aggregated past choices for a phrase: [(product_l, model_l, count,
+    display_product, display_model, last_client)] strongest first."""
+    pn = _norm_phrase(phrase)
+    if not pn:
+        return []
+    try:
+        return conn.execute(
+            "SELECT LOWER(TRIM(product)) pl, "
+            "       LOWER(TRIM(COALESCE(original_model,''))) ml, "
+            "       COUNT(*) c, MAX(product) p, MAX(original_model) m, "
+            "       MAX(client_name) cl "
+            "FROM match_history WHERE phrase_norm=? "
+            "GROUP BY pl, ml ORDER BY c DESC, MAX(created_at) DESC LIMIT ?",
+            (pn, limit)).fetchall()
+    except Exception:
+        return []
+
+
 def _lookup_correction(conn, phrase):
     """A master-table row a human previously said this phrase means, or None.
 
@@ -870,6 +906,9 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
     # word of the requested phrase appears in a catalog product NAME, that name
     # is an unambiguous match and we use it directly instead of guessing.
     _pool_cache = {}
+    # Per-line history context: set before each search_catalog call so the
+    # scoring loop can boost previously-chosen rows for THIS phrase.
+    _hist_ctx = {}
 
     def _line_pool(term):
         """Candidate rows for ONE line, ranked by relevance.
@@ -1068,6 +1107,17 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                     score += 300                               # the request named this model number
                 if (r.get('price_3star') or 0) > 0: score += 30  # prefer rows that have a price
                 if r.get('image_path'):       score += 5       # prefer rows that have an image
+                if (_hist_ctx and score and score < 1500
+                        and not (mtoks or t_is_code or re.search(r"\d{3}", t))):
+                    # Passive learning. A RECURRING choice (2+) outranks even a
+                    # foreign exact-name row — "go with last time" — while a
+                    # single observation is only a nudge. Code-like queries are
+                    # exempt (typed codes resolve by code, always), and human
+                    # corrections still sit above everything.
+                    hc = _hist_ctx.get(((r.get('product') or '').strip().lower(),
+                                        (r.get('original_model') or '').strip().lower()))
+                    if hc:
+                        score += 1650 if hc >= 2 else 400
                 scored.append((score, r))
         scored.sort(key=lambda x: -x[0])
         if not scored:
@@ -1307,6 +1357,12 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         if not kw:
             continue
 
+        # This phrase's past human choices, loaded BEFORE searching so the
+        # scoring loop can boost them (and the UI can badge them).
+        hist_rows = _phrase_history(conn, original_kw)
+        _hist_ctx.clear()
+        _hist_ctx.update({(h["pl"], h["ml"]): h["c"] for h in hist_rows})
+
         # Search across NAME + MODEL NO + SPECIFICATION; returns all candidates.
         variants = search_catalog(search_term)
 
@@ -1482,6 +1538,10 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             "orig_price_3star": best.get("orig_price_3star"),
             "orig_price_4star": best.get("orig_price_4star"),
             "_variants":    variants_sorted,
+            # Past human choices for this phrase — badge + pinned Switch cards.
+            "_hist": [{"product": h["p"], "model": h["m"] or "",
+                       "count": h["c"], "client": h["cl"] or ""}
+                      for h in hist_rows],
             # How many the cap held back, so the Switch panel can say what is
             # left instead of offering a "show more" that turns out to be empty.
             "_variants_total": len(uniq),
@@ -1788,6 +1848,12 @@ def update_quotation(qid: int, req: UpdateItemsRequest, user: dict = Depends(get
             ident = lambda x: ((str(x.get("product") or "")).strip().lower(),
                                (str(x.get("model_no") or "")).strip().lower())
             if ident(old) != ident(item):
+                # Every product change is EVIDENCE for the passive learner,
+                # remembered or not — a one-off preference still says "a human
+                # thought this fits that phrase".
+                _record_history(conn, item.get("requested"), item.get("product"),
+                                item.get("model_no"), row["client_name"],
+                                "switch", user["id"])
                 # Teaching is OPT-IN: only when the user ticked "remember this
                 # choice" in the Switch/Find panel.
                 #
@@ -2263,6 +2329,19 @@ def submit_feedback(req: FeedbackRequest, user: dict = Depends(get_current_user)
     )
     if req.rating == "good":
         conn.execute("UPDATE quotations SET status='approved' WHERE id=?", (req.quotation_id,))
+        # An approved quote is the strongest signal there is: a human stood
+        # behind every line. Feed each matched line to the passive learner.
+        qrow = conn.execute("SELECT client_name, items_json FROM quotations WHERE id=?",
+                            (req.quotation_id,)).fetchone()
+        if qrow:
+            try:
+                for it in json.loads(qrow["items_json"]).get("items", []):
+                    if it.get("requested") and it.get("product") and not it.get("not_in_catalog"):
+                        _record_history(conn, it["requested"], it["product"],
+                                        it.get("model_no"), qrow["client_name"],
+                                        "approved", user["id"])
+            except Exception as e:
+                print(f"approval learning skipped (non-fatal): {e}")
     conn.commit()
     conn.close()
     return {"message": "Feedback saved. Thank you!" if req.rating == "good" else "Feedback recorded — we'll improve!"}
