@@ -680,12 +680,17 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
     _name_blob = _VOCAB_CACHE[2]
 
     def _ed1(a, b):
-        """Edit distance <= 1 (substitute / insert / delete one char)."""
+        """Edit distance <= 1 (substitute / insert / delete one char),
+        plus one ADJACENT transposition — "tabel"/"frok" are the most
+        common real typing errors and are 2 substitutions otherwise."""
         la, lb = len(a), len(b)
         if abs(la - lb) > 1:
             return False
         if la == lb:
-            return sum(1 for x, y in zip(a, b) if x != y) <= 1
+            d = [i for i in range(la) if a[i] != b[i]]
+            return (len(d) <= 1
+                    or (len(d) == 2 and d[1] == d[0] + 1
+                        and a[d[0]] == b[d[1]] and a[d[1]] == b[d[0]]))
         if la > lb:
             a, b, la, lb = b, a, lb, la
         i = j = diff = 0
@@ -1049,6 +1054,12 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             return []
         toks = re.findall(r"[a-z0-9]+", t)
         core = [w for w in toks if len(w) >= 3 and w.isalpha() and w not in _UNITS]
+        # A catalogue-file word used inline ("montavo dessert knife") has
+        # done its job selecting the file — product names never contain it
+        # (the vocab filter guarantees that), so requiring coverage of it
+        # would fail every row it just boosted.
+        if file_pref and _pref_words:
+            core = [w for w in core if w not in _pref_words]
         # Two-letter designators like the "GN" in "GN pan" are real product
         # qualifiers, but too short for `core` (which needs 3+ chars to avoid
         # noise). Dropping them left "GN pan" as bare "pan", which matched
@@ -1366,6 +1377,9 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         # near-identical variants (Scraper 3"/4"/5") and were previously
         # invisible to this filter, so every size collapsed onto one row.
         quals += [m + '"' for m in re.findall(r"(\d+(?:\.\d+)?)\s*(?:\"|''|inch|inches)", t)]
+        # GN pan fractions — "food pan 1/1" must never return a 1/9 pan.
+        quals += [re.sub(r"\s", "", f) for f in re.findall(
+            r"\b[1-9]\s*/\s*[1-9]\b", t)]
         quals += mtoks
         quals = [q.replace(" ", "") for q in quals if q.strip()]
         def _hay(r):
@@ -1377,7 +1391,14 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                     (r.get('specification') or '')).lower().replace(' ', '') \
                    .replace('*', 'x').replace('×', 'x')
         if quals:
-            narrowed = [r for r in result if any(q in _hay(r) for q in quals)]
+            # Digit-left boundary: "ice box 25 ltr" must not match the
+            # "25ltr" hiding inside "RIC125LTRWT". (Substring is fine when
+            # the qual starts mid-token: "x200" etc. keep plain matching.)
+            qpats = [re.compile(r"(?<![0-9.])" + re.escape(q))
+                     if q[:1].isdigit() else None for q in quals]
+            narrowed = [r for r in result
+                        if any((p.search(_hay(r)) if p else q in _hay(r))
+                               for q, p in zip(quals, qpats))]
             # No silent fallback. If the request names a size and nothing
             # carries it, returning the other sizes is worse than returning
             # nothing — it quotes the wrong goods at full confidence.
