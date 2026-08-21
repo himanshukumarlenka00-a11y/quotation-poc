@@ -20,12 +20,14 @@ except Exception:
 
 COLUMN_ALIASES = {
     "sl_no":            ["SL NO", "SL. NO", "SLNO", "SL", "SR NO", "S NO"],
-    "product":          ["PRODUCT"],
+    "product":          ["PRODUCT", "PRODUCT NAME", "ITEM NAME"],
     # "MODEL NO" is how most supplier sheets write it; without it the column
     # was silently ignored on every file that used that heading.
-    "original_model":   ["ORIGINAL MODEL", "MODEL", "MODEL NO", "MODEL NO.", "MODEL NUMBER"],
+    "original_model":   ["ORIGINAL MODEL", "MODEL", "MODEL NO", "MODEL NO.", "MODEL NUMBER",
+                         "CODE NO", "CODE NO.", "ITEM CODE", "PRODUCT CODE"],
     "brand":            ["BRAND"],
-    "specification":    ["SPECIFICATION", "SPEC"],
+    "specification":    ["SPECIFICATION", "SPEC", "TECHNICAL SPECIFICATION",
+                         "TECHNICAL SPECIFICATIONS"],
     "price_3star":      ["3 STAR PRICE"],
     "price_4star":      ["4 STAR PRICE"],
     "price_3star_usd":  ["3 STAR PRICE IN USED", "3 STAR PRICE IN USD", "3 STAR PRICE USD"],
@@ -37,7 +39,8 @@ COLUMN_ALIASES = {
     # never swallow "3 STAR PRICE".
     "price_inr":        ["PRICES IN INR", "PRICE IN INR", "PRICE (INR)", "PRICE INR",
                          "PRICE", "PRICES", "AMOUNT", "AMOUNT IN INR", "RATE", "SELLING PRICE",
-                         "BASE PRICE", "BASE PRICE (₹)", "BASE PRICE (INR)", "UNIT PRICE"],
+                         "BASE PRICE", "BASE PRICE (₹)", "BASE PRICE (INR)", "UNIT PRICE",
+                         "ECP / UNIT", "ECP/UNIT", "ECP"],
     "price_usd":        ["PRICES IN USD", "PRICE IN USD", "PRICE (USD)", "PRICE USD",
                          "AMOUNT IN USD", "RATE USD"],
     "hsn_code":         ["HSN CODE", "HSN"],
@@ -461,7 +464,7 @@ def parse_master_excel(filepath: str, filename: str):
 
     try:
         xl = pd.ExcelFile(values_path)
-        sheet_name = xl.sheet_names[0]
+        sheet_names = xl.sheet_names
         xl.close()
     except Exception:
         if converted_temp_path:
@@ -471,9 +474,26 @@ def parse_master_excel(filepath: str, filename: str):
                 pass
         return [], list(COLUMN_ALIASES.keys())
 
-    df = pd.read_excel(values_path, sheet_name=sheet_name, header=None)
-
-    header_row_idx, col_map = _find_header_row(df)
+    # The usable table can live on ANY sheet — Kibble ships the raw vendor
+    # layout first and the standard-format sheet second, so "always sheet
+    # one" imported 0 products. Pick the sheet whose header maps the most
+    # fields; ties keep the earliest sheet.
+    df, sheet_idx, header_row_idx, col_map = None, 0, 0, {}
+    for _si, _sn in enumerate(sheet_names):
+        try:
+            _d = pd.read_excel(values_path, sheet_name=_sn, header=None)
+        except Exception:
+            continue
+        _hi, _cm = _find_header_row(_d)
+        if df is None or len(_cm) > len(col_map):
+            df, sheet_idx, header_row_idx, col_map = _d, _si, _hi, _cm
+    if df is None:
+        if converted_temp_path:
+            try:
+                os.unlink(converted_temp_path)
+            except OSError:
+                pass
+        return [], list(COLUMN_ALIASES.keys())
     unmatched = [f for f in COLUMN_ALIASES if f not in col_map]
 
     image_col = None
@@ -484,7 +504,7 @@ def parse_master_excel(filepath: str, filename: str):
     span_img = {}
     if image_col is not None and "product" in col_map:
         span_img, _guessed = _assign_images_by_span(df, header_row_idx, col_map["product"],
-                                                      sheet_images.get(0, []), image_col, None)
+                                                      sheet_images.get(sheet_idx, []), image_col, None)
 
     def _num(v):
         try:

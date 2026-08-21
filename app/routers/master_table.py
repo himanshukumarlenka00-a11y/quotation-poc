@@ -281,6 +281,10 @@ async def upload_master_table(file: UploadFile = File(...), force: str = Form(""
         conn.commit()
         # keep the full-text index in step with the catalogue
         rebuild_master_fts(conn)
+        # ...and the semantic index (background thread, only rebuilds when
+        # the product count actually changed — no restart needed anymore)
+        from app.semantic import ensure_index_async
+        ensure_index_async()
         total = conn.execute("SELECT COUNT(*) FROM master_products").fetchone()[0]
         conn.close()
 
