@@ -1991,8 +1991,10 @@ function renderMasterProducts(groups, forceExpanded, searchTerm, searchTotal) {
       const parts = [];
       if (o3 != null) parts.push(`₹${(o3||0).toLocaleString('en-IN')}`);
       if (o4 != null && o4 !== o3) parts.push(`₹${(o4||0).toLocaleString('en-IN')} (4★)`);
+      // Plain muted number always — the strikethrough read as "cancelled"
+      // when it only means "pre-discount reference".
       const style = changed
-        ? 'color:var(--muted);text-decoration:line-through;font-size:var(--fs-sm);'
+        ? 'color:var(--muted);font-size:var(--fs-sm);'
         : 'color:var(--muted);';
       return `<td class="num" style="${style}">${parts.join(' / ') || '—'}</td>`;
     };
