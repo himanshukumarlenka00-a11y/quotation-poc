@@ -49,6 +49,17 @@ app.include_router(quotations.router)
 app.include_router(master_table.router)
 
 
+@app.on_event("startup")
+def _semantic_startup():
+    """Build/refresh the semantic index in the background if missing or the
+    catalogue moved. Fully non-fatal: the app runs fine without semantics."""
+    try:
+        from app.semantic import ensure_index_async
+        ensure_index_async()
+    except Exception as e:
+        print(f"semantic startup skipped (non-fatal): {e}")
+
+
 @app.get("/health")
 def health():
     """Liveness for monitoring: process up AND the database answers."""

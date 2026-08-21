@@ -16,3 +16,4 @@ pywin32==306; platform_system=="Windows"
 # if it's absent, so a deploy that skips it still works.
 watchfiles==1.2.0
 pypdf
+fastembed

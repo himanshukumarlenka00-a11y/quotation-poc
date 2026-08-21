@@ -966,6 +966,32 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                     pool += [dict(r) for r in extra if r["id"] not in seen_ids]
                 except Exception:
                     pass
+            # Meaning-similar rows join the pool carrying their similarity —
+            # the scoring loop fuses it as a bonus/floor. Code-like terms
+            # skip this (a typed model number has no useful "meaning").
+            if not re.search(r"\d{3}", key):
+                try:
+                    from app.semantic import semantic_topk
+                    sem = semantic_topk(key, 40)
+                except Exception:
+                    sem = None
+                if sem:
+                    simmap = dict(sem)
+                    have = {r["id"] for r in pool}
+                    missing = [i for i in simmap if i not in have]
+                    if missing:
+                        ph = ",".join("?" * len(missing))
+                        sql = f"SELECT * FROM master_products WHERE id IN ({ph})"
+                        args = list(missing)
+                        if catalogs:
+                            phc = ",".join("?" * len(catalogs))
+                            sql += f" AND file_name IN ({phc})"
+                            args += list(catalogs)
+                        pool += [dict(r) for r in conn.execute(sql, args)]
+                    for r in pool:
+                        s = simmap.get(r["id"])
+                        if s:
+                            r["_semsim"] = s
             pool = _merge_glued(conn, pool, words, catalogs)
         _pool_cache[key] = pool
         return pool
@@ -1084,6 +1110,16 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 # contain it — a request for "SAFE" returned "GLOVE LARGE"
                 # because the word sits in that glove's spec text.
                 score = 120                                    # specification match
+            # Semantic fusion: similarity refines keyword scores (a dinner
+            # plate outranks a gold-PLATED jigger for "plate"), and a strong
+            # pure-meaning match becomes a candidate even with zero keyword
+            # overlap ("keep food warm" -> FOOD WARMER). Sits below every
+            # explicit tier: codes, exact names, corrections all still win.
+            _sem = r.get('_semsim') or 0
+            if score and _sem > 0.62:
+                score += int((_sem - 0.62) * 600)
+            elif not score and _sem >= 0.74:
+                score = 150 + int((_sem - 0.74) * 1200)
             if score:
                 if ((brand_pref or file_pref) and score < 1000
                         and not (mtoks or t_is_code or re.search(r"\d{3}", t))):

@@ -45,6 +45,19 @@ def _insert_master_items(conn, items):
         )
 
 
+@router.post("/api/semantic/rebuild")
+def semantic_rebuild(admin: dict = Depends(require_role("admin"))):
+    """Kick a background rebuild of the semantic index (a few minutes of
+    server CPU). Use after big imports; matching works on the old index —
+    or plain keywords — meanwhile."""
+    from app.semantic import ensure_index_async, index_info
+    started = ensure_index_async(force=True)
+    info = index_info()
+    log_action(admin, "semantic_rebuild", after=info)
+    return {"message": "Rebuild started in the background." if started
+            else "A rebuild is already running.", **info}
+
+
 class DeleteAllRequest(BaseModel):
     password: str
 
