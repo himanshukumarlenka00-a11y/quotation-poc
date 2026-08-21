@@ -45,6 +45,35 @@ def _insert_master_items(conn, items):
         )
 
 
+@router.get("/api/ai-progress")
+def ai_progress(user: dict = Depends(get_current_user)):
+    """Live AI workstream numbers for the dashboard card: categorisation %,
+    semantic index state, learning observations."""
+    conn = get_db()
+    try:
+        tot = conn.execute("SELECT COUNT(*) FROM master_products").fetchone()[0]
+        uncat = conn.execute(
+            "SELECT COUNT(*) FROM master_products "
+            "WHERE TRIM(COALESCE(category,''))=''").fetchone()[0]
+        try:
+            learn = conn.execute("SELECT COUNT(*) FROM match_history").fetchone()[0]
+        except Exception:
+            learn = 0
+    finally:
+        conn.close()
+    try:
+        from app.semantic import index_info
+        sem = index_info()
+    except Exception:
+        sem = {"exists": False, "products": 0, "building": False}
+    return {"total": tot, "categorised": tot - uncat,
+            "cat_pct": round((tot - uncat) * 100 / tot, 1) if tot else 0,
+            "semantic_ready": bool(sem.get("exists")),
+            "semantic_building": bool(sem.get("building")),
+            "semantic_products": sem.get("products", 0),
+            "learning_observations": learn}
+
+
 @router.post("/api/semantic/rebuild")
 def semantic_rebuild(admin: dict = Depends(require_role("admin"))):
     """Kick a background rebuild of the semantic index (a few minutes of

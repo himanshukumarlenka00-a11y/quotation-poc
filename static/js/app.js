@@ -393,6 +393,20 @@ function renderDashboard(d) {
                   `${d.learned} corrections · ${d.mappings} mappings`);
   }
 
+  // Live AI progress strip — updates itself every 20s while this tab is open.
+  const aiStrip = `
+    <div class="dcard" id="ai-progress-card">
+      <h3>AI Progress <small id="aip-updated" style="font-weight:400;color:var(--muted)"></small></h3>
+      <div class="aip-rows">
+        <div class="aip-row"><span>🏷 Catalogue categorisation</span>
+          <div class="aip-bar"><i id="aip-cat-bar"></i></div><b id="aip-cat">…</b></div>
+        <div class="aip-row"><span>🧭 Semantic index (meaning search)</span>
+          <div class="aip-bar"><i id="aip-sem-bar"></i></div><b id="aip-sem">…</b></div>
+        <div class="aip-row"><span>📚 Learning observations</span>
+          <div class="aip-bar aip-noline"></div><b id="aip-learn">…</b></div>
+      </div>
+    </div>`;
+
   const recent = (d.recent || []).map(q => `
     <div class="drow" onclick="viewQuote(${q.id})" title="Open this quotation">
       <span class="dico">📋</span>
@@ -450,6 +464,7 @@ function renderDashboard(d) {
 
   view.innerHTML = `
     <div class="dstats">${stats}</div>
+    ${d.is_admin ? aiStrip : ''}
     <div class="dgrid">
       ${smartImport}
       <div class="dcard">
@@ -461,6 +476,34 @@ function renderDashboard(d) {
     </div>`;
   // Re-apply the stepper ticks for a restored in-flight/finished flow.
   Object.entries(window._dashStepState || {}).forEach(([n, s]) => dashStep(n, s));
+  if (d.is_admin) startAiProgressPolling();
+}
+
+// ── Live AI-progress card: polls every 20s while the card is on screen ──────
+let _aipTimer = null;
+async function refreshAiProgress() {
+  const card = document.getElementById('ai-progress-card');
+  if (!card || !document.body.contains(card)) {
+    clearInterval(_aipTimer); _aipTimer = null; return;
+  }
+  try {
+    const d = await (await fetch(`${API}/api/ai-progress`)).json();
+    const set = (id, txt) => { const e = document.getElementById(id); if (e) e.textContent = txt; };
+    const bar = (id, pct, color) => { const e = document.getElementById(id);
+      if (e) { e.style.width = Math.max(2, pct) + '%'; if (color) e.style.background = color; } };
+    set('aip-cat', `${d.cat_pct}% (${d.categorised.toLocaleString('en-IN')}/${d.total.toLocaleString('en-IN')})`);
+    bar('aip-cat-bar', d.cat_pct, d.cat_pct >= 100 ? '#16a34a' : '');
+    if (d.semantic_ready) { set('aip-sem', `Ready — ${d.semantic_products.toLocaleString('en-IN')} products`); bar('aip-sem-bar', 100, '#16a34a'); }
+    else if (d.semantic_building) { set('aip-sem', 'Building…'); bar('aip-sem-bar', 45, '#e8a020'); }
+    else { set('aip-sem', 'Not built'); bar('aip-sem-bar', 2, '#c0392b'); }
+    set('aip-learn', `${d.learning_observations.toLocaleString('en-IN')} recorded`);
+    set('aip-updated', '· live, updated ' + new Date().toLocaleTimeString('en-IN', {hour: '2-digit', minute: '2-digit', second: '2-digit'}));
+  } catch (e) { /* transient — next tick retries */ }
+}
+function startAiProgressPolling() {
+  clearInterval(_aipTimer);
+  refreshAiProgress();
+  _aipTimer = setInterval(refreshAiProgress, 20000);
 }
 
 // Smart Import (dashboard): detect what a workbook is, then hand it to the

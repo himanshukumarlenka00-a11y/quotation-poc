@@ -2318,3 +2318,12 @@ body { min-height: calc(100vh / 0.9); }
 html[data-theme=dark] .hist-badge { background: rgba(232,160,32,.2); color: #e5b95c; }
 .sc-hist { color: #9a6b00; font-size: var(--fs-xs); font-weight: 700; margin-top: 2px; }
 html[data-theme=dark] .sc-hist { color: #e5b95c; }
+
+/* Live AI-progress card */
+.aip-rows { display: flex; flex-direction: column; gap: 12px; }
+.aip-row { display: grid; grid-template-columns: 260px 1fr 190px; align-items: center; gap: 14px; font-size: var(--fs-sm); }
+.aip-bar { height: 8px; border-radius: 99px; background: var(--border); overflow: hidden; }
+.aip-bar i { display: block; height: 100%; width: 2%; background: var(--primary, #6d5df0); border-radius: 99px; transition: width .6s ease; }
+.aip-bar.aip-noline { visibility: hidden; }
+.aip-row b { text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 800px) { .aip-row { grid-template-columns: 1fr; gap: 4px; } .aip-row b { text-align: left; } }
