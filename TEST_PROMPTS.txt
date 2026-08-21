@@ -1,0 +1,192 @@
+================================================================
+QUOTEGEN — HARD TEST PROMPTS (verified 21-Aug-2026, catalogue: 3,046 products)
+Paste each block into "What do you need?" exactly as written.
+Every line was machine-verified against the live matcher first —
+the EXPECT notes tell you what a correct result looks like.
+================================================================
+
+
+----------------------------------------------------------------
+SECTION 1 — SINGLE HARD PROMPTS (paste one line at a time)
+----------------------------------------------------------------
+
+1.  create 300 x 200
+    EXPECT: Plastic Crate 300x200 (CC32070) Rs.270 — typo "create"
+    self-corrects, dimension never becomes a quantity.
+
+2.  crate 300*200*70 15
+    EXPECT: same crate, qty 15 — star separators work.
+
+3.  crate 540 x 360
+    EXPECT: a genuine 540x360 CRATE (never its Rs.350 lid).
+
+4.  ice box 25 ltr 2
+    EXPECT: RIC25LtrWT Insulated Ice Box Rs.1,835 qty 2 —
+    NOT the 125-Ltr Rs.11,375 one.
+
+5.  ice box
+    EXPECT: Rs.775 real ice box first; the Rs.60 drain cap,
+    Rs.110 chill pad and Rs.250 vending lid must NOT be picked.
+
+6.  tabel frok x 100
+    EXPECT: Table Fork Rs.56 qty 100 — both words have
+    swapped-letter typos.
+
+7.  dessart spon 100
+    EXPECT: Dessert Spoon Rs.41 qty 100 — two typos self-correct.
+
+8.  food pan 1/1 x 6
+    EXPECT: a 1/1 size food pan (12CW Rs.945) qty 6 — never 1/9.
+
+9.  food pan lid 1/6 6
+    EXPECT: 1/6 food pan LID Rs.110 qty 6 — lid asked, lid given.
+
+10. riviera gold mirror coffee spoon 24
+    EXPECT: exactly FNS-Riviera Gold Mirror-Coffee Spoon Rs.158 —
+    being specific beats the cheaper plain Riviera.
+
+11. montavo dessert knife 50
+    EXPECT: Rs.84 dessert knife from the montavo catalogue —
+    catalogue name works like a brand name.
+
+12. RIC250LTRWT 3
+    EXPECT: that exact model, qty 3 — bare code + qty.
+
+13. spoon
+    EXPECT: Rs.33 tea spoon first, then Rs.42, Rs.48... all real
+    spoons ascending. Open Switch to see the ladder.
+
+14. kettle 10
+    EXPECT: NOT IN CATALOG — no kettles exist in the 5 files.
+    An honest miss, not a wrong guess.
+
+15. round tray 10
+    EXPECT: 14" ROUND Treadlite tray — "round" is found in the
+    specification text, not the product name.
+
+
+----------------------------------------------------------------
+SECTION 2 — BRAND / CONTEXT BLOCK (paste whole block)
+----------------------------------------------------------------
+
+only nilkamal products
+plastik crate 540 x 360 20 qty
+ice box 50 ltr x 5
+
+EXPECT: context line vanishes; 540x360 crate qty 20 (Rs.670) and
+50-Ltr ice box qty 5 (Rs.2,965), both NILKAMAL. Typo + dimension +
+"20 qty" + "x 5" styles all in one block.
+
+
+----------------------------------------------------------------
+SECTION 3 — 16-LINE STRESS LIST (paste whole block)
+----------------------------------------------------------------
+
+plastik crate 20
+ice box 25 ltr 2
+tabel frok x 100
+dessart spon 100
+tea spoon 60
+soup spoon 60
+food pan 1/1 x 6
+food pan lid 1/6 6
+round tray 10
+crate 300*200*70 15
+pizza screen 18 4
+bottle opener 12
+juice strainer 6
+fry pan x 6
+ice cream spoon 24
+shelving 4
+
+EXPECT (16/16 matched, instant, no AI call needed):
+  plastic crate 20        -> CC32070 Plastic Crate       Rs.270
+  ice box 25l x2          -> RIC25LtrWT Insulated        Rs.1,835
+  table fork 100          -> Casper Table Fork           Rs.56
+  dessert spoon 100       -> Casper Dessert Spoon        Rs.41
+  tea spoon 60            -> CAFE Tea Spoon              Rs.33
+  soup spoon 60           -> CAFE Soup Spoon             Rs.42
+  food pan 1/1 x6         -> 12CW (1/1X2")               Rs.945
+  food pan lid 1/6 x6     -> 60CWCHN lid                 Rs.110
+  round tray 10           -> 1400TL 14" Round            Rs.1,120
+  crate 300x200x70 15     -> CC32070                     Rs.270
+  pizza screen 18" 4      -> SMKU0457 Pizza Screen 18"   Rs.505
+  bottle opener 12        -> SMKU0154 Bottle Opener      Rs.95
+  juice strainer 6        -> SMKU0081 Juice Strainer     Rs.278
+  fry pan 6               -> MS.Wood Handle Fry Pan      Rs.770
+  ice cream spoon 24      -> Casper Ice Cream Spoon      Rs.31
+  shelving 4              -> MPSK4060S1 Shelving         Rs.3,100
+
+
+----------------------------------------------------------------
+SECTION 4 — 32-LINE FULL FIT-OUT (paste whole block)
+----------------------------------------------------------------
+
+table spoon 150
+dessert spoon 150
+tea spoon 150
+soup spoon 100
+coffee spoon 100
+table fork 150
+dessert fork 100
+fruit fork 50
+table knife 150
+dessert knife 100
+butter knife 60
+plastic crate 540 x 360 30
+plastic crate 300 x 200 50
+ice box 50 ltr 4
+insulated ice box 25 ltr 6
+food pan 1/1 x 12
+food pan 1/6 12
+food pan lid 1/1 12
+round tray 20
+tray 40
+shelving 8
+industrial bucket 9l 10
+bottle opener 24
+juice strainer 8
+coffee strainer 8
+vegetable knife 12
+chop cut 6
+coconut scrapper 4
+soda spoon 48
+liquid server 12
+cutlery stand 6
+pizza screen 18 6
+
+EXPECT (32/32 matched — full cutlery set + crates with dimensions +
+sized ice boxes + GN pans and lids + kitchen tools):
+  table spoon      -> Rome            Rs.67      table fork    -> Casper    Rs.56
+  dessert spoon    -> Casper          Rs.41      dessert fork  -> Casper    Rs.41
+  tea spoon        -> CAFE            Rs.33      fruit fork    -> Casper    Rs.29
+  soup spoon       -> CAFE            Rs.42      table knife   -> Victoria  Rs.176
+  coffee spoon     -> Harmony         Rs.7       dessert knife -> Aspire    Rs.21
+  butter knife     -> Slimline        Rs.122
+  crate 540x360    -> JR5436275       Rs.670     crate 300x200 -> CC32070   Rs.270
+  ice box 50l      -> BIC50LTRWTVL    Rs.2,965   insul. 25l    -> RIC25LtrWT Rs.1,835
+  food pan 1/1     -> 12CW            Rs.945     food pan 1/6  -> 64PP      Rs.210
+  pan lid 1/1      -> 10CWCHN         Rs.890     round tray    -> 1400TL    Rs.1,120
+  tray             -> 10146DCWC       Rs.405     shelving      -> MPSK4060S1 Rs.3,100
+  bucket 9l        -> RHDBUCKET9L1    Rs.530     bottle opener -> SMKU0154  Rs.95
+  juice strainer   -> SMKU0081        Rs.278     coffee strnr  -> SMKU0109  Rs.122
+  vegetable knife  -> SMKU0014        Rs.78      chop cut      -> SMKU0012  Rs.488
+  coconut scrapper -> SMKU0005        Rs.440     soda spoon    -> SMKU0478  Rs.162
+  liquid server    -> SMKU0213        Rs.416     cutlery stand -> SMKU0229  Rs.152
+  pizza screen 18" -> SMKU0457        Rs.505
+
+
+----------------------------------------------------------------
+THINGS TO WATCH WHILE CHECKING
+----------------------------------------------------------------
+- Every pick should be the CHEAPEST genuine version; pricier types
+  sit in Switch sorted low -> high.
+- Sizes/dimensions/fractions/codes always beat price: a 25-ltr ask
+  never shows the 125-ltr, 1/1 never shows 1/9.
+- Accessories never hijack: lids, chill pads, drain caps, label
+  holders only appear when you ask for them.
+- After you approve a quote and regenerate the same phrase, the
+  "chosen before" badge appears and your choice gets pinned.
+- If ANY line surprises you, note the exact prompt line + what you
+  got — that is a reproducible case to hand back for fixing.
+================================================================
