@@ -520,7 +520,8 @@ def bulk_set_tier_pricing(filename: str, req: BulkTierPricingRequest,
 
     conn = get_db()
     rows = conn.execute(
-        "SELECT id, cost, price_3star, price_4star, orig_price_3star, orig_price_4star "
+        "SELECT id, cost, price_3star, price_4star, orig_price_3star, orig_price_4star, "
+        "price_3star_usd, price_4star_usd, orig_price_3star_usd, orig_price_4star_usd "
         "FROM master_products WHERE file_name=?",
         (filename,)).fetchall()
     if not rows:
@@ -574,7 +575,16 @@ def bulk_set_tier_pricing(filename: str, req: BulkTierPricingRequest,
             conn.execute("UPDATE master_products SET price_3star=?, price_4star=?, price_3star_usd=?, price_4star_usd=? WHERE id=?",
                          (p3, p4, p3_usd, p4_usd, r["id"]))
         else:
-            conn.execute("UPDATE master_products SET price_3star=?, price_4star=? WHERE id=?", (p3, p4, r["id"]))
+            # No explicit rate: the $ prices must still follow the discount,
+            # or the screen shows fresh ₹ next to stale $. Scale each USD off
+            # its own pre-bulk snapshot by the same percentage.
+            b3u = r["orig_price_3star_usd"] if r["orig_price_3star_usd"] is not None else (r["price_3star_usd"] or 0)
+            b4u = r["orig_price_4star_usd"] if r["orig_price_4star_usd"] is not None else (r["price_4star_usd"] or 0)
+            p3_usd = round((b3u or 0) * (1 - req.pct_3star / 100), 2)
+            p4_usd = round((b4u or 0) * (1 - req.pct_4star / 100), 2)
+            conn.execute("UPDATE master_products SET price_3star=?, price_4star=?, "
+                         "price_3star_usd=?, price_4star_usd=? WHERE id=?",
+                         (p3, p4, p3_usd, p4_usd, r["id"]))
         updated += 1
 
     conn.commit()
