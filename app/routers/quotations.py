@@ -1044,15 +1044,24 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             # carry a digit, or repeat the brand, are packaging — drop them.
             segs = [s for s in re.split(r"\s*-\s*", name) if s.strip()]
             brand_l = (r.get('brand') or '').strip().lower()
-            while len(segs) > 1 and (any(c.isdigit() for c in segs[0])
-                                      or segs[0].strip() == brand_l):
+            # Only SPACE-FREE segments are code packaging ("SMKU0475",
+            # "RIC250LTR"). A digit-bearing segment WITH spaces ("50LTR
+            # Vending Lid") is descriptive identity — dropping it turned
+            # "50LTR Vending Lid-Ice Box" into an EXACT match for "ice
+            # box", so the ₹250 lid outranked every actual ice box.
+            while len(segs) > 1 and (segs[0].strip() == brand_l
+                                      or (any(c.isdigit() for c in segs[0])
+                                          and not re.search(r"\s", segs[0].strip()))):
                 segs.pop(0)
             human = " ".join(segs) if segs else name
             name_core = [w for w in re.findall(r"[a-z]+", human)
                          if len(w) >= 3 and w not in _UNITS]
             model = (r.get('original_model') or '').lower()
             spec  = (r.get('specification') or '').lower()
+            spec_ns = spec.replace(' ', '')
+            _sem = r.get('_semsim') or 0
             score = 0
+            tier = ''
             # A model-number hit scores 1000 and the 0.6 cutoff below then
             # discards everything under 600 — so this branch must fire ONLY on
             # something that really is a code. The whole-term test needs a
@@ -1070,7 +1079,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             tn = re.sub(r"[^a-z0-9]+", " ", t).strip()
             if tn and (re.sub(r"[^a-z0-9]+", " ", name).strip() == tn
                        or re.sub(r"[^a-z0-9]+", " ", human).strip() == tn):
-                score = 2000                                   # exact name — supreme
+                score = 2000; tier = 'exact'                   # exact name — supreme
             elif model and (_model_exact(model, mtoks, t, t_is_code, numtoks)
                             or (mtoks and any(mt in model for mt in mtoks))
                             or (t_is_code and t in model)
@@ -1080,8 +1089,10 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 # CONTAINING it) — every correction the team has logged was
                 # this one bug. Separators stripped on both sides.
                 score = 1500 if _model_exact(model, mtoks, t, t_is_code, numtoks) else 1000
+                tier = 'model' if score == 1500 else 'model~'
             elif core and all(_covered(w, name, name_ns) for w in core):
                 score = 600 - min(len(name), 120)              # full name match; tighter ranks higher
+                tier = 'name'
             elif (name_core and all(_covered(w, t, t_ns) for w in name_core)
                     and (len(name_core) >= 2 or len(core) < 2)):
                 # (single-word names only qualify against single-word
@@ -1098,28 +1109,46 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 # "Cup Dispenser" beats a bare "CUP", and this sits below the
                 # forward full match so IRON ORGANISER still outranks IRON.
                 score = 400 + 20 * len(name_core)
+                tier = 'rname'
+            elif (len(core) > 1
+                    and (any(_covered(w, name, name_ns) for w in core)
+                         or _sem >= 0.72)
+                    and all(_covered(w, name, name_ns)
+                            or _covered(w, spec, spec_ns)
+                    for w in core)):
+                # Spec-completed coverage: words missing from the NAME are in
+                # the SPECIFICATION — "round tray" finds a "Tray" whose spec
+                # says "Round", and "food pan" finds CAMBRO's pans (named
+                # just "Storage", identity in the spec). Anchored by a name
+                # word OR by strong semantic agreement, and needs 2+ words —
+                # so a lone word buried in an unrelated product's spec can't
+                # fire (the old "SAFE" -> GLOVE bug). Ranks a step under a
+                # pure name match of the same length.
+                score = 500 - min(len(name), 120)
+                tier = 'name+spec'
             elif core and (lambda hits: hits and hits / len(core) >= 0.6)(
                     sum(1 for w in core if _covered(w, name, name_ns))):
                 # Partial name — but only if MOST of the request is accounted
                 # for. Accepting a single shared word made "waste bin" match
                 # "Ice bin module" (₹65,082) with full confidence.
                 score = 200 + 10 * sum(1 for w in core if _covered(w, name, name_ns))
+                tier = 'part'
             elif len(core) > 1 and all(w in spec for w in core):
                 # Spec-only match needs at least TWO significant words. On one
                 # word it fired on any product whose specification happened to
                 # contain it — a request for "SAFE" returned "GLOVE LARGE"
                 # because the word sits in that glove's spec text.
-                score = 120                                    # specification match
+                score = 120; tier = 'spec'                     # specification match
             # Semantic fusion: similarity refines keyword scores (a dinner
             # plate outranks a gold-PLATED jigger for "plate"), and a strong
             # pure-meaning match becomes a candidate even with zero keyword
             # overlap ("keep food warm" -> FOOD WARMER). Sits below every
             # explicit tier: codes, exact names, corrections all still win.
-            _sem = r.get('_semsim') or 0
             if score and _sem > 0.62:
                 score += int((_sem - 0.62) * 600)
             elif not score and _sem >= 0.74:
                 score = 150 + int((_sem - 0.74) * 1200)
+                tier = 'sem'
             if score:
                 if ((brand_pref or file_pref) and score < 1000
                         and not (mtoks or t_is_code or re.search(r"\d{3}", t))):
@@ -1154,10 +1183,67 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                                         (r.get('original_model') or '').strip().lower()))
                     if hc:
                         score += 1650 if hc >= 2 else 400
+                # Unrequested words in the HUMAN name (the space-aware
+                # segment split keeps "50LTR Vending Lid" but drops pure
+                # codes, so accessory words count and code fragments like
+                # "RIFL"/"LWT" don't). Used by _cheap_first: a row adding
+                # nothing the user didn't ask for ("Plastic Crate") is
+                # closer than its accessory ("Plastic Crate Lid"), no
+                # matter which is cheaper.
+                r['_extra'] = sum(
+                    1 for w in re.findall(r"[a-z]+", human)
+                    if len(w) >= 3 and w not in _UNITS
+                    and w not in (r.get('brand') or '').lower()
+                    and not _covered(w, t, t_ns))
+                if tier in ('name+spec', 'spec'):
+                    # The identity lives (partly) in the spec here, so
+                    # unrequested spec words count too: for "food pan",
+                    # "FOOD PAN LID" is one step farther than "FOOD PAN".
+                    r['_extra'] += sum(
+                        1 for w in re.findall(r"[a-z]+", spec)
+                        if len(w) >= 3 and w not in _UNITS
+                        and not _covered(w, t, t_ns))
+                r['_tier'] = tier; r['_score'] = score
                 scored.append((score, r))
         scored.sort(key=lambda x: -x[0])
         if not scored:
             return []
+
+        def _cheap_first(rows):
+            # "Lowest price first" — but ONLY among rows that are equally
+            # accurate: same match tier, near-equal score (the gap within a
+            # tier is just name-length noise), and near-equal semantic
+            # similarity. Price must never beat a more specific match (a
+            # cheap Plate COVER outpricing the Dinner Plate for "plate"), a
+            # size/spec narrowing (applied before this), a history pick or a
+            # named brand (+1650/+1600 puts them outside the 120 band).
+            # Weak tiers (partial/spec-only/semantic-only) keep their score
+            # order: there the ranking IS the accuracy signal, and price
+            # reordering once promoted a cheap Dinner Spoon over the real
+            # semantic hit for "food pan".
+            if (len(rows) < 2 or rows[0].get('_tier') not in
+                    ('exact', 'model', 'model~', 'name', 'name+spec', 'rname')):
+                return rows
+            pf = ("price_4star"
+                  if (tiers_req or ["3star"])[0] == "4star" else "price_3star")
+            ts = rows[0].get('_score', 0)
+            tsem = rows[0].get('_semsim') or 0
+            n = 1
+            while (n < len(rows)
+                   and rows[n].get('_tier') == rows[0].get('_tier')
+                   and ts - rows[n].get('_score', 0) <= 120
+                   # Identical names (exact) / identical codes (model) mean
+                   # identical meaning — sem differences there are just
+                   # embedding noise from spec/code text, not a signal.
+                   and (rows[0].get('_tier') in ('exact', 'model')
+                        or abs((rows[n].get('_semsim') or 0) - tsem) <= 0.06)):
+                n += 1
+            if n < 2:
+                return rows
+            band = sorted(rows[:n],
+                          key=lambda r: (r.get('_extra', 0),
+                                         (r.get(pf) or 0) <= 0, r.get(pf) or 0))
+            return band + rows[n:]
         # Keep only same-tier matches so the variant switcher shows genuine
         # alternatives. Drops weak partials (e.g. a row matching only "electric"
         # for a request of "electric kettle"). Capped at 420: an exact-name or
@@ -1175,17 +1261,23 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         # Each detected qual expands into its notation family; a row passes
         # if it carries ANY spelling of ANY asked qual (same OR semantics).
         _UNIT_FAMILY = {"litre": "l", "litres": "l", "liter": "l",
-                        "liters": "l", "ltr": "l", "ltrs": "l", "lt": "l"}
+                        "liters": "l", "ltr": "l", "ltrs": "l", "lt": "l",
+                        "gram": "g", "grams": "g", "gm": "g", "gms": "g"}
         quals = []
         for val, unit in re.findall(
-                r"(\d+(?:\.\d+)?)\s*(litres?|liters?|ltrs?|lt|kw|w|ml|l|v|hz|mm|cm|kg)\b",
+                r"(\d+(?:\.\d+)?)\s*(litres?|liters?|ltrs?|lt|grams?|gms?|kw|kg|g|w|ml|l|v|hz|mm|cm)\b",
                 t):
             u = _UNIT_FAMILY.get(unit, unit)
             vals = {val}
             vals.add(val[:-2] if val.endswith(".0") else val + ".0")
-            units = {u, "litre", "liter", "ltr", "lt"} if u == "l" else {u}
+            units = ({u, "litre", "liter", "ltr", "lt"} if u == "l"
+                     else {u, "gram", "grams", "gm", "gms"} if u == "g" else {u})
             quals += [v + un for v in vals for un in units]
         quals += re.findall(r"\b\d+\.\d+\b", t)
+        # Dimensions — "300x200", "300 x 200", "300*200*70". Normalized to a
+        # glued x-form so any spacing/separator in prompt or catalogue meets.
+        quals += [re.sub(r"\s*[x*×]\s*", "x", d) for d in re.findall(
+            r"\d{2,4}\s*[x*×]\s*\d{2,4}(?:\s*[x*×]\s*\d{2,4})?", t)]
         # Inch sizes — 5", 9'', 6 inch. These name most of the catalog's
         # near-identical variants (Scraper 3"/4"/5") and were previously
         # invisible to this filter, so every size collapsed onto one row.
@@ -1198,13 +1290,14 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             # haystack could never match it.
             return ((r.get('product') or '') + ' ' +
                     (r.get('original_model') or '') + ' ' +
-                    (r.get('specification') or '')).lower().replace(' ', '')
+                    (r.get('specification') or '')).lower().replace(' ', '') \
+                   .replace('*', 'x').replace('×', 'x')
         if quals:
             narrowed = [r for r in result if any(q in _hay(r) for q in quals)]
             # No silent fallback. If the request names a size and nothing
             # carries it, returning the other sizes is worse than returning
             # nothing — it quotes the wrong goods at full confidence.
-            return narrowed
+            return _cheap_first(narrowed)
         # A bare small number with no unit ("scraper 5 20" typed without the
         # inch mark) is still a size hint: SOFT-narrow to rows carrying that
         # number glued to a size marker (5", 5in, 5cm, 5qt...). Soft — if no
@@ -1218,8 +1311,8 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 rf"(?<![0-9.]){n}(?:\"|''|in|inch|cm|mm|l|ml|qt|ltr)" for n in nums))
             soft = [r for r in result if pat.search(_hay(r))]
             if soft:
-                return soft
-        return result
+                return _cheap_first(soft)
+        return _cheap_first(result)
 
     # Ensure model-number codes typed in the prompt (e.g. "IR-CHS002") are
     # searched even when the extraction step drops them — a model number isn't a
@@ -1536,6 +1629,10 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 # frontend can tell "never discounted" from "discounted to 0".
                 "orig_price_3star": v.get("orig_price_3star"),
                 "orig_price_4star": v.get("orig_price_4star"),
+                # Match-quality debug — tiny, and makes "why did it pick
+                # THIS row" answerable from the network tab alone.
+                "_tier": v.get("_tier"), "_score": v.get("_score"),
+                "_extra": v.get("_extra"),
             }
 
         # Deduplicate by product + model so the switcher shows distinct options

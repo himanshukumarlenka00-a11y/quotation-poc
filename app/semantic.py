@@ -45,8 +45,8 @@ def build_semantic_index(conn, batch=256):
     ~1-3 minutes of CPU for 45k rows; called from a background thread or the
     build script, never inline in a request."""
     rows = conn.execute(
-        "SELECT id, product, COALESCE(brand,''), COALESCE(category,'') "
-        "FROM master_products").fetchall()
+        "SELECT id, product, COALESCE(brand,''), COALESCE(category,''), "
+        "COALESCE(specification,'') FROM master_products").fetchall()
     if not rows:
         try:
             os.remove(INDEX_PATH)
@@ -54,7 +54,10 @@ def build_semantic_index(conn, batch=256):
             pass
         return 0
     ids = np.array([r[0] for r in rows], dtype=np.int64)
-    texts = [f"{r[1]} {r[2]} {r[3]}".strip() for r in rows]
+    # Specification is part of the meaning: vendor files like CAMBRO name a
+    # whole line "Storage" and put the identity ("FOOD PAN 1/1") in the
+    # spec. Truncated — long specs are boilerplate after the first line.
+    texts = [f"{r[1]} {r[2]} {r[3]} {r[4][:120]}".strip() for r in rows]
     parts = []
     for i in range(0, len(texts), batch):
         parts.append(_embed(texts[i:i + batch]))
