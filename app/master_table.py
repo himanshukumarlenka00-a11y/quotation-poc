@@ -83,8 +83,22 @@ def _find_header_row(df, max_scan=25):
         if score > best_score:
             best_idx, best_map, best_score = i, cm, score
 
-    if best_score < 0:                      # no row looked like a header
-        return 0, _build_col_map(df.iloc[0].values)
+    if best_score < 0:
+        # No row matched ANY known header. Don't blindly call row 0 the
+        # header — vendor sheets open with a title banner, and showing
+        # title cells in the scan report gives the admin nothing real to
+        # Teach. The most header-LIKE row wins instead: the one with the
+        # most distinct short text cells (headers are many short labels;
+        # titles are one long cell; data rows carry numbers).
+        cand_idx, cand_score = 0, -1
+        for i in range(min(10, len(df))):
+            vals = [_norm(v) for v in df.iloc[i].values]
+            texty = [v for v in vals
+                     if v and len(v) <= 40 and not v.replace(".", "").isdigit()]
+            sc = len(set(texty))
+            if sc > cand_score:
+                cand_idx, cand_score = i, sc
+        return cand_idx, _build_col_map(df.iloc[cand_idx].values)
     return best_idx, best_map
 
 
