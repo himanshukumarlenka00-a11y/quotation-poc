@@ -1212,9 +1212,11 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         # because a bare number might also be a harmless stray.
         nums = re.findall(r"\b(\d{1,2})\b", t)
         if nums and result:
-            alts = [n + suf for n in nums
-                    for suf in ('"', "''", 'in', 'inch', 'cm', 'mm', 'l', 'ml', 'qt', 'ltr')]
-            soft = [r for r in result if any(a in _hay(r) for a in alts)]
+            # Digit boundary on the left, or "scraper 5" matches the 5mm
+            # hiding inside "145x95mm".
+            pat = re.compile("|".join(
+                rf"(?<![0-9.]){n}(?:\"|''|in|inch|cm|mm|l|ml|qt|ltr)" for n in nums))
+            soft = [r for r in result if pat.search(_hay(r))]
             if soft:
                 return soft
         return result
