@@ -855,6 +855,42 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             file_pref |= fns
             _pref_words.add(tok.lower())
 
+    # Collection prefixes ("FNS-Casper-Table Fork") are decoration, not a
+    # different product — a Casper table fork IS a table fork, so it must
+    # compete on price. Learned from the data, not a hardcoded list: a
+    # digit-free MIDDLE segment word repeating across 5+ rows (casper,
+    # harmony, slimline) is a line name; one-off middle identities
+    # ("Labelholdersmall", "Vending Lid") stay type-changing extras.
+    global _COLL_CACHE
+    try:
+        _COLL_CACHE
+    except NameError:
+        _COLL_CACHE = (None, set())
+    if _COLL_CACHE[0] != len(all_products):
+        _midf, _lastf = {}, {}
+        for (pn, br) in conn.execute(
+                "SELECT product, COALESCE(brand,'') FROM master_products"):
+            segs = [s for s in re.split(r"\s*-\s*", (pn or "").lower())
+                    if s.strip()]
+            if segs and segs[0].strip() == br.strip().lower():
+                segs = segs[1:]
+            for w in re.findall(r"[a-z]+", segs[-1] if segs else ""):
+                if len(w) >= 3:
+                    _lastf[w] = _lastf.get(w, 0) + 1
+            for s in segs[:-1]:
+                if any(c.isdigit() for c in s):
+                    continue
+                for w in re.findall(r"[a-z]+", s):
+                    if len(w) >= 3:
+                        _midf[w] = _midf.get(w, 0) + 1
+        # A real collection name (Casper, Slimline) lives ONLY in the
+        # middle; a word that also names products in final segments
+        # (spoon, dessert, pizza) is a type-word and must keep counting.
+        _COLL_CACHE = (len(all_products),
+                       {w for w, c in _midf.items()
+                        if c >= 5 and _lastf.get(w, 0) < 5})
+    _collections = _COLL_CACHE[1]
+
     # A line that is ONLY brand names + filler ("only nilkamal products") is
     # context, not an order line — it has done its job setting brand_pref
     # above; quoting it would just produce a junk placeholder row.
@@ -1077,6 +1113,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             _sem = r.get('_semsim') or 0
             score = 0
             tier = ''
+            r['_boosted'] = ''   # pooled dicts are shared between terms
             # A model-number hit scores 1000 and the 0.6 cutoff below then
             # discards everything under 600 — so this branch must fire ONLY on
             # something that really is a code. The whole-term test needs a
@@ -1180,6 +1217,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                         # queries never reach here (gate above), and generic
                         # file tokens can't trigger preference (vocab filter).
                         score += 1600      # the request named this brand/catalogue
+                        r['_boosted'] = 'brand'
                 if short:
                     score += 100 * sum(1 for w in short
                                        if re.search(r"\b" + re.escape(w) + r"\b", name))
@@ -1198,6 +1236,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                                         (r.get('original_model') or '').strip().lower()))
                     if hc:
                         score += 1650 if hc >= 2 else 400
+                        r['_boosted'] = 'hist'
                 # Unrequested words in the HUMAN name (the space-aware
                 # segment split keeps "50LTR Vending Lid" but drops pure
                 # codes, so accessory words count and code fragments like
@@ -1209,14 +1248,18 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                     1 for w in re.findall(r"[a-z]+", human)
                     if len(w) >= 3 and w not in _UNITS
                     and w not in (r.get('brand') or '').lower()
+                    and w not in _collections
                     and not _covered(w, t, t_ns))
                 if tier in ('name+spec', 'spec'):
                     # The identity lives (partly) in the spec here, so
                     # unrequested spec words count too: for "food pan",
                     # "FOOD PAN LID" is one step farther than "FOOD PAN".
+                    # Only real catalogue-name words count — spec junk
+                    # codes ("HDLN", "AMBHP") are noise, not identity.
                     r['_extra'] += sum(
                         1 for w in re.findall(r"[a-z]+", spec)
                         if len(w) >= 3 and w not in _UNITS
+                        and _vocab.get(w, 0) >= 1
                         and not _covered(w, t, t_ns))
                 r['_tier'] = tier; r['_score'] = score
                 scored.append((score, r))
@@ -1225,40 +1268,66 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             return []
 
         def _cheap_first(rows):
-            # "Lowest price first" — but ONLY among rows that are equally
-            # accurate: same match tier, near-equal score (the gap within a
-            # tier is just name-length noise), and near-equal semantic
-            # similarity. Price must never beat a more specific match (a
-            # cheap Plate COVER outpricing the Dinner Plate for "plate"), a
-            # size/spec narrowing (applied before this), a history pick or a
-            # named brand (+1650/+1600 puts them outside the 120 band).
-            # Weak tiers (partial/spec-only/semantic-only) keep their score
-            # order: there the ranking IS the accuracy signal, and price
-            # reordering once promoted a cheap Dinner Spoon over the real
-            # semantic hit for "food pan".
-            if (len(rows) < 2 or rows[0].get('_tier') not in
-                    ('exact', 'model', 'model~', 'name', 'name+spec', 'rname')):
+            # "The actual product, cheapest type first." Among rows that ARE
+            # the requested product (strong match tier, no unrequested
+            # type-words beyond what the top pick has), price decides —
+            # a Casper table fork and a plain Table Fork both compete, the
+            # ₹56 one wins. Rows that add a type-word (Crate LID, chill
+            # PAD, LabelHOLDER) never enter the band. Weak tiers
+            # (partial/spec-only/semantic-only) keep score order — there
+            # the ranking IS the accuracy signal. History picks stay
+            # pinned; a named brand competes only within that brand.
+            strong = ('exact', 'model', 'model~', 'name', 'name+spec', 'rname')
+            if len(rows) < 2 or rows[0].get('_tier') not in strong:
                 return rows
             pf = ("price_4star"
                   if (tiers_req or ["3star"])[0] == "4star" else "price_3star")
-            ts = rows[0].get('_score', 0)
-            tsem = rows[0].get('_semsim') or 0
-            n = 1
-            while (n < len(rows)
-                   and rows[n].get('_tier') == rows[0].get('_tier')
-                   and ts - rows[n].get('_score', 0) <= 120
-                   # Identical names (exact) / identical codes (model) mean
-                   # identical meaning — sem differences there are just
-                   # embedding noise from spec/code text, not a signal.
-                   and (rows[0].get('_tier') in ('exact', 'model')
-                        or abs((rows[n].get('_semsim') or 0) - tsem) <= 0.06)):
-                n += 1
-            if n < 2:
+            top = rows[0]
+            ts = top.get('_score', 0)
+            tsem = top.get('_semsim') or 0
+            tex = top.get('_extra', 0)
+            _pkey = lambda r: (r.get('_extra', 0),
+                               (r.get(pf) or 0) <= 0, r.get(pf) or 0)
+            if bool(re.search(r"\d", t)) or top.get('_tier') in ('model', 'model~'):
+                # Digit-bearing requests (sizes, codes) stay conservative:
+                # a contiguous same-tier, near-equal-score band only, so
+                # "moove plate 22" can never be undercut by a cheaper
+                # plain "Moove Plate".
+                n = 1
+                while (n < len(rows)
+                       and rows[n].get('_boosted') == top.get('_boosted')
+                       and rows[n].get('_tier') == top.get('_tier')
+                       and ts - rows[n].get('_score', 0) <= 120
+                       and (top.get('_tier') in ('exact', 'model')
+                            or abs((rows[n].get('_semsim') or 0) - tsem) <= 0.06)):
+                    n += 1
+                if n < 2:
+                    return rows
+                return sorted(rows[:n], key=_pkey) + rows[n:]
+            # Word-only requests: EVERY row that is the same actual product
+            # competes on price, wherever score ranked it — membership is
+            # the guard, not list position. Members must FULLY cover the
+            # request (exact/name/name+spec): a reverse-coverage row drops
+            # requested words by definition ("insulated ice box" -> plain
+            # "Ice Box"), so it can never buy its way up. Added type-words
+            # beyond the top pick, different boost state, or distant
+            # meaning also disqualify.
+            full_cov = ('exact', 'name', 'name+spec')
+            if top.get('_tier') not in full_cov:
                 return rows
-            band = sorted(rows[:n],
-                          key=lambda r: (r.get('_extra', 0),
-                                         (r.get(pf) or 0) <= 0, r.get(pf) or 0))
-            return band + rows[n:]
+            members, others = [], []
+            for rw in rows[:80]:
+                if (rw.get('_tier') in full_cov
+                        and rw.get('_boosted') == top.get('_boosted')
+                        and rw.get('_extra', 0) <= tex
+                        and abs((rw.get('_semsim') or 0) - tsem) <= 0.10):
+                    members.append(rw)
+                else:
+                    others.append(rw)
+            if len(members) < 2:
+                return rows
+            members.sort(key=_pkey)
+            return members + others + rows[80:]
         # Keep only same-tier matches so the variant switcher shows genuine
         # alternatives. Drops weak partials (e.g. a row matching only "electric"
         # for a request of "electric kettle"). Capped at 420: an exact-name or
