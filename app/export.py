@@ -611,12 +611,17 @@ def build_final_bill(quotation: dict, items: list) -> str:
         ws_s.row_dimensions[10].height = max(15, 13 * (bill_to.count("\n") + 1))
     ws_s["A13"] = f"REF NO: {ref_no}"
     sp = quotation.get("sales_person") or {}
-    if sp.get("name"):
-        # mirrors the app's "Prepared By" selection; C10/C11 are pre-styled
-        # in the template (underlined field boxes) — values only here
-        ws_s["C10"] = f"PREPARED BY : MR {sp['name']}"
-        if sp.get("phone"):
-            ws_s["C11"] = f"CONTACT NO : {sp['phone']}"
+    # C10/C11 are pre-styled underlined field boxes in the template.
+    # Always fill PREPARED BY (team default matches the app's dropdown);
+    # with no phone, open C11's box instead of rendering an empty one —
+    # its top edge stays, doubling as PREPARED BY's underline.
+    ws_s["C10"] = (f"PREPARED BY : MR {sp['name']}" if sp.get("name")
+                   else "PREPARED BY : SALES TEAM")
+    if sp.get("phone"):
+        ws_s["C11"] = f"CONTACT NO : {sp['phone']}"
+    else:
+        b = ws_s["C11"].border
+        ws_s["C11"].border = Border(right=b.right, top=b.top)
 
     # ── QUOTATION items sheet ──
     # r1 header, r2 item-row prototype, r3 totals-row prototype
