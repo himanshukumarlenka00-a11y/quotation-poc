@@ -585,6 +585,98 @@ def build_company_quotation(quotation: dict, items: list) -> str:
     return str(out)
 
 
+FINAL_BILL_TEMPLATE_PATH = Path(__file__).parent / "assets" / "final_bill_template.xlsx"
+
+
+def build_final_bill(quotation: dict, items: list) -> str:
+    """Build the final-bill workbook in the company's CYM-GWL design:
+    a SUMMARY cover (letterhead + logo, BILL & SHIP TO, date, ref no,
+    prepared-by, sheet-total index, T&C, bank details, signatory) plus a
+    QUOTATION items sheet (S.No / Product / QTY / MODEL NO / BRAND / IMAGE /
+    SPECIFICATION / PRICE/PC / AMOUNT) with embedded product photos and live
+    formulas. The design comes from app/assets/final_bill_template.xlsx —
+    cloned from the real client workbook — and is never restyled here."""
+    wb = openpyxl.load_workbook(str(FINAL_BILL_TEMPLATE_PATH))
+    ws_s, ws = wb["SUMMARY"], wb["QUOTATION"]
+
+    ref_no = quotation.get("ref_no", "")
+    date_str = datetime.now().strftime("%d-%m-%Y")
+
+    # ── SUMMARY cover ──
+    ws_s["C9"] = f"DATE : {date_str}"
+    bill_to = (quotation.get("bill_to") or "").strip() or quotation.get("client_name", "")
+    ws_s["A10"] = bill_to
+    if "\n" in bill_to:
+        ws_s["A10"].alignment = Alignment(wrap_text=True, vertical="top")
+        ws_s.row_dimensions[10].height = max(15, 13 * (bill_to.count("\n") + 1))
+    ws_s["A13"] = f"REF NO: {ref_no}"
+    sp = quotation.get("sales_person") or {}
+    if sp.get("name"):
+        # mirrors the app's "Prepared By" selection, right-hand side like DATE
+        copy_cell_style(ws_s["C9"], ws_s["C10"])
+        ws_s["C10"] = f"PREPARED BY : MR {sp['name']}"
+        if sp.get("phone"):
+            copy_cell_style(ws_s["C9"], ws_s["C11"])
+            ws_s["C11"] = f"CONTACT NO : {sp['phone']}"
+
+    # ── QUOTATION items sheet ──
+    # r1 header, r2 item-row prototype, r3 totals-row prototype
+    FIRST = 2
+    proto_style_row, totals_proto = FIRST, 3
+    totals_styles = [ws.cell(totals_proto, c)._style for c in range(1, 10)]
+    proto_height = ws.row_dimensions[FIRST].height or 46
+    spec_w = ws.column_dimensions["G"].width or 40
+
+    sl = 0
+    for idx, item in enumerate(items):
+        r = FIRST + idx
+        if idx > 0:
+            for c in range(1, 10):
+                copy_cell_style(ws.cell(FIRST, c), ws.cell(r, c))
+        product = item.get("product", "")
+        is_charge = bool(re.search(r"packing|freight|forwarding",
+                                    str(product), re.I))
+        if not is_charge:
+            sl += 1
+            ws.cell(r, 1, sl)
+        qty = int(item.get("qty") or 0)
+        price = float(item.get("price_per_pc") or item.get("price") or 0)
+        spec_text = (item.get("specification") or "").replace("\\n", "\n")
+        ws.cell(r, 2, product)
+        ws.cell(r, 3, qty if qty else None)
+        ws.cell(r, 4, item.get("model_no", ""))
+        ws.cell(r, 5, item.get("brand", ""))
+        ws.cell(r, 7, spec_text)
+        ws.cell(r, 8, round(price, 2))
+        ws.cell(r, 9, f"=C{r}*H{r}")
+        lines = _estimate_wrapped_lines(spec_text, spec_w)
+        ws.row_dimensions[r].height = max(proto_height,
+                                          min(lines * 12 + 8, 190))
+        img_file = _image_file_path(item.get("image_path", ""), full=True)
+        if img_file:
+            row_px = int(ws.row_dimensions[r].height * 96 / 72)
+            _embed_item_image(ws, img_file, row=r, col=6,
+                               box_w=90, box_h=min(row_px - 6, 110),
+                               center_height=row_px)
+
+    total_row = FIRST + len(items)
+    for c in range(1, 10):
+        ws.cell(total_row, c)._style = totals_styles[c - 1]
+        if total_row != totals_proto:
+            ws.cell(totals_proto, c).value = None
+    ws.cell(total_row, 3, f"=SUM(C{FIRST}:C{total_row - 1})")
+    ws.cell(total_row, 9, f"=SUM(I{FIRST}:I{total_row - 1})")
+    ws.print_area = f"A1:I{total_row}"
+
+    # SUMMARY index pulls the live sheet total
+    ws_s["C17"] = f"='QUOTATION'!I{total_row}"
+
+    wb.calculation.fullCalcOnLoad = True
+    out = EXPORTS_DIR / f"Quote_{(ref_no or 'export').replace('/', '-')}.xlsx"
+    wb.save(str(out))
+    return str(out)
+
+
 USD_INR_RATE = 1.0  # USD column removed for now — prices shown as-is in INR (no conversion)
 
 def get_usd_inr_rate() -> float:

@@ -9,7 +9,7 @@ from app.config import limiter, GROQ_API_KEY_DEFAULT, CEREBRAS_API_KEY, CEREBRAS
 from app.db import get_db
 from app.auth import get_current_user, require_role, _check_quote_access, log_action
 from app.matching import get_boq_context, get_feedback_context, generate_ref_no, get_latest_template
-from app.export import build_company_quotation
+from app.export import build_company_quotation, build_final_bill
 from app.images import _save_image_to_disk
 from app.parser import parse_boq_excel
 from app.routers.catalog import _save_upload_validated
@@ -2316,7 +2316,10 @@ def download_quotation(qid: int, user: dict = Depends(get_current_user)):
     data = json.loads(row["items_json"])
     items = data.get("items", [])
 
-    path = build_company_quotation(data, items)
+    # The final bill ships in the company's CYM-GWL workbook design
+    # (SUMMARY cover + QUOTATION items sheet). build_company_quotation
+    # remains as the previous single-sheet format if a rollback is needed.
+    path = build_final_bill(data, items)
 
     return FileResponse(
         path,
