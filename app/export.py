@@ -612,11 +612,10 @@ def build_final_bill(quotation: dict, items: list) -> str:
     ws_s["A13"] = f"REF NO: {ref_no}"
     sp = quotation.get("sales_person") or {}
     if sp.get("name"):
-        # mirrors the app's "Prepared By" selection, right-hand side like DATE
-        copy_cell_style(ws_s["C9"], ws_s["C10"])
+        # mirrors the app's "Prepared By" selection; C10/C11 are pre-styled
+        # in the template (underlined field boxes) — values only here
         ws_s["C10"] = f"PREPARED BY : MR {sp['name']}"
         if sp.get("phone"):
-            copy_cell_style(ws_s["C9"], ws_s["C11"])
             ws_s["C11"] = f"CONTACT NO : {sp['phone']}"
 
     # ── QUOTATION items sheet ──
