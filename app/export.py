@@ -621,9 +621,8 @@ def build_final_bill(quotation: dict, items: list) -> str:
     # ── QUOTATION items sheet ──
     # r1 header, r2 item-row prototype, r3 totals-row prototype
     FIRST = 2
-    proto_style_row, totals_proto = FIRST, 3
+    totals_proto = 3
     totals_styles = [ws.cell(totals_proto, c)._style for c in range(1, 10)]
-    proto_height = ws.row_dimensions[FIRST].height or 46
     spec_w = ws.column_dimensions["G"].width or 40
 
     sl = 0
@@ -648,10 +647,14 @@ def build_final_bill(quotation: dict, items: list) -> str:
         ws.cell(r, 7, spec_text)
         ws.cell(r, 8, round(price, 2))
         ws.cell(r, 9, f"=C{r}*H{r}")
-        lines = _estimate_wrapped_lines(spec_text, spec_w)
-        ws.row_dimensions[r].height = max(proto_height,
-                                          min(lines * 12 + 8, 190))
+        # Compact readable rows — NOT the template prototype's height (the
+        # source workbook's first item row is 264pt tall, which once made
+        # every export row a full screen each). Photo rows get room for
+        # the image; text rows grow with the spec.
         img_file = _image_file_path(item.get("image_path", ""), full=True)
+        lines = _estimate_wrapped_lines(spec_text, spec_w)
+        base = 90 if img_file else 46
+        ws.row_dimensions[r].height = max(base, min(lines * 12 + 8, 190))
         if img_file:
             row_px = int(ws.row_dimensions[r].height * 96 / 72)
             _embed_item_image(ws, img_file, row=r, col=6,
@@ -661,10 +664,9 @@ def build_final_bill(quotation: dict, items: list) -> str:
     total_row = FIRST + len(items)
     for c in range(1, 10):
         ws.cell(total_row, c)._style = totals_styles[c - 1]
-        if total_row != totals_proto:
-            ws.cell(totals_proto, c).value = None
     ws.cell(total_row, 3, f"=SUM(C{FIRST}:C{total_row - 1})")
     ws.cell(total_row, 9, f"=SUM(I{FIRST}:I{total_row - 1})")
+    ws.row_dimensions[total_row].height = 20
     ws.print_area = f"A1:I{total_row}"
 
     # SUMMARY index pulls the live sheet total
