@@ -646,7 +646,12 @@ def build_final_bill(quotation: dict, items: list) -> str:
         ws.cell(r, 5, item.get("brand", ""))
         ws.cell(r, 7, spec_text)
         ws.cell(r, 8, round(price, 2))
-        ws.cell(r, 9, f"=C{r}*H{r}")
+        # Computed VALUES, not formulas: openpyxl can't store a formula's
+        # cached result, so formula cells render BLANK in Protected View
+        # (which is how every downloaded file first opens), in previews
+        # and when printed unopened. A final bill must show its money
+        # everywhere; edits happen in the app, not in Excel.
+        ws.cell(r, 9, round(qty * price, 2))
         # Compact readable rows — NOT the template prototype's height (the
         # source workbook's first item row is 264pt tall, which once made
         # every export row a full screen each). Photo rows get room for
@@ -664,15 +669,18 @@ def build_final_bill(quotation: dict, items: list) -> str:
     total_row = FIRST + len(items)
     for c in range(1, 10):
         ws.cell(total_row, c)._style = totals_styles[c - 1]
-    ws.cell(total_row, 3, f"=SUM(C{FIRST}:C{total_row - 1})")
-    ws.cell(total_row, 9, f"=SUM(I{FIRST}:I{total_row - 1})")
+    total_qty = sum(int(i.get("qty") or 0) for i in items)
+    grand = round(sum(int(i.get("qty") or 0)
+                      * float(i.get("price_per_pc") or i.get("price") or 0)
+                      for i in items), 2)
+    ws.cell(total_row, 3, total_qty)
+    ws.cell(total_row, 9, grand)
     ws.row_dimensions[total_row].height = 20
     ws.print_area = f"A1:I{total_row}"
 
-    # SUMMARY index pulls the live sheet total
-    ws_s["C17"] = f"='QUOTATION'!I{total_row}"
-
-    wb.calculation.fullCalcOnLoad = True
+    # SUMMARY index shows the same computed totals
+    ws_s["C17"] = grand
+    ws_s["C18"] = grand
     out = EXPORTS_DIR / f"Quote_{(ref_no or 'export').replace('/', '-')}.xlsx"
     wb.save(str(out))
     return str(out)
