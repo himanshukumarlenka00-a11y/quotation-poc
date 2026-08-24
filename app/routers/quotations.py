@@ -305,8 +305,11 @@ def _lookup_correction(conn, phrase):
 _PROSE_MARKERS = re.compile(
     r"\b(we|i|need|needs|needed|require|requires|required|want|wants|please|"
     r"looking|setup|set up|for the|opening|room|hotel|kitchen|section|"
-    r"department|also|plus|with|without|including|approx|around|about)\b",
+    r"department|also|plus|including|approx|around|about)\b",
     re.I)
+# "with"/"without" are NOT prose markers: "coffee pot WITH lid" and "ice box
+# W/O tap" are product phrases in every hotel BOQ, and one such line sent a
+# whole clean list to the LLM.
 
 
 def _parse_items_deterministically(prompt):
@@ -749,7 +752,8 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 _WORD_ALTS[hit[0]] = _WORD_ALTS.get(hit[0], ()) + (a,)
         # Pairs the skeleton rule can't derive but the data uses on both
         # sides: "6-Compartment Tray" vs "3COMP", "W/HDL" vs handled rows.
-        for a, b in (("comp", "compartment"), ("hdl", "handle")):
+        for a, b in (("comp", "compartment"), ("hdl", "handle"),
+                     ("glass", "barware")):
             if wfreq.get(a) and wfreq.get(b):
                 _WORD_ALTS[a] = _WORD_ALTS.get(a, ()) + (b,)
                 _WORD_ALTS[b] = _WORD_ALTS.get(b, ()) + (a,)
@@ -801,7 +805,10 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         expansion clearly dominates."""
         if not lw.isalpha() or not (2 <= len(lw) <= 6) or _wfreq.get(lw, 0):
             return None
-        hit = _skmap.get(lw)
+        # 3+ letters only for skeleton lookups: "cm" is the skeleton of
+        # "Como" and every 2-letter unit would drift into some collection
+        # name. Two-letter shorthands live in the curated list alone.
+        hit = _skmap.get(lw) if len(lw) >= 3 else None
         if not hit and len(lw) >= 3:
             cands = [v for sk, v in _skmap.items() if sk.startswith(lw)]
             cands += [(v, n) for v, n in _wfreq.items()
@@ -1316,6 +1323,22 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             elif core and all(_covered(w, name, name_ns) for w in core):
                 score = 600 - min(len(name), 120)              # full name match; tighter ranks higher
                 tier = 'name'
+            elif (len(core) > 1
+                    and (any(_covered(w, name, name_ns) for w in core)
+                         or _sem >= 0.72)
+                    and all(_covered(w, name, name_ns)
+                            or _covered(w, spec, spec_ns)
+                    for w in core)):
+                # Spec-completed coverage: words missing from the NAME are in
+                # the SPECIFICATION — "round tray" finds a "Tray" whose spec
+                # says "Round", and "food pan" finds CAMBRO's pans (named
+                # just "Storage", identity in the spec). Anchored by a name
+                # word OR by strong semantic agreement, and needs 2+ words —
+                # so a lone word buried in an unrelated product's spec can't
+                # fire (the old "SAFE" -> GLOVE bug). Ranks a step under a
+                # pure name match of the same length.
+                score = 500 - min(len(name), 120)
+                tier = 'name+spec'
             elif (name_core and all(_covered(w, t, t_ns) for w in name_core)
                     and (len(name_core) >= 2 or len(core) < 2)):
                 # (single-word names only qualify against single-word
@@ -1333,22 +1356,6 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 # forward full match so IRON ORGANISER still outranks IRON.
                 score = 400 + 20 * len(name_core)
                 tier = 'rname'
-            elif (len(core) > 1
-                    and (any(_covered(w, name, name_ns) for w in core)
-                         or _sem >= 0.72)
-                    and all(_covered(w, name, name_ns)
-                            or _covered(w, spec, spec_ns)
-                    for w in core)):
-                # Spec-completed coverage: words missing from the NAME are in
-                # the SPECIFICATION — "round tray" finds a "Tray" whose spec
-                # says "Round", and "food pan" finds CAMBRO's pans (named
-                # just "Storage", identity in the spec). Anchored by a name
-                # word OR by strong semantic agreement, and needs 2+ words —
-                # so a lone word buried in an unrelated product's spec can't
-                # fire (the old "SAFE" -> GLOVE bug). Ranks a step under a
-                # pure name match of the same length.
-                score = 500 - min(len(name), 120)
-                tier = 'name+spec'
             elif core and (lambda hits: hits and hits / len(core) >= 0.6)(
                     sum(1 for w in core if _covered(w, name, name_ns))):
                 # Partial name — but only if MOST of the request is accounted
@@ -1356,15 +1363,21 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 # "Ice bin module" (₹65,082) with full confidence.
                 score = 200 + 10 * sum(1 for w in core if _covered(w, name, name_ns))
                 tier = 'part'
-            elif (all(_covered(w, spec, spec_ns) for w in core) and core
-                    and (len(core) > 1 or short
-                         or any(c.isdigit() for c in t))):
+            elif (core
+                    and (lambda cnt: cnt >= 1 and cnt >= (
+                        len(core) - 1 if (short or any(c.isdigit() for c in t))
+                        else len(core)) and (cnt == len(core) and len(core) > 1
+                                             or short
+                                             or any(c.isdigit() for c in t)))(
+                        sum(1 for w in core if _covered(w, spec, spec_ns)))):
                 # Spec-only match needs TWO significant words — on one word it
                 # fired on any product whose spec happened to contain it (a
                 # request for "SAFE" returned "GLOVE LARGE"). Exceptions: a
                 # single word WITH a size ("crock 1.2 qt") or a short
                 # designator ("dw bowl", "gn pan") is already two
-                # constraints — qualifier/bonus narrows right after this.
+                # constraints — and with a size present, ONE uncovered word
+                # is forgiven ("burgundy GLASS 750ml": LUCARIS never writes
+                # the word glass; the size qualifier still narrows hard).
                 score = 120; tier = 'spec'                     # specification match
             # Semantic fusion: similarity refines keyword scores (a dinner
             # plate outranks a gold-PLATED jigger for "plate"), and a strong
@@ -1377,7 +1390,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 score = 150 + int((_sem - 0.74) * 1200)
                 tier = 'sem'
             if score:
-                if ((brand_pref or file_pref) and score < 1000
+                if ((brand_pref or file_pref)
                         and not (mtoks or t_is_code or re.search(r"\d{3}", t))):
                     # Gate only on real code-like tokens (3+ digit runs):
                     # "andy 27431" must resolve by the CODE, but a size like
@@ -1385,10 +1398,13 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                     rb = (r.get('brand') or '').strip().upper()
                     if ((rb and any(b == rb or b in rb or rb in b for b in brand_pref))
                             or r.get('file_name') in file_pref):
-                        # 1600: an explicitly named brand/catalogue outranks
-                        # even a foreign exact-name row — "only indigo
-                        # products; plate" wants INDIGO's plate, not whichever
-                        # product is literally named "PLATE". Model-code
+                        # 1600 on EVERY tier of the named brand — uniform, so
+                        # relative order inside the brand survives. Gating it
+                        # to sub-1000 scores once let the plain "Finesse
+                        # Table Fork" (reverse-name 460, boosted) leapfrog
+                        # the typed "Finesse BLACK Table Fork" (exact 2000,
+                        # unboosted). A named brand still outranks foreign
+                        # exacts ("only indigo products; plate"), model-code
                         # queries never reach here (gate above), and generic
                         # file tokens can't trigger preference (vocab filter).
                         score += 1600      # the request named this brand/catalogue
@@ -1523,30 +1539,52 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                         "liters": "l", "ltr": "l", "ltrs": "l", "lt": "l",
                         "gram": "g", "grams": "g", "gm": "g", "gms": "g",
                         "qts": "qt", "quart": "qt", "quarts": "qt"}
-        quals = []
-        for val, unit in re.findall(
+        # Qualifier GROUPS: one group per distinct constraint the user
+        # typed, alternate spellings INSIDE a group. A row must satisfy
+        # EVERY group ("gn pan 1/3 150mm" needs the fraction AND the
+        # depth — OR across groups once let a 1/9-150MM pan through on
+        # the depth alone and price-first shipped the wrong size).
+        qgroups = []
+        covered_decimals = set()
+        # dimension spans own their numbers — "oval plate 31x24 cm" must not
+        # ALSO demand a standalone "24cm"
+        _dimspans = [mm.span() for mm in re.finditer(
+            r"\d{2,4}\s*[x*×]\s*\d{2,4}(?:\s*[x*×]\s*\d{2,4})?", t)]
+        for um in re.finditer(
                 r"(\d+(?:\.\d+)?)\s*(litres?|liters?|ltrs?|lt|grams?|gms?|quarts?|qts?|oz|kw|kg|g|w|ml|l|v|hz|mm|cm)\b",
                 t):
+            if any(a <= um.start() < b for a, b in _dimspans):
+                continue
+            val, unit = um.group(1), um.group(2)
             u = _UNIT_FAMILY.get(unit, unit)
             vals = {val}
             vals.add(val[:-2] if val.endswith(".0") else val + ".0")
             units = ({u, "litre", "liter", "ltr", "lt"} if u == "l"
                      else {u, "gram", "grams", "gm", "gms"} if u == "g" else {u})
-            quals += [v + un for v in vals for un in units]
-        quals += re.findall(r"\b\d+\.\d+\b", t)
+            qgroups.append([v + un for v in vals for un in units])
+            covered_decimals.add(val)
+        # bare decimals not already claimed by a unit group
+        for d in re.findall(r"\b\d+\.\d+\b", t):
+            if d not in covered_decimals:
+                qgroups.append([d])
         # Dimensions — "300x200", "300 x 200", "300*200*70". Normalized to a
         # glued x-form so any spacing/separator in prompt or catalogue meets.
-        quals += [re.sub(r"\s*[x*×]\s*", "x", d) for d in re.findall(
-            r"\d{2,4}\s*[x*×]\s*\d{2,4}(?:\s*[x*×]\s*\d{2,4})?", t)]
+        for d in re.findall(r"\d{2,4}\s*[x*×]\s*\d{2,4}(?:\s*[x*×]\s*\d{2,4})?", t):
+            qgroups.append([re.sub(r"\s*[x*×]\s*", "x", d)])
         # Inch sizes — 5", 9'', 6 inch. These name most of the catalog's
         # near-identical variants (Scraper 3"/4"/5") and were previously
         # invisible to this filter, so every size collapsed onto one row.
-        quals += [m + '"' for m in re.findall(r"(\d+(?:\.\d+)?)\s*(?:\"|''|inch|inches)", t)]
+        for m in re.findall(r"(\d+(?:\.\d+)?)\s*(?:\"|''|inch|inches)", t):
+            qgroups.append([m + '"'])
         # GN pan fractions — "food pan 1/1" must never return a 1/9 pan.
-        quals += [re.sub(r"\s", "", f) for f in re.findall(
-            r"\b[1-9]\s*/\s*[1-9]\b", t)]
-        quals += mtoks
-        quals = [q.replace(" ", "") for q in quals if q.strip()]
+        for f in re.findall(r"\b[1-9]\s*/\s*[1-9]\b", t):
+            qgroups.append([re.sub(r"\s", "", f)])
+        for mt in mtoks:
+            qgroups.append([mt])
+        qgroups = [[q.replace(" ", "") for q in g if q.strip()]
+                   for g in qgroups]
+        qgroups = [g for g in qgroups if g]
+        quals = [q for g in qgroups for q in g]
         def _hay(r):
             # The product NAME must be searched too: "Scraper 5"" carries
             # its size in the name, not the spec, so a model+spec-only
@@ -1555,15 +1593,17 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                     (r.get('original_model') or '') + ' ' +
                     (r.get('specification') or '')).lower().replace(' ', '') \
                    .replace('*', 'x').replace('×', 'x')
-        if quals:
+        if qgroups:
             # Digit-left boundary: "ice box 25 ltr" must not match the
             # "25ltr" hiding inside "RIC125LTRWT". (Substring is fine when
             # the qual starts mid-token: "x200" etc. keep plain matching.)
-            qpats = [re.compile(r"(?<![0-9.])" + re.escape(q))
-                     if q[:1].isdigit() else None for q in quals]
+            gpats = [[(re.compile(r"(?<![0-9.])" + re.escape(q))
+                       if q[:1].isdigit() else None, q) for q in g]
+                     for g in qgroups]
             def _qhit(r):
-                return any((p.search(_hay(r)) if p else q in _hay(r))
-                           for q, p in zip(quals, qpats))
+                hay = _hay(r)
+                return all(any((p.search(hay) if p else q in hay)
+                               for p, q in g) for g in gpats)
             narrowed = [r for r in result if _qhit(r)]
             if not narrowed:
                 # Tier starvation: junk category-header rows ("CROCKERY-
