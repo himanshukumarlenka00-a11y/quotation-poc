@@ -501,10 +501,18 @@ def _covered_pats(word):
     else:
         forms.add(word + 's')
     exact = [re.compile(r"\b" + re.escape(f) + r"\b") for f in forms | alts]
-    # Alternates allow the space-stripped test a letter earlier: the
-    # catalogue glues its own abbreviations to numbers ("3COMP", "W/HDL"),
-    # where no word boundary ever exists.
-    ns = [f for f in forms if len(f) >= 5] + [a for a in alts if len(a) >= 4]
+    # Compound test ("bedsheet" must cover "bed sheet") — WORD-START
+    # anchored, chars joined by optional whitespace. A plain substring
+    # check on the space-stripped name fabricated words across joints:
+    # "crock" was found straddling "classiC ROCK" and a rocks GLASS
+    # outranked the real crocks. Alternates join a letter shorter: the
+    # catalogue glues its abbreviations ("3COMP", "W/HDL").
+    # anchor = "not preceded by a letter": mid-word starts are blocked
+    # (the classiC-ROCK straddle) while digit-glued starts still match
+    # ("3COMP", "SEALLID12").
+    ns = [re.compile(r"(?<![a-z])" + r"\s*".join(re.escape(ch) for ch in f))
+          for f in ({f for f in forms if len(f) >= 5}
+                    | {a for a in alts if len(a) >= 4})]
     morph = (re.compile(r"\b" + re.escape(word) + r"(?:[a-z]{2,5}|s)\b")
              if len(word) >= 4 else None)
     return exact, ns, morph
@@ -529,8 +537,8 @@ def _covered(word, s, s_ns):
     for p in exact:
         if p.search(s):
             return True
-    for f in ns:
-        if f in s_ns:
+    for p in ns:
+        if p.search(s):
             return True
     return bool(morph and morph.search(s))
 
@@ -1553,9 +1561,17 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             # the qual starts mid-token: "x200" etc. keep plain matching.)
             qpats = [re.compile(r"(?<![0-9.])" + re.escape(q))
                      if q[:1].isdigit() else None for q in quals]
-            narrowed = [r for r in result
-                        if any((p.search(_hay(r)) if p else q in _hay(r))
-                               for q, p in zip(quals, qpats))]
+            def _qhit(r):
+                return any((p.search(_hay(r)) if p else q in _hay(r))
+                           for q, p in zip(quals, qpats))
+            narrowed = [r for r in result if _qhit(r)]
+            if not narrowed:
+                # Tier starvation: junk category-header rows ("CROCKERY-
+                # Bone China") once outranked the real crocks and the
+                # cutoff dropped them before this size filter could keep
+                # them. The size IS the user's strongest signal — rescue
+                # any scored row that carries it before giving up.
+                narrowed = [r for s, r in scored if _qhit(r)]
             # No silent fallback. If the request names a size and nothing
             # carries it, returning the other sizes is worse than returning
             # nothing — it quotes the wrong goods at full confidence.
