@@ -495,13 +495,16 @@ def _covered_pats(word):
     ~570k times on a 120-line BOQ and re-building these regexes per call
     (1.7M re.compile + 1.5M re.escape) was HALF its runtime."""
     forms = {word}
-    forms.update(_WORD_ALTS.get(word, ()))
+    alts = set(_WORD_ALTS.get(word, ()))
     if word.endswith('s') and len(word) > 3:
         forms.add(word[:-1])
     else:
         forms.add(word + 's')
-    exact = [re.compile(r"\b" + re.escape(f) + r"\b") for f in forms]
-    ns = [f for f in forms if len(f) >= 5]
+    exact = [re.compile(r"\b" + re.escape(f) + r"\b") for f in forms | alts]
+    # Alternates allow the space-stripped test a letter earlier: the
+    # catalogue glues its own abbreviations to numbers ("3COMP", "W/HDL"),
+    # where no word boundary ever exists.
+    ns = [f for f in forms if len(f) >= 5] + [a for a in alts if len(a) >= 4]
     morph = (re.compile(r"\b" + re.escape(word) + r"(?:[a-z]{2,5}|s)\b")
              if len(word) >= 4 else None)
     return exact, ns, morph
@@ -736,6 +739,12 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             if hit and hit[0] != a:
                 _WORD_ALTS[a] = (hit[0],)
                 _WORD_ALTS[hit[0]] = _WORD_ALTS.get(hit[0], ()) + (a,)
+        # Pairs the skeleton rule can't derive but the data uses on both
+        # sides: "6-Compartment Tray" vs "3COMP", "W/HDL" vs handled rows.
+        for a, b in (("comp", "compartment"), ("hdl", "handle")):
+            if wfreq.get(a) and wfreq.get(b):
+                _WORD_ALTS[a] = _WORD_ALTS.get(a, ()) + (b,)
+                _WORD_ALTS[b] = _WORD_ALTS.get(b, ()) + (a,)
         _covered_pats.cache_clear()
         _VOCAB_CACHE = (len(all_products), freq, blob, skmap, wfreq)
     _vocab = _VOCAB_CACHE[1]
@@ -769,6 +778,13 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
 
     _ABBR_2L = {"sq": "square", "sm": "small", "lg": "large"}
 
+    # Measurement words must NEVER be "typo-corrected" into products —
+    # ed1 once turned "liter jar" into "LIFTER jar".
+    _UNIT_SAFE = {"liter", "liters", "litre", "litres", "ltr", "ltrs", "lt",
+                  "quart", "quarts", "qt", "qts", "gram", "grams", "gm", "gms",
+                  "oz", "comp", "inch", "inches", "dia", "diameter", "swg",
+                  "gauge"}
+
     def _expand_abbrev(lw):
         """Expand a shorthand token to the catalogue word it abbreviates —
         vowel-dropped (lrg→large), skeleton/word prefix (sml→small,
@@ -788,12 +804,26 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                     hit = cands[0]
         if not hit and lw in _ABBR_2L and _wfreq.get(_ABBR_2L[lw], 0) >= 2:
             hit = (_ABBR_2L[lw], 1)
+        if not hit and len(lw) >= 6:
+            # CONTRACTION: the user types the full word, the catalogue only
+            # knows the short one — "compartment"→COMP, "transparent"→TRANS,
+            # "rectangular"→RECT. Same dominance rule as expansion.
+            cands = [(v, n) for v, n in _wfreq.items()
+                     if n >= 3 and len(v) >= 3 and len(lw) - len(v) >= 3
+                     and lw.startswith(v)]
+            if cands:
+                cands.sort(key=lambda x: -x[1])
+                if len(cands) == 1 or cands[0][1] >= 3 * cands[1][1]:
+                    hit = cands[0]
         return hit[0] if hit else None
 
     def _fix_typos(term):
         out = []
         for w in re.findall(r"\S+", term or ""):
             lw = w.lower()
+            if lw in _UNIT_SAFE:
+                out.append(w)
+                continue
             ex = _expand_abbrev(lw)
             if ex:
                 out.append(ex)
@@ -1299,11 +1329,13 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 # "Ice bin module" (₹65,082) with full confidence.
                 score = 200 + 10 * sum(1 for w in core if _covered(w, name, name_ns))
                 tier = 'part'
-            elif len(core) > 1 and all(w in spec for w in core):
-                # Spec-only match needs at least TWO significant words. On one
-                # word it fired on any product whose specification happened to
-                # contain it — a request for "SAFE" returned "GLOVE LARGE"
-                # because the word sits in that glove's spec text.
+            elif (all(_covered(w, spec, spec_ns) for w in core) and core
+                    and (len(core) > 1 or any(c.isdigit() for c in t))):
+                # Spec-only match needs TWO significant words — on one word it
+                # fired on any product whose spec happened to contain it (a
+                # request for "SAFE" returned "GLOVE LARGE"). Exception: a
+                # single word WITH a size ("crock 1.2 qt") is already two
+                # constraints — the qualifier narrows right after this.
                 score = 120; tier = 'spec'                     # specification match
             # Semantic fusion: similarity refines keyword scores (a dinner
             # plate outranks a gold-PLATED jigger for "plate"), and a strong
@@ -1464,7 +1496,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                         "qts": "qt", "quart": "qt", "quarts": "qt"}
         quals = []
         for val, unit in re.findall(
-                r"(\d+(?:\.\d+)?)\s*(litres?|liters?|ltrs?|lt|grams?|gms?|quarts?|qts?|kw|kg|g|w|ml|l|v|hz|mm|cm)\b",
+                r"(\d+(?:\.\d+)?)\s*(litres?|liters?|ltrs?|lt|grams?|gms?|quarts?|qts?|oz|kw|kg|g|w|ml|l|v|hz|mm|cm)\b",
                 t):
             u = _UNIT_FAMILY.get(unit, unit)
             vals = {val}
@@ -1517,7 +1549,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             # Digit boundary on the left, or "scraper 5" matches the 5mm
             # hiding inside "145x95mm".
             pat = re.compile("|".join(
-                rf"(?<![0-9.]){n}(?:\"|''|in|inch|cm|mm|l|ml|qt|ltr)" for n in nums))
+                rf"(?<![0-9.]){n}(?:\"|''|in|inch|cm|mm|l|ml|qt|ltr|oz|comp)" for n in nums))
             soft = [r for r in result if pat.search(_hay(r))]
             if soft:
                 return _cheap_first(soft)
