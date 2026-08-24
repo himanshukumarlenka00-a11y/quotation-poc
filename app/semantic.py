@@ -86,6 +86,31 @@ def _load_index():
         return _index
 
 
+_QVEC = {}   # query text -> normalized vector; one BATCH embed beats
+             # a thousand singles (a 1,900-line BOQ went from ~60s of
+             # embedding to ~3s)
+
+
+def prime_queries(texts):
+    """Embed many query strings in ONE batch, caching their vectors so the
+    per-line semantic_topk calls that follow cost a dict lookup instead of
+    a model invocation. Safe no-op on any failure."""
+    try:
+        todo = sorted({(t or "").strip() for t in texts if (t or "").strip()}
+                      - set(_QVEC))
+        if not todo:
+            return 0
+        if len(_QVEC) > 4096:
+            _QVEC.clear()
+        vecs = _embed(todo)
+        for t, v in zip(todo, vecs):
+            _QVEC[t] = v
+        return len(todo)
+    except Exception as e:
+        print(f"semantic prime skipped (non-fatal): {e}")
+        return 0
+
+
 def semantic_topk(query, k=50):
     """[(product_id, similarity)] for the k semantically closest products,
     or None when the index/model is unavailable (callers proceed without)."""
@@ -93,7 +118,9 @@ def semantic_topk(query, k=50):
         idx = _load_index()
         if idx is None:
             return None
-        q = _embed([query])[0]
+        q = _QVEC.get((query or "").strip())
+        if q is None:
+            q = _embed([query])[0]
         sims = idx[1] @ q
         k = min(k, len(sims))
         top = np.argpartition(-sims, k - 1)[:k]

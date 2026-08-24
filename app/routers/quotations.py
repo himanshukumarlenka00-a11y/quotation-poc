@@ -481,6 +481,26 @@ _UNITS = {"inch", "inches", "cm", "mm", "mtr", "mtrs", "meter", "metre",
           "nos", "pcs", "pc"}
 
 
+from functools import lru_cache
+
+
+@lru_cache(maxsize=16384)
+def _covered_pats(word):
+    """Compiled patterns for one request word — the matcher calls _covered
+    ~570k times on a 120-line BOQ and re-building these regexes per call
+    (1.7M re.compile + 1.5M re.escape) was HALF its runtime."""
+    forms = {word}
+    if word.endswith('s') and len(word) > 3:
+        forms.add(word[:-1])
+    else:
+        forms.add(word + 's')
+    exact = [re.compile(r"\b" + re.escape(f) + r"\b") for f in forms]
+    ns = [f for f in forms if len(f) >= 5]
+    morph = (re.compile(r"\b" + re.escape(word) + r"(?:[a-z]{2,5}|s)\b")
+             if len(word) >= 4 else None)
+    return exact, ns, morph
+
+
 def _covered(word, s, s_ns):
     """Is `word` present in a product name as a WORD (not a substring)?
 
@@ -490,28 +510,20 @@ def _covered(word, s, s_ns):
     false positive. The space-stripped form is still consulted, but only for
     words long enough to be a real compound (bedsheet vs bed sheet) rather
     than short fragments that hit by accident.
+
+    Morphology: 'wood' must cover WOODEN, 'rect' RECTANGULAR, 'gold'
+    GOLDEN — the request word as a PREFIX of a name word. Only for words
+    of 4+ chars, and only 2-5 letters of suffix or a bare plural 's': one
+    free letter let "whisk" match WHISKY (wood->WOODEN still covered).
     """
-    forms = {word}
-    if word.endswith('s') and len(word) > 3:
-        forms.add(word[:-1])
-    else:
-        forms.add(word + 's')
-    for f in forms:
-        if re.search(r"\b" + re.escape(f) + r"\b", s):
+    exact, ns, morph = _covered_pats(word)
+    for p in exact:
+        if p.search(s):
             return True
-        if len(f) >= 5 and f in s_ns:
+    for f in ns:
+        if f in s_ns:
             return True
-    # Morphology: 'wood' must cover WOODEN, 'rect' RECTANGULAR, 'gold'
-    # GOLDEN — the request word as a PREFIX of a name word. Only for words
-    # of 4+ chars so short fragments ('pan' → PANINI) can't sneak back in,
-    # and only 4 extra chars of suffix so 'steel' never covers STEELMAX-ish
-    # unrelated brand tokens beyond recognisable inflections.
-    # Suffix must be 2-5 letters or a bare plural 's': one free letter let
-    # "whisk" match WHISKY. (wood->WOODEN, iron->IRONBOARD still covered.)
-    if len(word) >= 4 and re.search(
-            r"\b" + re.escape(word) + r"(?:[a-z]{2,5}|s)\b", s):
-        return True
-    return False
+    return bool(morph and morph.search(s))
 
 
 def _glued_rows(conn, words, catalogs=None, limit=200):
@@ -772,6 +784,19 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 if fixed != it[key]:
                     it[key] = fixed
 
+    # One BATCH embedding for every line's semantic lookup — terms are final
+    # right here, so the keys match what _line_pool will ask for. On a
+    # 1,900-line BOQ this replaces ~1,900 model calls with one.
+    try:
+        from app.semantic import prime_queries
+        prime_queries([(it.get("search_term") or it.get("product") or "")
+                       .lower().strip()
+                       for it in extracted
+                       if not re.search(r"\d{3}", it.get("search_term")
+                                        or it.get("product") or "")])
+    except Exception:
+        pass
+
     # Candidate rows for field-wide searching.
     #
     # This used to load EVERY master_products row into Python on every request.
@@ -992,11 +1017,11 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                     pool = [dict(r) for r in conn.execute(
                         f"SELECT m.* FROM master_fts f JOIN master_products m ON m.id = f.rowid "
                         f"WHERE master_fts MATCH ? AND m.file_name IN ({ph}) "
-                        f"ORDER BY f.rank LIMIT 400", [match, *catalogs]).fetchall()]
+                        f"ORDER BY f.rank LIMIT 220", [match, *catalogs]).fetchall()]
                 else:
                     pool = [dict(r) for r in conn.execute(
                         "SELECT m.* FROM master_fts f JOIN master_products m ON m.id = f.rowid "
-                        "WHERE master_fts MATCH ? ORDER BY f.rank LIMIT 400", (match,)).fetchall()]
+                        "WHERE master_fts MATCH ? ORDER BY f.rank LIMIT 220", (match,)).fetchall()]
             except Exception:
                 pool = []
             # A named brand/catalogue preference is useless if the preferred
@@ -1440,6 +1465,11 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             extracted.append({"product": tok, "qty": _qty})
             existing_terms += " " + tok.lower()
 
+    # Lowered once for deterministic_match — re-lowering 3,000 names per
+    # CALL made the fallback 28ms/line (42s of a giant BOQ's resolve).
+    _low_products = [((p or ''), (p or '').lower(),
+                      (p or '').lower().replace(" ", "")) for p in all_products]
+
     def deterministic_match(term):
         raw = re.findall(r"[a-z0-9]+", term.lower())
         core = [t for t in raw if len(t) >= 3 and t.isalpha() and t not in _UNITS]
@@ -1454,9 +1484,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 forms.add(word + 's')
             return any(f in pl or f in pl_ns for f in forms)
         best = None
-        for p in all_products:
-            pl = (p or '').lower()
-            pl_ns = pl.replace(" ", "")
+        for p, pl, pl_ns in _low_products:
             if all(covered(w, pl, pl_ns) for w in core):
                 cand = (-sum(1 for s in spec if s in pl), len(pl), p)
                 if best is None or cand < best:
@@ -1561,6 +1589,11 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
     not_found    = []
 
     def suggest_catalog(term, limit=6):
+        # Giant BOQs (1,500+ unmatched lines) once ran a full suggestion
+        # search PER miss — minutes of work for panels nobody has opened.
+        # Past 150 lines the Find panel fetches its own suggestions live.
+        if len(extracted) > 150:
+            return []
         return suggest_products(conn, term, catalogs, limit) or []
 
     def _add_placeholder(label, qty, suggestions=None):
@@ -1843,7 +1876,11 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
     source_file = ""
     try:
         _save_upload_validated(file, tmp_path)
-        rows, _structure = parse_boq_excel(str(tmp_path), file.filename)
+        # skip_images: matched items show MASTER-catalogue photos; reading
+        # the client file's 1,000+ embedded pictures here cost ~85s for data
+        # this flow never uses.
+        rows, _structure = parse_boq_excel(str(tmp_path), file.filename,
+                                           skip_images=True)
         try:
             from app.master_table import detect_file_type
             file_type = detect_file_type(str(tmp_path))
@@ -1880,7 +1917,10 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
     # and the not_found list.
     def _search_term(r):
         parts = [r.get("product") or "", r.get("model_no") or "", r.get("specification") or ""]
-        return " ".join(p.strip() for p in parts if p and p.strip())
+        term = " ".join(p.strip() for p in parts if p and p.strip())
+        # Scoring cost grows with every word × every candidate row; past
+        # ~20 words a spec is boilerplate, not signal.
+        return " ".join(term.split()[:20])
 
     # The client's own price per row (their budget/target, or a competitor's
     # quote) — carried through so it can be compared against our Master Table
@@ -2034,7 +2074,7 @@ async def extract_excel(file: UploadFile = File(...), user: dict = Depends(get_c
         raw = await file.read()
         with open(tmp, "wb") as f:
             f.write(raw)
-        rows, _ = parse_boq_excel(tmp, file.filename)
+        rows, _ = parse_boq_excel(tmp, file.filename, skip_images=True)
         # Keep the ORIGINAL workbook: a quotation generated from it exports
         # as a revised copy of this very file (same sheets, same format,
         # new prices) instead of the company template.

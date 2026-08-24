@@ -121,10 +121,16 @@ def _taught_boq_cols():
         return {}
 
 
-def parse_boq_excel(filepath: str, filename: str):
+def parse_boq_excel(filepath: str, filename: str, skip_images: bool = False):
     """
     Fully dynamic parser — detects structure from the file itself.
     Returns (items, structure_dict)
+
+    skip_images=True skips embedded-image extraction entirely — the
+    generate-from-BOQ flow shows MASTER-catalogue photos on matched items
+    and never reads the client file's pictures, yet extracting them cost
+    ~85s on a 1,900-line hotel BOQ. Flows that DO need the client's images
+    (BOQ coverage, matched-BOQ import) keep the default.
     """
     global _TAUGHT
     _TAUGHT = _taught_boq_cols()
@@ -156,7 +162,7 @@ def parse_boq_excel(filepath: str, filename: str):
     # preferring the OUR IMAGE column — this fixes the old drift/mis-mapping.
     sheet_images = {}
     leftover_blips_by_sheet = {}
-    if filepath.endswith(".xls") and _xls_extract_images_fb:
+    if not skip_images and filepath.endswith(".xls") and _xls_extract_images_fb:
         try:
             exact, leftover_blips_by_sheet = _xls_extract_images_fb(filepath)
             for im in exact:
@@ -168,7 +174,10 @@ def parse_boq_excel(filepath: str, filename: str):
 
     # openpyxl only works with .xlsx — use it for images/structure when possible
     # (this also now covers .xls files successfully converted above)
-    if filepath.endswith(".xlsx"):
+    if filepath.endswith(".xlsx") and not skip_images:
+        # analyze_template needs a full openpyxl load (~20-40s on a large
+        # workbook) and serves only the template-clone export path — the
+        # skip_images fast path never uses it.
         try:
             wb = openpyxl.load_workbook(filepath, data_only=True)
             try:
@@ -177,10 +186,11 @@ def parse_boq_excel(filepath: str, filename: str):
                 wb.close()  # release the file handle — Windows can't delete an open file
         except Exception:
             structure = {}
-        try:
-            sheet_images = _xlsx_sheet_images(filepath)
-        except Exception:
-            sheet_images = {}
+        if not skip_images:
+            try:
+                sheet_images = _xlsx_sheet_images(filepath)
+            except Exception:
+                sheet_images = {}
 
     def _cleanup_converted_temp():
         if converted_temp_path:
@@ -189,11 +199,13 @@ def parse_boq_excel(filepath: str, filename: str):
             except OSError:
                 pass  # Windows may still hold a lock briefly — non-fatal
 
-    # Load all sheets with pandas
+    # Load all sheets with pandas — ONE open workbook handle for every sheet.
+    # pd.read_excel(path, sheet_name=...) re-parses the whole file per call,
+    # which turned a 61-sheet 9MB BOQ into 61 full reads (~60s of the 73s
+    # parse). xl.parse() reuses the already-opened workbook.
     try:
         xl = pd.ExcelFile(filepath)
         sheet_names = xl.sheet_names
-        xl.close()
     except Exception:
         _cleanup_converted_temp()
         return items, structure
@@ -205,7 +217,7 @@ def parse_boq_excel(filepath: str, filename: str):
 
     for sheet_pos, sheet_name in enumerate(sheet_names):
         try:
-            df = pd.read_excel(filepath, sheet_name=sheet_name, header=None)
+            df = xl.parse(sheet_name, header=None)
         except Exception:
             continue
 
@@ -415,5 +427,9 @@ def parse_boq_excel(filepath: str, filename: str):
                          "amount_col": ci.get("amount")},
             })
 
+    try:
+        xl.close()
+    except Exception:
+        pass
     _cleanup_converted_temp()
     return items, structure
