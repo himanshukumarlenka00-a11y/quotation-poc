@@ -1,4 +1,4 @@
-import os, re, json, base64, tempfile
+import os, re, json, base64, tempfile, threading
 from pathlib import Path
 from datetime import datetime
 from fastapi import APIRouter, Depends, Request, HTTPException, UploadFile, File, Form
@@ -1942,9 +1942,34 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
 
     groq_client = Groq(api_key=api_key)
     conn = get_db()
-    result_items, not_found = _resolve_master_matches(conn, extracted, [], tiers, groq_client, prompt="")
 
-    if all(i.get("not_in_catalog") for i in result_items):
+    # Progressive matching for GIANT BOQs: resolve the first chunk inline so
+    # the quote is on screen in seconds, park the rest as pending rows, and
+    # let a background thread fill them in (the UI polls /live and re-renders
+    # as chunks land). Small files keep the plain synchronous path.
+    PROG_THRESHOLD, PROG_CHUNK = 150, 60
+    progressive = len(extracted) > PROG_THRESHOLD
+    rest = []
+    if progressive:
+        first, rest = extracted[:PROG_CHUNK], extracted[PROG_CHUNK:]
+        result_items, not_found = _resolve_master_matches(conn, first, [], tiers, groq_client, prompt="")
+        for it in rest:
+            result_items.append({
+                "sl_no": len(result_items) + 1,
+                "product": (it.get("product") or "").strip(), "qty": int(it.get("qty") or 1),
+                "description": "", "model_no": it.get("model_no", ""), "brand": "",
+                "specification": "", "hsn_code": "", "price_per_pc": 0,
+                "price_currency": "INR", "cost": 0, "gst_pct": 18.0, "image_path": "",
+                "tiers": tiers_requested or ["3star"],
+                "price_3star": 0, "price_3star_usd": 0, "price_4star": 0, "price_4star_usd": 0,
+                "requested": (it.get("product") or "").strip(),
+                "matched_by": "pending", "not_in_catalog": True,
+                "boq_price": float(it.get("boq_price") or 0),
+            })
+    else:
+        result_items, not_found = _resolve_master_matches(conn, extracted, [], tiers, groq_client, prompt="")
+
+    if not progressive and all(i.get("not_in_catalog") for i in result_items):
         # Nothing in the BOQ matched (placeholders don't count) — don't save
         # an empty quotation.
         conn.close()
@@ -1967,7 +1992,84 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
     conn.commit()
     conn.close()
     log_action(user, "smart_generate_from_boq", target=ref_no)
+    if progressive:
+        qid = data["id"]
+        _MATCH_JOBS[qid] = {"done": PROG_CHUNK, "total": len(extracted), "running": True}
+        threading.Thread(target=_bg_match_rest,
+                         args=(qid, rest, tiers, PROG_CHUNK, api_key, PROG_CHUNK),
+                         daemon=True).start()
+        data["matching"] = dict(_MATCH_JOBS[qid])
     return data
+
+
+# Background matching registry for progressive BOQ quotes — in-memory is
+# enough: if the process restarts mid-job, the remaining rows simply stay
+# as pending placeholders the user can price by hand or regenerate.
+_MATCH_JOBS = {}
+
+
+def _bg_match_rest(qid, rest, tiers, start_idx, api_key, chunk_size):
+    """Resolve the remaining BOQ lines chunk by chunk, merging each batch
+    into the saved quotation. Single writer: the UI keeps the quote
+    read-only while matching runs."""
+    try:
+        groq_client = Groq(api_key=api_key) if api_key else None
+        for i in range(0, len(rest), chunk_size):
+            chunk = rest[i:i + chunk_size]
+            conn = get_db()
+            try:
+                new_items, nf = _resolve_master_matches(
+                    conn, chunk, [], tiers, groq_client, prompt="")
+                clean = [{k: v for k, v in x.items() if not k.startswith("_")}
+                         for x in new_items]
+                row = conn.execute("SELECT items_json FROM quotations WHERE id=?",
+                                   (qid,)).fetchone()
+                if not row:
+                    break
+                data = json.loads(row["items_json"])
+                items = data.get("items", [])
+                for j, ni in enumerate(clean):
+                    idx = start_idx + i + j
+                    if idx < len(items):
+                        ni["sl_no"] = idx + 1
+                        items[idx] = ni
+                data["items"] = items
+                if nf:
+                    data["not_found"] = (data.get("not_found") or []) + nf
+                conn.execute("UPDATE quotations SET items_json=? WHERE id=?",
+                             (json.dumps(data), qid))
+                conn.commit()
+            finally:
+                conn.close()
+            job = _MATCH_JOBS.get(qid)
+            if job:
+                job["done"] = min(start_idx + i + len(chunk), job["total"])
+    except Exception as e:
+        print(f"background BOQ matching failed for quote {qid}: {e}")
+    finally:
+        job = _MATCH_JOBS.get(qid)
+        if job:
+            job["running"] = False
+
+
+@router.get("/api/quotations/{qid}/live")
+def quotation_live(qid: int, user: dict = Depends(get_current_user)):
+    """Current items + matching progress for a progressively-matched quote —
+    the result screen polls this while the background job runs."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM quotations WHERE id=?", (qid,)).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(404, "Not found")
+    _check_quote_access(row, user)
+    data = json.loads(row["items_json"])
+    items = data.get("items", [])
+    pending = sum(1 for i in items if i.get("matched_by") == "pending")
+    job = _MATCH_JOBS.get(qid) or {}
+    return _strip_cost({"items": items, "not_found": data.get("not_found", []),
+                        "matching": {"done": len(items) - pending,
+                                     "total": len(items),
+                                     "running": bool(job.get("running"))}}, user)
 
 
 

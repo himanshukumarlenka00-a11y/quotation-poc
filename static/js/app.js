@@ -2981,15 +2981,52 @@ async function generateFromBoqFile() {
     currentQuotation = data;
     renderResult(data);
     show('result');
-    const nf = (data.not_found || []).length;
-    status.innerHTML = `<div class="alert alert-success">✅ Quotation ready — ${(data.items||[]).length} item(s) matched.${nf ? ` ⚠️ ${nf} not found.` : ''}</div>`
-      + renderFileTypeNotice(data.file_type, 'client_boq');
+    if (data.matching && data.matching.running) {
+      // Giant BOQ: first chunk is on screen, the rest streams in live.
+      status.innerHTML = `<div class="alert alert-info">⚡ ${data.matching.done} of ${data.matching.total} lines matched — the rest are filling in live. Hold off editing until it finishes.</div>`
+        + renderFileTypeNotice(data.file_type, 'client_boq');
+      pollLiveMatching(data.id, status);
+    } else {
+      const nf = (data.not_found || []).length;
+      status.innerHTML = `<div class="alert alert-success">✅ Quotation ready — ${(data.items||[]).length} item(s) matched.${nf ? ` ⚠️ ${nf} not found.` : ''}</div>`
+        + renderFileTypeNotice(data.file_type, 'client_boq');
+    }
   } catch (e) {
     status.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
   } finally {
     btn.disabled = false;
     btn.innerHTML = label;
   }
+}
+
+// Live progress for progressively-matched giant BOQs: poll /live, re-render
+// only when the count moves, stop when the background job finishes.
+let liveMatchTimer = null;
+function pollLiveMatching(qid, status) {
+  if (liveMatchTimer) clearInterval(liveMatchTimer);
+  let lastDone = -1;
+  liveMatchTimer = setInterval(async () => {
+    try {
+      const r = await fetch(`${API}/api/quotations/${qid}/live`);
+      if (!r.ok) { clearInterval(liveMatchTimer); liveMatchTimer = null; return; }
+      const d = await r.json();
+      if (d.matching.done !== lastDone && currentQuotation && currentQuotation.id === qid) {
+        lastDone = d.matching.done;
+        currentQuotation.items = d.items;
+        currentQuotation.not_found = d.not_found;
+        renderResult(currentQuotation);
+      }
+      if (!d.matching.running) {
+        clearInterval(liveMatchTimer); liveMatchTimer = null;
+        const nf = (d.not_found || []).length;
+        status.innerHTML = `<div class="alert alert-success">✅ All ${d.matching.total} lines processed.${nf ? ` ⚠️ ${nf} not found — price them inline or use Find.` : ''}</div>`;
+      } else {
+        status.innerHTML = `<div class="alert alert-info">⚡ Matched ${d.matching.done} of ${d.matching.total} lines — filling in live…</div>`;
+      }
+    } catch (e) {
+      clearInterval(liveMatchTimer); liveMatchTimer = null;
+    }
+  }, 2500);
 }
 
 // Add forgotten items to the CURRENT quote (from the result screen)
