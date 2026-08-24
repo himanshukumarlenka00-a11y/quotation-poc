@@ -832,9 +832,13 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             # only from 1-2 (likely misspelt) rows when a hugely more common
             # neighbour exists — two products named "Coktail ..." once made
             # 'coktail' a "legitimate" word and blocked its own correction.
-            known = _vocab.get(lw, 0) or _vocab.get(lw.rstrip("s"), 0)
+            # KNOWN and the candidate pool both consult names+specs (_wfreq):
+            # this catalogue keeps identity in specs — "seal" (13 spec rows,
+            # 0 name rows) was being "corrected" to SEAT.
+            known = (_vocab.get(lw, 0) or _vocab.get(lw.rstrip("s"), 0)
+                     or _wfreq.get(lw, 0) or _wfreq.get(lw.rstrip("s"), 0))
             if len(lw) >= 4 and lw.isalpha() and known <= 2:
-                cands = [(v, n) for v, n in _vocab.items()
+                cands = [(v, n) for v, n in _wfreq.items()
                          if v[0] == lw[0] and _ed1(lw, v)
                          and (known == 0 or n >= 25 * known)]
                 if cands:
@@ -867,14 +871,29 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             i += 1
         return " ".join(out)
 
+    _GN_FRACS = {"full": "1/1", "half": "1/2", "third": "1/3",
+                 "quarter": "1/4", "sixth": "1/6", "ninth": "1/9"}
+
     def _norm_units(term):
         # "1 litre" / "1 Ltr" / "1liter" all become "1l" so every capacity
         # spelling takes the identical scoring path as "1L"; "1.0L" collapses
         # to "1l" the same way.
         s = re.sub(r"(\d+(?:\.\d+)?)\s*(litres?|liters?|ltrs?|lt)\b", r"\1l",
                    term or "", flags=re.I)
-        return re.sub(r"(\d+)\.0\s*(l|ml|kw|w|v|hz|mm|cm|kg)\b", r"\1\2",
-                      s, flags=re.I)
+        s = re.sub(r"(\d+)\.0\s*(l|ml|kw|w|v|hz|mm|cm|kg)\b", r"\1\2",
+                   s, flags=re.I)
+        # Hotel-speak → catalogue notation. GN fraction words: "half size
+        # food pan" means the 1/2 pan, not whichever pan ranks first (it
+        # once returned the FULL-size). "X size" always converts; the bare
+        # word only in pan/lid context ("full drop stemware" stays put).
+        s = re.sub(r"\b(full|half|third|quarter|sixth|ninth)[\s-]+size\b",
+                   lambda m: _GN_FRACS[m.group(1).lower()], s, flags=re.I)
+        if re.search(r"\b(pan|pans|lid|lids|colander|carrier)\b", s, re.I):
+            s = re.sub(r"\b(half|third|quarter|sixth|ninth)\b",
+                       lambda m: _GN_FRACS[m.group(1).lower()], s, flags=re.I)
+        s = re.sub(r"\bdouble[\s-]*wall(?:ed)?\b", "dw", s, flags=re.I)
+        s = re.sub(r"\bdozen\b", "dz", s, flags=re.I)
+        return re.sub(r"\bounces?\b", "oz", s, flags=re.I)
 
     for it in extracted:
         for key in ("product", "search_term"):
@@ -1330,12 +1349,14 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 score = 200 + 10 * sum(1 for w in core if _covered(w, name, name_ns))
                 tier = 'part'
             elif (all(_covered(w, spec, spec_ns) for w in core) and core
-                    and (len(core) > 1 or any(c.isdigit() for c in t))):
+                    and (len(core) > 1 or short
+                         or any(c.isdigit() for c in t))):
                 # Spec-only match needs TWO significant words — on one word it
                 # fired on any product whose spec happened to contain it (a
-                # request for "SAFE" returned "GLOVE LARGE"). Exception: a
-                # single word WITH a size ("crock 1.2 qt") is already two
-                # constraints — the qualifier narrows right after this.
+                # request for "SAFE" returned "GLOVE LARGE"). Exceptions: a
+                # single word WITH a size ("crock 1.2 qt") or a short
+                # designator ("dw bowl", "gn pan") is already two
+                # constraints — qualifier/bonus narrows right after this.
                 score = 120; tier = 'spec'                     # specification match
             # Semantic fusion: similarity refines keyword scores (a dinner
             # plate outranks a gold-PLATED jigger for "plate"), and a strong
