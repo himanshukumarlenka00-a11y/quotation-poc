@@ -3794,6 +3794,25 @@ function amtWords(n) {
   return (w(Math.round(n))||'Zero')+' Rupees Only';
 }
 
+// Sheet-style section tabs for quotes built from multi-sheet uploads.
+function ensureSectionTabs() {
+  let el = document.getElementById('section-tabs');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'section-tabs';
+    el.className = 'section-tabs';
+    const table = document.getElementById('items-table');
+    const host = table.closest('.table-wrap') || table;
+    host.parentNode.insertBefore(el, host);
+  }
+  return el;
+}
+
+function setActiveSection(s) {
+  window._activeSection = s;
+  if (currentQuotation) renderResult(currentQuotation);
+}
+
 function renderResult(q) {
   document.getElementById('result-empty').style.display = 'none';
   document.getElementById('result-content').style.display = 'block';
@@ -3870,7 +3889,35 @@ function renderResult(q) {
                     + ((hasBoqPricing || showMargin)?1:0);
   let html = '';
 
-  items.forEach(item => { html += renderItemRow(item, items.indexOf(item), show3, show4, hasBoqPricing, showOrig, showMargin); });
+  // ── Section tabs: a multi-sheet upload keeps its sheet structure — one
+  // tab per source sheet, mirroring the workbook (and the final download).
+  const sections = [...new Set(items.map(i => (i.section || '').trim()).filter(Boolean))];
+  const tabsHost = ensureSectionTabs();
+  let visible = items;
+  if (sections.length > 1) {
+    if (window._sectionsRef !== q.ref_no) {
+      window._sectionsRef = q.ref_no;
+      window._activeSection = sections[0];
+    }
+    if (window._activeSection !== '__ALL__' && !sections.includes(window._activeSection)) {
+      window._activeSection = sections[0];
+    }
+    const act = window._activeSection;
+    const cnt = s => items.filter(i => (i.section || '').trim() === s).length;
+    tabsHost.style.display = 'flex';
+    tabsHost.innerHTML = sections.map(s =>
+      `<button type="button" class="sec-tab${s === act ? ' active' : ''}"
+               onclick="setActiveSection('${s.replace(/'/g, "\\'")}')">${escHtml(s)}
+               <span class="sec-count">${cnt(s)}</span></button>`).join('')
+      + `<button type="button" class="sec-tab${act === '__ALL__' ? ' active' : ''}"
+                 onclick="setActiveSection('__ALL__')">All <span class="sec-count">${items.length}</span></button>`;
+    if (act !== '__ALL__') visible = items.filter(i => (i.section || '').trim() === act);
+  } else {
+    tabsHost.style.display = 'none';
+    tabsHost.innerHTML = '';
+  }
+
+  visible.forEach(item => { html += renderItemRow(item, items.indexOf(item), show3, show4, hasBoqPricing, showOrig, showMargin); });
 
   html += `<tr class="manual-add-row"><td colspan="${colSpan}" style="padding:10px 14px;">
     <button type="button" class="btn-manual-add" id="manual-add-btn" onclick="toggleManualAdd()">✎ + Enter a product manually</button>

@@ -1596,6 +1596,9 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             return []
         return suggest_products(conn, term, catalogs, limit) or []
 
+    _cur_line = {}   # the loop points this at the item being resolved, so
+                     # placeholders inherit its source-sheet section
+
     def _add_placeholder(label, qty, suggestions=None):
         # Not-in-catalogue rows keep their place in the quote (name + qty from
         # the client, everything else blank) so the sequence order survives —
@@ -1609,12 +1612,14 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             "price_3star": 0, "price_3star_usd": 0, "price_4star": 0, "price_4star_usd": 0,
             "_variants": [], "_requested": label, "requested": label,
             "matched_by": "not_found", "not_in_catalog": True, "boq_price": 0,
+            "section": _cur_line.get("section", ""),
             # Best-effort candidates so the Find panel opens with something
             # instead of an empty box. Suggestions only — never auto-applied.
             "_suggestions": suggestions or [],
         })
 
     for item in extracted:
+        _cur_line.clear(); _cur_line.update(item)
         original_kw = item.get("product", "").strip()
         # BOQ-file rows can supply a richer search_term (product + model_no +
         # specification) than the plain label — falls back to original_kw for
@@ -1832,6 +1837,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             # `matched_by` a re-save would re-learn lines a human already set.
             "requested":    item.get("product", ""),
             "matched_by":   matched_by,
+            "section":      item.get("section", ""),
             "boq_price":    float(item.get("boq_price") or 0),
         })
 
@@ -1929,6 +1935,9 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
     extracted = [
         {"product": r.get("product", ""), "search_term": _search_term(r),
          "model_no": r.get("model_no", ""),
+         # source sheet — the quote view groups by it (tabs) and the final
+         # bill rebuilds one sheet per section, mirroring the upload
+         "section": r.get("sheet_name", ""),
          "qty": int(r.get("qty") or 1), "boq_price": float(r.get("price") or 0)}
         for r in rows if (r.get("product") or "").strip()
     ]
@@ -1964,6 +1973,7 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
                 "price_3star": 0, "price_3star_usd": 0, "price_4star": 0, "price_4star_usd": 0,
                 "requested": (it.get("product") or "").strip(),
                 "matched_by": "pending", "not_in_catalog": True,
+                "section": it.get("section", ""),
                 "boq_price": float(it.get("boq_price") or 0),
             })
     else:

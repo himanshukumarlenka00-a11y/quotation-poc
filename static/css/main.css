@@ -2327,3 +2327,44 @@ html[data-theme=dark] .sc-hist { color: #e5b95c; }
 .aip-bar.aip-noline { visibility: hidden; }
 .aip-row b { text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 800px) { .aip-row { grid-template-columns: 1fr; gap: 4px; } .aip-row b { text-align: left; } }
+
+/* ── Section tabs (multi-sheet BOQ quotes) — Excel-like sheet strip ── */
+.section-tabs {
+  display: none;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 3px;
+  padding: 8px 8px 0 8px;
+  border-bottom: 2px solid var(--primary, #4f46e5);
+  margin: 10px 0 0 0;
+  scrollbar-width: thin;
+}
+.sec-tab {
+  flex: 0 0 auto;
+  border: 1px solid #d8dbe6;
+  border-bottom: none;
+  background: #f3f4fa;
+  color: #444;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s;
+}
+.sec-tab:hover { background: #e8eafd; }
+.sec-tab.active {
+  background: var(--primary, #4f46e5);
+  border-color: var(--primary, #4f46e5);
+  color: #fff;
+}
+.sec-tab .sec-count {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 9px;
+  font-size: 10.5px;
+  background: rgba(0,0,0,.12);
+}
+.sec-tab.active .sec-count { background: rgba(255,255,255,.25); }

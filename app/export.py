@@ -602,7 +602,8 @@ def build_revised_from_source(quotation: dict, items: list, src_path: str) -> st
     values, DATE becomes today, REF NO's version bumps (_V0 -> _V1) and the
     SUB line gains REVISED. Rows we could not match stay untouched."""
     from app.parser import parse_boq_excel
-    src_rows, _ = parse_boq_excel(src_path, Path(src_path).name)
+    src_rows, _ = parse_boq_excel(src_path, Path(src_path).name,
+                                  skip_images=True)
     src_rows = [r for r in src_rows if r.get("_src")]
     if not src_rows:
         raise ValueError("no provenance rows in source")
@@ -797,69 +798,111 @@ def build_final_bill(quotation: dict, items: list) -> str:
         b = ws_s["C11"].border
         ws_s["C11"].border = Border(right=b.right, top=b.top)
 
-    # ── QUOTATION items sheet ──
+    # ── Items sheets — ONE PER SECTION when the quote came from a
+    # multi-sheet upload, mirroring the source workbook's structure ──
     # r1 header, r2 item-row prototype, r3 totals-row prototype
     FIRST = 2
     totals_proto = 3
     totals_styles = [ws.cell(totals_proto, c)._style for c in range(1, 10)]
     spec_w = ws.column_dimensions["G"].width or 40
 
-    sl = 0
-    for idx, item in enumerate(items):
-        r = FIRST + idx
-        if idx > 0:
-            for c in range(1, 10):
-                copy_cell_style(ws.cell(FIRST, c), ws.cell(r, c))
-        product = item.get("product", "")
-        is_charge = bool(re.search(r"packing|freight|forwarding",
-                                    str(product), re.I))
-        if not is_charge:
-            sl += 1
-            ws.cell(r, 1, sl)
-        qty = int(item.get("qty") or 0)
-        price = float(item.get("price_per_pc") or item.get("price") or 0)
-        spec_text = (item.get("specification") or "").replace("\\n", "\n")
-        ws.cell(r, 2, product)
-        ws.cell(r, 3, qty if qty else None)
-        ws.cell(r, 4, item.get("model_no", ""))
-        ws.cell(r, 5, item.get("brand", ""))
-        ws.cell(r, 7, spec_text)
-        ws.cell(r, 8, round(price, 2))
-        # Computed VALUES, not formulas: openpyxl can't store a formula's
-        # cached result, so formula cells render BLANK in Protected View
-        # (which is how every downloaded file first opens), in previews
-        # and when printed unopened. A final bill must show its money
-        # everywhere; edits happen in the app, not in Excel.
-        ws.cell(r, 9, round(qty * price, 2))
-        # Compact readable rows — NOT the template prototype's height (the
-        # source workbook's first item row is 264pt tall, which once made
-        # every export row a full screen each). Photo rows get room for
-        # the image; text rows grow with the spec.
-        img_file = _image_file_path(item.get("image_path", ""), full=True)
-        lines = _estimate_wrapped_lines(spec_text, spec_w)
-        base = 90 if img_file else 46
-        ws.row_dimensions[r].height = max(base, min(lines * 12 + 8, 190))
-        if img_file:
-            row_px = int(ws.row_dimensions[r].height * 96 / 72)
-            _embed_item_image(ws, img_file, row=r, col=6,
-                               box_w=90, box_h=min(row_px - 6, 110),
-                               center_height=row_px)
+    def _fill_sheet(sheet, sheet_items):
+        """Write one section's rows + totals into a template-styled sheet.
+        Returns the sheet's amount total (computed VALUE — openpyxl can't
+        store a formula's cached result, and formula cells render blank in
+        Protected View, previews and unopened prints)."""
+        sl = 0
+        for idx, item in enumerate(sheet_items):
+            r = FIRST + idx
+            if idx > 0:
+                for c in range(1, 10):
+                    copy_cell_style(sheet.cell(FIRST, c), sheet.cell(r, c))
+            product = item.get("product", "")
+            is_charge = bool(re.search(r"packing|freight|forwarding",
+                                        str(product), re.I))
+            if not is_charge:
+                sl += 1
+                sheet.cell(r, 1, sl)
+            qty = int(item.get("qty") or 0)
+            price = float(item.get("price_per_pc") or item.get("price") or 0)
+            spec_text = (item.get("specification") or "").replace("\\n", "\n")
+            sheet.cell(r, 2, product)
+            sheet.cell(r, 3, qty if qty else None)
+            sheet.cell(r, 4, item.get("model_no", ""))
+            sheet.cell(r, 5, item.get("brand", ""))
+            sheet.cell(r, 7, spec_text)
+            sheet.cell(r, 8, round(price, 2))
+            sheet.cell(r, 9, round(qty * price, 2))
+            # Compact rows — photo rows get room, text rows grow with spec
+            img_file = _image_file_path(item.get("image_path", ""), full=True)
+            lines = _estimate_wrapped_lines(spec_text, spec_w)
+            base = 90 if img_file else 46
+            sheet.row_dimensions[r].height = max(base, min(lines * 12 + 8, 190))
+            if img_file:
+                row_px = int(sheet.row_dimensions[r].height * 96 / 72)
+                _embed_item_image(sheet, img_file, row=r, col=6,
+                                   box_w=90, box_h=min(row_px - 6, 110),
+                                   center_height=row_px)
+        total_row = FIRST + len(sheet_items)
+        for c in range(1, 10):
+            sheet.cell(total_row, c)._style = totals_styles[c - 1]
+        sheet.cell(total_row, 3, sum(int(i.get("qty") or 0) for i in sheet_items))
+        tg = round(sum(int(i.get("qty") or 0)
+                       * float(i.get("price_per_pc") or i.get("price") or 0)
+                       for i in sheet_items), 2)
+        sheet.cell(total_row, 9, tg)
+        sheet.row_dimensions[total_row].height = 20
+        sheet.print_area = f"A1:I{total_row}"
+        return tg
 
-    total_row = FIRST + len(items)
-    for c in range(1, 10):
-        ws.cell(total_row, c)._style = totals_styles[c - 1]
-    total_qty = sum(int(i.get("qty") or 0) for i in items)
-    grand = round(sum(int(i.get("qty") or 0)
-                      * float(i.get("price_per_pc") or i.get("price") or 0)
-                      for i in items), 2)
-    ws.cell(total_row, 3, total_qty)
-    ws.cell(total_row, 9, grand)
-    ws.row_dimensions[total_row].height = 20
-    ws.print_area = f"A1:I{total_row}"
+    sections = []
+    for it in items:
+        s = (it.get("section") or "").strip()
+        if s not in sections:
+            sections.append(s)
+    multi = len([s for s in sections if s]) > 1
 
-    # SUMMARY index shows the same computed totals
-    ws_s["C17"] = grand
-    ws_s["C18"] = grand
+    if multi:
+        # sanitized, unique Excel sheet names in source order
+        used, names = set(), []
+        for sec in sections:
+            nm = re.sub(r"[\[\]:*?/\\]", " ", (sec or "ITEMS")).strip()[:31] or "ITEMS"
+            base_nm, k = nm, 2
+            while nm in used:
+                nm = f"{base_nm[:27]}_{k}"
+                k += 1
+            used.add(nm)
+            names.append(nm)
+        sheets = [ws] + [wb.copy_worksheet(ws) for _ in names[1:]]
+        for sheet, nm in zip(sheets, names):
+            sheet.title = nm
+        sheet_totals = [
+            _fill_sheet(sheet, [i for i in items
+                                if (i.get("section") or "").strip() == sec])
+            for sheet, sec in zip(sheets, sections)]
+        grand = round(sum(sheet_totals), 2)
+        # SUMMARY index: one row per sheet (like the source workbook's own
+        # cover), then TOTAL. Template ships with a single index row at 17.
+        # openpyxl's insert_rows does NOT shift merged ranges — the TOTAL
+        # row's A:B merge must be moved by hand or the new index cells are
+        # read-only merge proxies that silently swallow writes.
+        n = len(sheets)
+        ws_s.unmerge_cells("A18:B18")
+        ws_s.insert_rows(18, n - 1)
+        for k in range(1, n):
+            for c in range(1, 4):
+                copy_cell_style(ws_s.cell(17, c), ws_s.cell(17 + k, c))
+        for k, (nm, tg) in enumerate(zip(names, sheet_totals)):
+            ws_s.cell(17 + k, 1, k + 1)
+            ws_s.cell(17 + k, 2, nm)
+            ws_s.cell(17 + k, 3, tg)
+        ws_s.cell(17 + n, 3, grand)
+        ws_s.merge_cells(start_row=17 + n, start_column=1,
+                         end_row=17 + n, end_column=2)
+    else:
+        grand = _fill_sheet(ws, items)
+        ws_s["C17"] = grand
+        ws_s["C18"] = grand
     out = EXPORTS_DIR / f"Quote_{(ref_no or 'export').replace('/', '-')}.xlsx"
     wb.save(str(out))
     return str(out)
