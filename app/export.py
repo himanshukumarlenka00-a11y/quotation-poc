@@ -623,6 +623,7 @@ def build_revised_from_source(quotation: dict, items: list, src_path: str) -> st
     # ── Align quote items to source rows (same order both came from; a
     # small lookahead + text check absorbs dropped/merged lines) ──
     written = {}
+    wrote_money = False
     ptr = 0
     for row in src_rows:
         key = _norm_join(row.get("product")) + _norm_join(row.get("model_no"))
@@ -655,14 +656,19 @@ def build_revised_from_source(quotation: dict, items: list, src_path: str) -> st
         if pc is not None:
             ws.cell(r, pc + 1).value = round(price, 2)
             written[(sheet, r, pc + 1)] = round(price, 2)
+            wrote_money = True
         if qc is not None:
             ws.cell(r, qc + 1).value = qty
             written[(sheet, r, qc + 1)] = qty
         if ac is not None and ac != pc:
             ws.cell(r, ac + 1).value = round(qty * price, 2)
             written[(sheet, r, ac + 1)] = round(qty * price, 2)
-    if not written:
-        raise ValueError("no rows could be written back")
+            wrote_money = True
+    if not written or not wrote_money:
+        # A price-less requirement BOQ (SL/PRODUCT/QTY only) has nowhere to
+        # carry our prices — the company-format export is the right answer
+        # there, so fail loudly and let the caller fall back.
+        raise ValueError("source has no price/amount column to fill")
 
     # ── Recompute every formula we can into a VALUE (visible in Protected
     # View); anything unresolvable keeps its formula + calc-on-load ──
