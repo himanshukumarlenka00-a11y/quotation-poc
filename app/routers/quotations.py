@@ -483,6 +483,11 @@ _UNITS = {"inch", "inches", "cm", "mm", "mtr", "mtrs", "meter", "metre",
 
 from functools import lru_cache
 
+# Vendor-abbreviation equivalents, filled by the resolver's vocab build:
+# CAMBRO writes "OVL" where MELANGE writes "Oval" — when BOTH spellings are
+# real catalogue vocabulary, each must cover rows using the other.
+_WORD_ALTS = {}
+
 
 @lru_cache(maxsize=16384)
 def _covered_pats(word):
@@ -490,6 +495,7 @@ def _covered_pats(word):
     ~570k times on a 120-line BOQ and re-building these regexes per call
     (1.7M re.compile + 1.5M re.escape) was HALF its runtime."""
     forms = {word}
+    forms.update(_WORD_ALTS.get(word, ()))
     if word.endswith('s') and len(word) > 3:
         forms.add(word[:-1])
     else:
@@ -694,9 +700,47 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         # One lowercase blob of every name — cheap "does this exact phrase
         # appear anywhere in the catalogue" checks for the compound merger.
         blob = "\n".join((p or "").lower() for p in all_products)
-        _VOCAB_CACHE = (len(all_products), freq, blob)
+        # ── Abbreviation map: people shorten words by dropping vowels
+        # (lrg→large, rnd→round, ovl→oval, brd→board) or truncating
+        # (med→medium). Precomputed over NAME + SPEC words (identity often
+        # lives in the spec — CAMBRO's "SQUARE 12QT"), most frequent word
+        # wins each skeleton. Only OOV tokens ever consult this, so real
+        # words and model codes are never rewritten.
+        wfreq = Counter()
+        try:
+            for (pn, sp) in conn.execute(
+                    "SELECT product, COALESCE(specification,'') FROM master_products"):
+                for w in re.findall(r"[a-z]{3,}", ((pn or "") + " " + sp).lower()):
+                    wfreq[w] += 1
+        except Exception:
+            wfreq = Counter(freq)
+        skmap = {}
+        for w, n in wfreq.items():
+            if n < 2 or len(w) < 4:
+                continue
+            sk = w[0] + re.sub(r"[aeiou]", "", w[1:])
+            if sk != w:
+                cur = skmap.get(sk)
+                if not cur or n > cur[1]:
+                    skmap[sk] = (w, n)
+        # Vendor-abbreviation equivalents: a vocab token that IS its own
+        # skeleton ("ovl" — vowelless) paired with the full word sharing
+        # that skeleton ("oval"). Both directions become coverage
+        # alternates, so "ovl tong" finds MELANGE's Oval Tong and "oval
+        # tray" finds CAMBRO's OVL Camtreads.
+        _WORD_ALTS.clear()
+        for a, na in wfreq.items():
+            if len(a) < 3 or a != a[0] + re.sub(r"[aeiou]", "", a[1:]):
+                continue
+            hit = skmap.get(a)
+            if hit and hit[0] != a:
+                _WORD_ALTS[a] = (hit[0],)
+                _WORD_ALTS[hit[0]] = _WORD_ALTS.get(hit[0], ()) + (a,)
+        _covered_pats.cache_clear()
+        _VOCAB_CACHE = (len(all_products), freq, blob, skmap, wfreq)
     _vocab = _VOCAB_CACHE[1]
     _name_blob = _VOCAB_CACHE[2]
+    _skmap, _wfreq = _VOCAB_CACHE[3], _VOCAB_CACHE[4]
 
     def _ed1(a, b):
         """Edit distance <= 1 (substitute / insert / delete one char),
@@ -723,10 +767,37 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 j += 1
         return True
 
+    _ABBR_2L = {"sq": "square", "sm": "small", "lg": "large"}
+
+    def _expand_abbrev(lw):
+        """Expand a shorthand token to the catalogue word it abbreviates —
+        vowel-dropped (lrg→large), skeleton/word prefix (sml→small,
+        med→medium), or a tiny curated 2-letter list (sq→square). Fires
+        ONLY on tokens the catalogue has never seen, and only when one
+        expansion clearly dominates."""
+        if not lw.isalpha() or not (2 <= len(lw) <= 6) or _wfreq.get(lw, 0):
+            return None
+        hit = _skmap.get(lw)
+        if not hit and len(lw) >= 3:
+            cands = [v for sk, v in _skmap.items() if sk.startswith(lw)]
+            cands += [(v, n) for v, n in _wfreq.items()
+                      if n >= 2 and len(v) >= len(lw) + 2 and v.startswith(lw)]
+            if cands:
+                cands.sort(key=lambda x: -x[1])
+                if len(cands) == 1 or cands[0][1] >= 3 * cands[1][1]:
+                    hit = cands[0]
+        if not hit and lw in _ABBR_2L and _wfreq.get(_ABBR_2L[lw], 0) >= 2:
+            hit = (_ABBR_2L[lw], 1)
+        return hit[0] if hit else None
+
     def _fix_typos(term):
         out = []
         for w in re.findall(r"\S+", term or ""):
             lw = w.lower()
+            ex = _expand_abbrev(lw)
+            if ex:
+                out.append(ex)
+                continue
             # Unknown words get corrected; so do words the catalogue knows
             # only from 1-2 (likely misspelt) rows when a hugely more common
             # neighbour exists — two products named "Coktail ..." once made
@@ -1389,10 +1460,11 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         # if it carries ANY spelling of ANY asked qual (same OR semantics).
         _UNIT_FAMILY = {"litre": "l", "litres": "l", "liter": "l",
                         "liters": "l", "ltr": "l", "ltrs": "l", "lt": "l",
-                        "gram": "g", "grams": "g", "gm": "g", "gms": "g"}
+                        "gram": "g", "grams": "g", "gm": "g", "gms": "g",
+                        "qts": "qt", "quart": "qt", "quarts": "qt"}
         quals = []
         for val, unit in re.findall(
-                r"(\d+(?:\.\d+)?)\s*(litres?|liters?|ltrs?|lt|grams?|gms?|kw|kg|g|w|ml|l|v|hz|mm|cm)\b",
+                r"(\d+(?:\.\d+)?)\s*(litres?|liters?|ltrs?|lt|grams?|gms?|quarts?|qts?|kw|kg|g|w|ml|l|v|hz|mm|cm)\b",
                 t):
             u = _UNIT_FAMILY.get(unit, unit)
             vals = {val}
