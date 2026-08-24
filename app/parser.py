@@ -289,6 +289,10 @@ def parse_boq_excel(filepath: str, filename: str):
             # USD price: must contain USD or DOLLAR
             "price_usd":     col("price_usd", "PRICE/PC USD", "UNIT PRICE USD", "PRICE USD", "AMOUNT USD", "TOTAL USD"),
             "gst_pct":       col("gst_pct", "GST%", "GST"),
+            # qty×price column — distinct from the unit price unless the
+            # sheet only has AMOUNT (then they're the same cell). Needed by
+            # the format-preserving revised-quotation writer.
+            "amount":        find_col("AMOUNT", exclude=["USD", "DOLLAR"]),
         }
 
         if ci["product"] is None:
@@ -402,6 +406,13 @@ def parse_boq_excel(filepath: str, filename: str):
                 "image_match": image_match,
                 "uploaded_at": datetime.now().isoformat(),
                 "sheet_name": sheet_name,
+                # Provenance for the revised-quotation writer: exactly which
+                # cell in the SOURCE workbook each value came from, so new
+                # prices can be written back without touching the format.
+                "_src": {"sheet": sheet_name, "row": int(df_row_idx) + 1,
+                         "price_col": ci.get("price_inr"),
+                         "qty_col": ci.get("qty"),
+                         "amount_col": ci.get("amount")},
             })
 
     _cleanup_converted_temp()

@@ -27,6 +27,10 @@ class GenerateRequest(BaseModel):
     client_name: str = ""
     catalogs: list = []  # list of file_name strings; empty = search all
     tiers: list = ["3star"]  # subset of ["3star", "4star"] — which master-table price tier(s) to show
+    # Set by the From-Excel flow: hash-name of the retained uploaded workbook
+    # (DATA_DIR/boq_sources/) — the quotation then exports as a revised copy
+    # of that file instead of the company template.
+    source_file: str = Field(default="", max_length=64)
 
 
 
@@ -148,10 +152,13 @@ def _finish_smart_generate(req, user, extracted, groq_client):
                 "items": [], "not_found": not_found, "unsaved": True}
 
     ref_no = f"QT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    src = (req.source_file or "").strip()
     data   = {"ref_no": ref_no, "client_name": req.client_name,
               # Which tiers the user actually asked for — [] means none
               # (single plain PRICE column in the quote view).
               "tiers": [t for t in (req.tiers or []) if t in ("3star", "4star")],
+              # hash-named retained upload only — never a client-chosen path
+              "source_file": src if re.fullmatch(r"[0-9a-f]{40}\.(xlsx|xls)", src) else "",
               "items": result_items, "not_found": not_found}
 
     # Save to DB (strip internal _ keys)
@@ -1833,6 +1840,7 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
     fd, tmp_path = tempfile.mkstemp(suffix=suffix)
     os.close(fd)
     tmp_path = Path(tmp_path)
+    source_file = ""
     try:
         _save_upload_validated(file, tmp_path)
         rows, _structure = parse_boq_excel(str(tmp_path), file.filename)
@@ -1841,6 +1849,20 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
             file_type = detect_file_type(str(tmp_path))
         except Exception:
             file_type = None
+        # Keep the ORIGINAL workbook so the quotation can export as a
+        # revised copy of it — same sheets and format, new prices.
+        try:
+            import hashlib
+            from app.config import DATA_DIR
+            raw = tmp_path.read_bytes()
+            src_dir = Path(DATA_DIR) / "boq_sources"
+            src_dir.mkdir(parents=True, exist_ok=True)
+            source_file = hashlib.sha1(raw).hexdigest() + suffix
+            dest = src_dir / source_file
+            if not dest.exists():
+                dest.write_bytes(raw)
+        except Exception:
+            source_file = ""
     finally:
         try:
             tmp_path.unlink(missing_ok=True)
@@ -1892,6 +1914,7 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
     ref_no = f"QT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     data = {"ref_no": ref_no, "client_name": client_name, "has_boq_pricing": has_boq_pricing,
             "file_type": file_type, "tiers": tiers_requested,
+            "source_file": source_file,
             "items": result_items, "not_found": not_found}
 
     clean_items = [{k: v for k, v in i.items() if not k.startswith("_")} for i in result_items]
@@ -2006,10 +2029,24 @@ async def extract_excel(file: UploadFile = File(...), user: dict = Depends(get_c
     suffix = ".xlsx" if file.filename.lower().endswith(".xlsx") else ".xls"
     fd, tmp = tempfile.mkstemp(suffix=suffix)
     os.close(fd)
+    source_file = ""
     try:
+        raw = await file.read()
         with open(tmp, "wb") as f:
-            f.write(await file.read())
+            f.write(raw)
         rows, _ = parse_boq_excel(tmp, file.filename)
+        # Keep the ORIGINAL workbook: a quotation generated from it exports
+        # as a revised copy of this very file (same sheets, same format,
+        # new prices) instead of the company template.
+        if rows:
+            import hashlib
+            from app.config import DATA_DIR
+            src_dir = Path(DATA_DIR) / "boq_sources"
+            src_dir.mkdir(parents=True, exist_ok=True)
+            source_file = hashlib.sha1(raw).hexdigest() + suffix
+            dest = src_dir / source_file
+            if not dest.exists():
+                dest.write_bytes(raw)
     finally:
         try:
             os.unlink(tmp)
@@ -2028,7 +2065,8 @@ async def extract_excel(file: UploadFile = File(...), user: dict = Depends(get_c
     if not lines:
         raise HTTPException(422, "No product rows could be read — check the sheet's "
                                  "column headings (they can be taught on the BOQ Coverage page).")
-    return {"lines": lines}
+    return {"lines": lines, "source_file": source_file,
+            "source_name": file.filename}
 
 
 @router.get("/api/sales-persons")
@@ -2316,10 +2354,23 @@ def download_quotation(qid: int, user: dict = Depends(get_current_user)):
     data = json.loads(row["items_json"])
     items = data.get("items", [])
 
-    # The final bill ships in the company's CYM-GWL workbook design
-    # (SUMMARY cover + QUOTATION items sheet). build_company_quotation
-    # remains as the previous single-sheet format if a rollback is needed.
-    path = build_final_bill(data, items)
+    # A quotation generated from an UPLOADED workbook exports as a revised
+    # copy of that very file — same sheets, same format, new prices. Typed
+    # quotations ship in the company's CYM-GWL design. On any write-back
+    # failure the company format is the fallback, never an error page.
+    path = None
+    src = data.get("source_file") or ""
+    if re.fullmatch(r"[0-9a-f]{40}\.(xlsx|xls)", src):
+        from app.config import DATA_DIR
+        sp = Path(DATA_DIR) / "boq_sources" / src
+        if sp.exists():
+            try:
+                from app.export import build_revised_from_source
+                path = build_revised_from_source(data, items, str(sp))
+            except Exception as e:
+                print(f"revised-format export failed, using company format: {e}")
+    if not path:
+        path = build_final_bill(data, items)
 
     return FileResponse(
         path,

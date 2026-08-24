@@ -836,6 +836,9 @@ if (localStorage.getItem('sb-mini') === '1') document.body.classList.add('sb-min
 document.querySelectorAll('.snav').forEach(n => n.title = n.textContent.trim());
 
 // Fill the requirement box from a PDF or Excel — user reviews, then generates.
+// An Excel upload is also RETAINED server-side: the generated quotation then
+// exports as a revised copy of that very file (same sheets, same format).
+let boqSourceFile = '';
 function fillFromPdf(file) { return fillFromFile(file, 'pdf'); }
 async function fillFromFile(file, kind) {
   if (!file) return;
@@ -847,6 +850,7 @@ async function fillFromFile(file, kind) {
     const res = await fetch(`${API}/api/extract-${kind}`, { method: 'POST', body: fd });
     const d = await res.json();
     if (!res.ok) { st.innerHTML = `<div class="alert alert-error">${apiErr(d)}</div>`; return; }
+    boqSourceFile = (kind === 'excel' && d.source_file) ? d.source_file : '';
     let text = (d.lines || []).join('\n');
     const cut = text.length > REQ_MAX;
     if (cut) text = text.slice(0, REQ_MAX);
@@ -2615,10 +2619,12 @@ async function generateQuote() {
     const res = await fetch(`${API}/api/smart-generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, client_name: client, catalogs: selectedCatalogs, tiers: tiersToUse })
+      body: JSON.stringify({ prompt, client_name: client, catalogs: selectedCatalogs,
+                             tiers: tiersToUse, source_file: boqSourceFile })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Generation failed');
+    boqSourceFile = '';   // consumed by this quotation — never leaks to the next
     if (data.unsaved) {
       document.getElementById('gen-status').innerHTML =
         `<div class="alert alert-error">Nothing matched${(data.not_found||[]).length ? ` — not found: ${data.not_found.join(', ')}` : ''}. No quotation was saved.</div>`;

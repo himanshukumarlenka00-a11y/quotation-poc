@@ -1,6 +1,8 @@
 from copy import copy
 from datetime import datetime
+import os
 import re
+import tempfile
 from pathlib import Path
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -586,6 +588,172 @@ def build_company_quotation(quotation: dict, items: list) -> str:
 
 
 FINAL_BILL_TEMPLATE_PATH = Path(__file__).parent / "assets" / "final_bill_template.xlsx"
+
+
+def _norm_join(s):
+    return re.sub(r"[^a-z0-9]+", "", str(s or "").lower())
+
+
+def build_revised_from_source(quotation: dict, items: list, src_path: str) -> str:
+    """Format-preserving revised quotation: the CLIENT'S OWN workbook is the
+    template. Every sheet, header, image, box and column stays exactly as
+    uploaded — only the numbers change: matched rows get the quote's price
+    (and qty, if edited in the app), amounts and totals are recomputed as
+    values, DATE becomes today, REF NO's version bumps (_V0 -> _V1) and the
+    SUB line gains REVISED. Rows we could not match stay untouched."""
+    from app.parser import parse_boq_excel
+    src_rows, _ = parse_boq_excel(src_path, Path(src_path).name)
+    src_rows = [r for r in src_rows if r.get("_src")]
+    if not src_rows:
+        raise ValueError("no provenance rows in source")
+
+    # .xls sources are written back through their .xlsx conversion
+    work_path = src_path
+    if src_path.lower().endswith(".xls"):
+        from app.master_table import convert_xls_to_xlsx
+        fd, conv = tempfile.mkstemp(suffix=".xlsx")
+        os.close(fd)
+        if not convert_xls_to_xlsx(src_path, conv):
+            raise ValueError("xls source could not be converted")
+        work_path = conv
+
+    wb = openpyxl.load_workbook(work_path)
+    wbv = openpyxl.load_workbook(work_path, data_only=True)
+
+    # ── Align quote items to source rows (same order both came from; a
+    # small lookahead + text check absorbs dropped/merged lines) ──
+    written = {}
+    ptr = 0
+    for row in src_rows:
+        key = _norm_join(row.get("product")) + _norm_join(row.get("model_no"))
+        hit = None
+        for j in range(ptr, min(ptr + 6, len(items))):
+            it = items[j]
+            ik = _norm_join(it.get("requested") or it.get("_requested")
+                            or it.get("product"))
+            pk = _norm_join(row.get("product"))
+            if pk and (pk in ik or ik in key or (ik and ik in pk)):
+                hit = j
+                break
+        if hit is None:
+            continue
+        item = items[hit]
+        ptr = hit + 1
+        if item.get("not_in_catalog"):
+            continue                      # unmatched: leave the row as-is
+        srcp = row["_src"]
+        sheet = srcp["sheet"]
+        if sheet not in wb.sheetnames:
+            continue
+        ws = wb[sheet]
+        r = srcp["row"]
+        qty = int(item.get("qty") or 0) or int(row.get("qty") or 1)
+        price = float(item.get("price_per_pc") or item.get("price") or 0)
+        if price <= 0:
+            continue
+        pc, qc, ac = srcp.get("price_col"), srcp.get("qty_col"), srcp.get("amount_col")
+        if pc is not None:
+            ws.cell(r, pc + 1).value = round(price, 2)
+            written[(sheet, r, pc + 1)] = round(price, 2)
+        if qc is not None:
+            ws.cell(r, qc + 1).value = qty
+            written[(sheet, r, qc + 1)] = qty
+        if ac is not None and ac != pc:
+            ws.cell(r, ac + 1).value = round(qty * price, 2)
+            written[(sheet, r, ac + 1)] = round(qty * price, 2)
+    if not written:
+        raise ValueError("no rows could be written back")
+
+    # ── Recompute every formula we can into a VALUE (visible in Protected
+    # View); anything unresolvable keeps its formula + calc-on-load ──
+    from openpyxl.utils import range_boundaries, column_index_from_string
+
+    def _val(sheet, r, c):
+        v = written.get((sheet, r, c))
+        if v is not None:
+            return v
+        cell = wb[sheet].cell(r, c).value
+        if isinstance(cell, (int, float)):
+            return cell
+        if isinstance(cell, str) and not cell.startswith("="):
+            return None
+        cv = wbv[sheet].cell(r, c).value
+        return cv if isinstance(cv, (int, float)) else None
+
+    RESUM = re.compile(r"^=SUM\(\$?([A-Z]{1,3})\$?(\d+):\$?([A-Z]{1,3})\$?(\d+)\)$", re.I)
+    REREF = re.compile(r"'?([^'!=+\-*/(),]+?)'?!\$?([A-Z]{1,3})\$?(\d+)")
+    unresolved = False
+    for _pass in range(4):
+        for sn in wb.sheetnames:
+            ws = wb[sn]
+            for row_cells in ws.iter_rows():
+                for cell in row_cells:
+                    f = cell.value
+                    if not (isinstance(f, str) and f.startswith("=")):
+                        continue
+                    m = RESUM.match(f.replace(" ", ""))
+                    if m:
+                        c1, r1, c2, r2 = (column_index_from_string(m.group(1)), int(m.group(2)),
+                                          column_index_from_string(m.group(3)), int(m.group(4)))
+                        vals = [_val(sn, rr, cc)
+                                for rr in range(min(r1, r2), max(r1, r2) + 1)
+                                for cc in range(min(c1, c2), max(c1, c2) + 1)]
+                        cell.value = round(sum(v for v in vals if v is not None), 2)
+                        written[(sn, cell.row, cell.column)] = cell.value
+                        continue
+                    # substitute cell references (cross-sheet first, then
+                    # local), and evaluate what remains as plain arithmetic
+                    expr = f[1:].replace(" ", "")
+                    def _sub_x(mm):
+                        v = _val(mm.group(1), int(mm.group(3)),
+                                 column_index_from_string(mm.group(2)))
+                        return "None" if v is None else repr(float(v))
+                    expr = REREF.sub(_sub_x, expr)
+                    def _sub_l(mm):
+                        v = _val(sn, int(mm.group(2)),
+                                 column_index_from_string(mm.group(1)))
+                        return "None" if v is None else repr(float(v))
+                    expr = re.sub(r"\$?([A-Z]{1,3})\$?(\d+)", _sub_l, expr)
+                    if "None" not in expr and re.fullmatch(r"[\d.+\-*/() ]+", expr):
+                        try:
+                            cell.value = round(eval(expr, {"__builtins__": {}}), 2)
+                            written[(sn, cell.row, cell.column)] = cell.value
+                            continue
+                        except Exception:
+                            pass
+                    unresolved = True
+    if unresolved:
+        wb.calculation.fullCalcOnLoad = True
+
+    # ── Cover text: DATE -> today, REF version bump, SUB gains REVISED ──
+    today = datetime.now().strftime("%d-%m-%Y")
+    for sn in wb.sheetnames:
+        for row_cells in wb[sn].iter_rows():
+            for cell in row_cells:
+                v = cell.value
+                if not isinstance(v, str):
+                    continue
+                if re.match(r"^\s*DATE\s*[:\-]", v, re.I):
+                    cell.value = re.sub(r"(^\s*DATE\s*[:\-]\s*).*", rf"\g<1>{today}", v, flags=re.I)
+                elif re.search(r"\bREF\s*\.?\s*NO\b", v, re.I):
+                    if re.search(r"_V(\d+)", v, re.I):
+                        cell.value = re.sub(r"_V(\d+)",
+                                            lambda m: f"_V{int(m.group(1)) + 1}", v)
+                    else:
+                        cell.value = v.rstrip() + "_V1"
+                elif (re.match(r"^\s*SUB\b", v, re.I) and "QUOTATION" in v.upper()
+                        and "REVISED" not in v.upper()):
+                    cell.value = re.sub(r"(?i)QUOTATION", "REVISED QUOTATION", v, count=1)
+
+    ref_no = quotation.get("ref_no", "")
+    out = EXPORTS_DIR / f"Quote_{(ref_no or 'revised').replace('/', '-')}.xlsx"
+    wb.save(str(out))
+    if work_path != src_path:
+        try:
+            os.unlink(work_path)
+        except OSError:
+            pass
+    return str(out)
 
 
 def build_final_bill(quotation: dict, items: list) -> str:
