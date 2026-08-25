@@ -906,11 +906,15 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                    s, flags=re.I)
         # Hotel-speak → catalogue notation. GN fraction words: "half size
         # food pan" means the 1/2 pan, not whichever pan ranks first (it
-        # once returned the FULL-size). "X size" always converts; the bare
-        # word only in pan/lid context ("full drop stemware" stays put).
-        s = re.sub(r"\b(full|half|third|quarter|sixth|ninth)[\s-]+size\b",
-                   lambda m: _GN_FRACS[m.group(1).lower()], s, flags=re.I)
-        if re.search(r"\b(pan|pans|lid|lids|colander|carrier)\b", s, re.I):
+        # once returned the FULL-size). BOTH forms convert only in GN
+        # context (pan/lid/colander/carrier): chafing dishes spell the
+        # words out ("FULL SIZE INDUCTION CHAFING DISH"), and rewriting
+        # "Full Size Chafing Dish 9 Ltr" to "1/1 …" unanchored the right
+        # row so a 7L dish beat the 9L one asked for.
+        if (re.search(r"\b(pan|pans|lid|lids|colander|carrier)\b", s, re.I)
+                and not re.search(r"\bchaff?ing\b", s, re.I)):
+            s = re.sub(r"\b(full|half|third|quarter|sixth|ninth)[\s-]+size\b",
+                       lambda m: _GN_FRACS[m.group(1).lower()], s, flags=re.I)
             s = re.sub(r"\b(half|third|quarter|sixth|ninth)\b",
                        lambda m: _GN_FRACS[m.group(1).lower()], s, flags=re.I)
         s = re.sub(r"\bdouble[\s-]*wall(?:ed)?\b", "dw", s, flags=re.I)
