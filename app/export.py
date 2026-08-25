@@ -860,21 +860,24 @@ def build_revised_from_source(quotation: dict, items: list, src_path: str) -> st
                             keep = copy(tgt.border)
                             tgt.alignment = Alignment(horizontal="center")
                             tgt.border = keep
-                elif (bill_to and re.match(r"^\s*(TO|BILL\s*&?\s*SHIP\s*TO)\s*[:\-]?\s*$",
-                                            v, re.I)):
-                    # write the app's client block into the rows below the
-                    # TO label, stopping at the next section keyword
-                    lines = [l.strip() for l in bill_to.splitlines() if l.strip()][:4]
+                elif re.match(r"^\s*(TO|BILL\s*&?\s*SHIP\s*TO)\s*[:\-]?\s*$",
+                              v, re.I):
+                    # The app's client block replaces whatever the uploaded
+                    # file carried — INCLUDING when the app's field is
+                    # empty: the previous client's name ("XYZ HOTEL") must
+                    # never survive onto a new bill.
+                    lines = [l.strip() for l in bill_to.splitlines()
+                             if l.strip()][:4] if bill_to else []
                     r0 = cell.row
-                    for k, line in enumerate(lines, 1):
+                    for k in range(1, 5):
                         tgt = ws_c.cell(r0 + k, cell.column)
                         tv = tgt.value
-                        if tv is not None and (not isinstance(tv, str)
-                                               or _STOP.match(tv)):
+                        if (tgt.__class__.__name__ == "MergedCell"
+                                or (tv is not None
+                                    and (not isinstance(tv, str)
+                                         or _STOP.match(tv)))):
                             break
-                        if tgt.__class__.__name__ == "MergedCell":
-                            break
-                        tgt.value = line
+                        tgt.value = lines[k - 1] if k <= len(lines) else None
         # PREPARED BY under the date cell, only into genuinely empty cells
         if date_cell is not None and sp.get("name"):
             lines = [f"PREPARED BY : {sp['name']}"]
