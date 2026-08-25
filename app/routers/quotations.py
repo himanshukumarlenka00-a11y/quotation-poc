@@ -841,7 +841,7 @@ def _size_note(req_text, got_text):
     if ql and gl:
         qb, gb = _buckets(ql), _buckets(gl)
         for k in sorted(qb.keys() & gb.keys(), reverse=True):
-            if not any(abs(a - b) <= 0.1 * max(a, b)
+            if not any(abs(a - b) <= 0.08 * max(a, b)
                        for a in qb[k] for b in gb[k]):
                 return (f"client asked "
                         f"{' / '.join(fmm(m) for m in sorted(qb[k]))}"
