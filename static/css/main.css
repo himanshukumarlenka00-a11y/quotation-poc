@@ -2405,3 +2405,23 @@ html[data-theme=dark] .sc-hist { color: #e5b95c; }
 .tot-freight input { width: 130px; height: 30px; text-align: right; font-weight: 700;
                      border: 1px solid #e0c890; border-radius: 6px; padding: 4px 8px; }
 .tot-grand-val { font-size: 15px; }
+
+/* ── Live matching progress bar (giant BOQs) ── */
+.mp-card { background: #fff; border: 1px solid #e3e0f5; border-radius: 12px;
+           padding: 14px 18px; margin: 0 0 14px; transition: opacity 1s; }
+.mp-card.mp-fading { opacity: 0; }
+.mp-head { display: flex; align-items: center; justify-content: space-between;
+           margin-bottom: 8px; font-size: 14px; }
+.mp-label { color: #3C3489; display: flex; align-items: center; gap: 7px; }
+.mp-count { color: #667; }
+.mp-count strong { color: #222; }
+.mp-track { height: 10px; background: #EEEDFE; border-radius: 5px; overflow: hidden; }
+.mp-fill { height: 100%; background: #7F77DD; border-radius: 5px;
+           transition: width .6s ease; }
+.mp-note { font-size: 12px; color: #99a; margin-top: 8px; }
+.mp-spin { display: inline-block; animation: mp-rot 1.2s linear infinite; }
+@keyframes mp-rot { to { transform: rotate(360deg); } }
+.mp-card.mp-done { border-color: #bfe5d6; }
+.mp-card.mp-done .mp-label { color: #0F6E56; }
+.mp-card.mp-done .mp-track { background: #E1F5EE; }
+.mp-card.mp-done .mp-fill { background: #1D9E75; }

@@ -2985,6 +2985,7 @@ async function generateFromBoqFile() {
       // Giant BOQ: first chunk is on screen, the rest streams in live.
       status.innerHTML = `<div class="alert alert-info">⚡ ${data.matching.done} of ${data.matching.total} lines matched — the rest are filling in live. Hold off editing until it finishes.</div>`
         + renderFileTypeNotice(data.file_type, 'client_boq');
+      updateMatchProgress(data.matching.done, data.matching.total, true);
       pollLiveMatching(data.id, status);
     } else {
       const nf = (data.not_found || []).length;
@@ -2996,6 +2997,31 @@ async function generateFromBoqFile() {
   } finally {
     btn.disabled = false;
     btn.innerHTML = label;
+  }
+}
+
+// Progress bar above the quote doc while a giant BOQ matches in the
+// background. done===total flips it green, then it fades out.
+function updateMatchProgress(done, total, running) {
+  const box = document.getElementById('match-progress');
+  if (!box) return;
+  if (!total) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.classList.remove('mp-fading');
+  const pct = Math.min(100, Math.round(done * 100 / total));
+  document.getElementById('mp-done').textContent = done.toLocaleString('en-IN');
+  document.getElementById('mp-total').textContent = total.toLocaleString('en-IN');
+  document.getElementById('mp-pct').textContent = pct;
+  document.getElementById('mp-fill').style.width = pct + '%';
+  const lbl = box.querySelector('.mp-label');
+  if (!running) {
+    box.classList.add('mp-done');
+    lbl.innerHTML = '✔ <strong>Matching complete</strong>';
+    setTimeout(() => { box.classList.add('mp-fading'); }, 4000);
+    setTimeout(() => { box.style.display = 'none'; box.classList.remove('mp-done', 'mp-fading'); }, 5200);
+  } else {
+    box.classList.remove('mp-done');
+    lbl.innerHTML = '<span class="mp-spin">↻</span> <strong>Matching products…</strong>';
   }
 }
 
@@ -3020,8 +3046,10 @@ function pollLiveMatching(qid, status) {
         clearInterval(liveMatchTimer); liveMatchTimer = null;
         const nf = (d.not_found || []).length;
         status.innerHTML = `<div class="alert alert-success">✅ All ${d.matching.total} lines processed.${nf ? ` ⚠️ ${nf} not found — price them inline or use Find.` : ''}</div>`;
+        updateMatchProgress(d.matching.total, d.matching.total, false);
       } else {
         status.innerHTML = `<div class="alert alert-info">⚡ Matched ${d.matching.done} of ${d.matching.total} lines — filling in live…</div>`;
+        updateMatchProgress(d.matching.done, d.matching.total, true);
       }
     } catch (e) {
       clearInterval(liveMatchTimer); liveMatchTimer = null;

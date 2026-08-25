@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuoteGen AI — Demo</title>
-<link rel="stylesheet" href="/static/css/main.css?v=140">
+<link rel="stylesheet" href="/static/css/main.css?v=141">
 </head>
 <body>
 
@@ -369,6 +369,16 @@
         ❌ <strong>Not found in catalog</strong> (kept in place below with qty — fill the price or Switch the product): <span id="not-found-items"></span>
       </div>
 
+      <!-- Live matching progress (giant BOQs) -->
+      <div id="match-progress" class="mp-card no-print" style="display:none;">
+        <div class="mp-head">
+          <span class="mp-label"><span class="mp-spin">↻</span> <strong>Matching products…</strong></span>
+          <span class="mp-count"><strong id="mp-done">0</strong> / <span id="mp-total">0</span> items · <span id="mp-pct">0</span>%</span>
+        </div>
+        <div class="mp-track"><div class="mp-fill" id="mp-fill" style="width:0%;"></div></div>
+        <div class="mp-note">Rows fill in below as they finish — you can start editing matched rows now.</div>
+      </div>
+
       <!-- ══ QUOTATION DOCUMENT ══ -->
       <div class="quot-doc">
 
@@ -529,6 +539,6 @@
 </div><!--/shell-->
 
 
-<script src="/static/js/app.js?v=147"></script>
+<script src="/static/js/app.js?v=148"></script>
 </body>
 </html>
