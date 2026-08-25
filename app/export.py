@@ -607,6 +607,140 @@ def _norm_join(s):
     return re.sub(r"[^a-z0-9]+", "", str(s or "").lower())
 
 
+def build_boq_response(quotation: dict, items: list, src_path: str) -> str:
+    """SMI response format for PRICE-LESS client BOQs: the client's own
+    workbook, byte-identical, with four columns appended on every item
+    sheet — SMI IMAGE (our product photo), SMI SPECS (our name + spec),
+    PRICE/PC (INR) and AMOUNT (INR) as values. Unmatched rows carry an
+    honest 'not in catalogue' note and stay open for manual quoting."""
+    from app.parser import parse_boq_excel
+    src_rows, _ = parse_boq_excel(src_path, Path(src_path).name,
+                                  skip_images=True)
+    # SAME filter the generation flow applies — the resolver received only
+    # rows with a product name, so the positional pairing must too
+    src_rows = [r for r in src_rows
+                if r.get("_src") and (r.get("product") or "").strip()]
+    if not src_rows:
+        raise ValueError("no provenance rows in source")
+
+    work_path = src_path
+    if src_path.lower().endswith(".xls"):
+        from app.master_table import convert_xls_to_xlsx
+        fd, conv = tempfile.mkstemp(suffix=".xlsx")
+        os.close(fd)
+        if not convert_xls_to_xlsx(src_path, conv):
+            raise ValueError("xls source could not be converted")
+        work_path = conv
+
+    wb = openpyxl.load_workbook(work_path)
+
+    # align source rows to quote items — by IDENTITY first: items carry
+    # src_key ("sheet|row") echoed by the resolver, immune to dropped
+    # context lines and typo-rewritten terms. Positional zip when counts
+    # match (older quotes without src_key), fuzzy walk as the last resort.
+    by_key = {it.get("src_key"): it for it in items if it.get("src_key")}
+    if by_key:
+        pairs = []
+        for row in src_rows:
+            k = f"{row['_src']['sheet']}|{row['_src']['row']}"
+            it = by_key.get(k)
+            if it is not None:
+                pairs.append((row, it))
+    elif len(src_rows) == len(items):
+        pairs = list(zip(src_rows, items))
+    else:
+        ptr = 0
+        pairs = []
+        for row in src_rows:
+            pk = _norm_join(row.get("product"))
+            hit = None
+            for j in range(ptr, min(ptr + 6, len(items))):
+                ik = _norm_join(items[j].get("requested")
+                                or items[j].get("_requested")
+                                or items[j].get("product"))
+                if pk and (pk in ik or ik in pk):
+                    hit = j
+                    break
+            if hit is None:
+                continue
+            pairs.append((row, items[hit]))
+            ptr = hit + 1
+
+    HEADS = ["SMI IMAGE", "SMI SPECS", "PRICE/PC\n(INR)", "AMOUNT\n(INR)"]
+    done_sheets = {}
+    wrote = 0
+    for row, item in pairs:
+        srcp = row["_src"]
+        sn = srcp["sheet"]
+        if sn not in wb.sheetnames:
+            continue
+        ws = wb[sn]
+        if sn not in done_sheets:
+            # header row = the row above the sheet's first item row; the
+            # four new columns start after the header's last used cell
+            first_r = min(r["_src"]["row"] for r, _ in pairs
+                          if r["_src"]["sheet"] == sn)
+            hdr_r = max(1, first_r - 1)
+            last_c = 0
+            for c in range(1, min(ws.max_column, 20) + 1):
+                if ws.cell(hdr_r, c).value not in (None, ""):
+                    last_c = c
+            start = last_c + 1
+            proto = ws.cell(hdr_r, max(1, last_c))
+            for k, h in enumerate(HEADS):
+                cell = ws.cell(hdr_r, start + k, h)
+                copy_cell_style(proto, cell)
+                cell.alignment = Alignment(wrap_text=True, horizontal="center",
+                                           vertical="center")
+            for k, wdt in enumerate((14, 42, 13, 14)):
+                ws.column_dimensions[get_column_letter(start + k)].width = wdt
+            done_sheets[sn] = (start, hdr_r)
+        start, _hdr = done_sheets[sn]
+        r = srcp["row"]
+        img_c, spec_c, price_c, amt_c = start, start + 1, start + 2, start + 3
+        thin = Side(style="thin", color="9CA3AF")
+        for c in (img_c, spec_c, price_c, amt_c):
+            ws.cell(r, c).border = Border(left=thin, right=thin,
+                                          top=thin, bottom=thin)
+        if item.get("not_in_catalog"):
+            nc = ws.cell(r, spec_c, "not in catalogue — to be quoted")
+            nc.font = Font(italic=True, color="8A7A4A")
+            nc.alignment = Alignment(wrap_text=True, vertical="center")
+            continue
+        qty = int(item.get("qty") or row.get("qty") or 0)
+        price = float(item.get("price_per_pc") or item.get("price") or 0)
+        spec_txt = " — ".join(x for x in
+                              [(item.get("product") or "").strip(),
+                               (item.get("specification") or "").strip()] if x)
+        sc = ws.cell(r, spec_c, spec_txt[:300])
+        sc.alignment = Alignment(wrap_text=True, vertical="center")
+        pc = ws.cell(r, price_c, round(price, 2))
+        pc.number_format = "#,##0.00"
+        ac = ws.cell(r, amt_c, round(qty * price, 2))
+        ac.number_format = "#,##0.00"
+        if (ws.row_dimensions[r].height or 0) < 64:
+            ws.row_dimensions[r].height = 64
+        img_file = _image_file_path(item.get("image_path", ""), full=True)
+        if img_file:
+            row_px = int(ws.row_dimensions[r].height * 96 / 72)
+            _embed_item_image(ws, img_file, row=r, col=img_c,
+                               box_w=86, box_h=min(row_px - 6, 100),
+                               center_height=row_px)
+        wrote += 1
+    if not wrote:
+        raise ValueError("no BOQ rows could be answered")
+
+    ref_no = quotation.get("ref_no", "")
+    out = EXPORTS_DIR / f"Quote_{(ref_no or 'boq-response').replace('/', '-')}.xlsx"
+    wb.save(str(out))
+    if work_path != src_path:
+        try:
+            os.unlink(work_path)
+        except OSError:
+            pass
+    return str(out)
+
+
 def build_revised_from_source(quotation: dict, items: list, src_path: str) -> str:
     """Format-preserving revised quotation: the CLIENT'S OWN workbook is the
     template. Every sheet, header, image, box and column stays exactly as

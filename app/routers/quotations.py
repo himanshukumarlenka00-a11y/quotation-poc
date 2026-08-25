@@ -1820,6 +1820,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             "_variants": [], "_requested": label, "requested": label,
             "matched_by": "not_found", "not_in_catalog": True, "boq_price": 0,
             "section": _cur_line.get("section", ""),
+            "src_key": _cur_line.get("src_key", ""),
             # Best-effort candidates so the Find panel opens with something
             # instead of an empty box. Suggestions only — never auto-applied.
             "_suggestions": suggestions or [],
@@ -2045,6 +2046,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             "requested":    item.get("product", ""),
             "matched_by":   matched_by,
             "section":      item.get("section", ""),
+            "src_key":      item.get("src_key", ""),
             "boq_price":    float(item.get("boq_price") or 0),
         })
 
@@ -2145,6 +2147,7 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
          # source sheet — the quote view groups by it (tabs) and the final
          # bill rebuilds one sheet per section, mirroring the upload
          "section": r.get("sheet_name", ""),
+         "src_key": f"{r.get('sheet_name','')}|{(r.get('_src') or {}).get('row',0)}",
          "qty": int(r.get("qty") or 1), "boq_price": float(r.get("price") or 0)}
         for r in rows if (r.get("product") or "").strip()
     ]
@@ -2181,6 +2184,7 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
                 "requested": (it.get("product") or "").strip(),
                 "matched_by": "pending", "not_in_catalog": True,
                 "section": it.get("section", ""),
+                "src_key": it.get("src_key", ""),
                 "boq_price": float(it.get("boq_price") or 0),
             })
     else:
@@ -2305,6 +2309,7 @@ def rematch_quotation(qid: int, user: dict = Depends(get_current_user)):
                     {"product": r.get("product", ""), "search_term": _sterm(r),
                      "model_no": r.get("model_no", ""),
                      "section": r.get("sheet_name", ""),
+                     "src_key": f"{r.get('sheet_name','')}|{(r.get('_src') or {}).get('row',0)}",
                      "qty": int(r.get("qty") or 1),
                      "boq_price": float(r.get("price") or 0)}
                     for r in rows_p if (r.get("product") or "").strip()]
@@ -2314,6 +2319,7 @@ def rematch_quotation(qid: int, user: dict = Depends(get_current_user)):
         extracted = [
             {"product": (it.get("requested") or it.get("product") or "").strip(),
              "section": it.get("section", ""),
+                "src_key": it.get("src_key", ""),
              "qty": int(it.get("qty") or 1),
              "boq_price": float(it.get("boq_price") or 0)}
             for it in old_items
