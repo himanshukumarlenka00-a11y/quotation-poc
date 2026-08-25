@@ -593,13 +593,13 @@ FINAL_BILL_TEMPLATE_PATH = Path(__file__).parent / "assets" / "final_bill_templa
 # template carries it natively; the revised-copy export writes it under the
 # client file's BANK DETAILS heading (their covers ship it empty).
 BANK_DETAILS_LINES = [
-    "CHEQUE PRINT NAME     : SHANTI METAL INDUSTRIES",
-    "PAYMENT MODE          : E-TRANSFER OR CHEQUE",
-    "LOCATION                  : BANGALORE",
-    "ACCOUNT NO              : 2512011789",
-    "IFSC CODE                : KKBK0000423",
-    "BANK NAME               : KOTAK MAHINDRA BANK",
-    "BANK ADDRESS          : BASAVANGUDI, BANGALORE - 560004",
+    'CHEQUE PRINT NAME\xa0 \xa0 \xa0:\xa0SHANTI METAL INDUSTRIES',
+    'PAYMENT MODE\xa0 \xa0 \xa0 \xa0 \xa0\xa0\xa0\xa0\xa0\xa0 :\xa0E-TRANSFER OR CHEQUE',
+    'LOCATION\xa0 \xa0 \xa0 \xa0 \xa0 \xa0 \xa0 \xa0 \xa0 \xa0 \xa0 \xa0 \xa0 :\xa0BANGALORE',
+    'ACCOUNT NO\xa0 \xa0 \xa0\xa0\xa0\xa0\xa0\xa0\xa0\xa0 \xa0 \xa0 \xa0 \xa0: 2512011789',
+    'IFSC CODE\xa0 \xa0 \xa0 \xa0 \xa0 \xa0 \xa0 \xa0 \xa0 \xa0 \xa0 \xa0 \xa0: KKBK0000423',
+    'BANK NAME\xa0 \xa0 \xa0 \xa0 \xa0\xa0\xa0\xa0\xa0\xa0\xa0\xa0\xa0\xa0 \xa0 \xa0 :\xa0KOTAK MAHINDRA BANK',
+    'BANK ADDRESS\xa0 \xa0 \xa0 \xa0 \xa0\xa0\xa0\xa0\xa0\xa0\xa0\xa0 : BASAVANGUDI, BANGALORE - 560004',
 ]
 
 
