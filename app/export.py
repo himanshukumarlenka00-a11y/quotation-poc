@@ -799,26 +799,25 @@ def build_revised_from_source(quotation: dict, items: list, src_path: str) -> st
                         and "REVISED" not in v.upper()):
                     cell.value = re.sub(r"(?i)QUOTATION", "REVISED QUOTATION", v, count=1)
                 elif re.match(r"^\s*BANK\s*DETAILS?\s*[:\-]?\s*$", v, re.I):
-                    # our bank block is constant on every bill, laid out
-                    # like the reference: seven CONTIGUOUS lines in the
-                    # label column, signatory off to the RIGHT. A client
-                    # file with "Authorised Signatory" in the very next
-                    # column split the block and clipped the overflow —
-                    # such cells are shifted one column right first.
+                    # our bank + signatory block is constant on every bill,
+                    # laid out like the reference: seven CONTIGUOUS lines in
+                    # the label column, and the full signature block ("For
+                    # SHANTI...", name, "Authorised Signatory") two columns
+                    # right at the reference offsets. Any signatory text the
+                    # client file already carries in the zone is cleared
+                    # first so nothing doubles up.
                     def _free(c):
                         return (c.__class__.__name__ != "MergedCell"
                                 and (c.value is None
                                      or not str(c.value).strip()))
                     for k in range(1, 13):
-                        nb = ws_c.cell(cell.row + k, cell.column + 1)
-                        nv = nb.value
-                        if (isinstance(nv, str)
-                                and re.search(r"authorised\s+signat|^for\s+\w",
-                                              nv.strip(), re.I)):
-                            dst = ws_c.cell(cell.row + k, cell.column + 2)
-                            if _free(dst):
-                                dst.value = nv
-                                copy_cell_style(nb, dst)
+                        for cc in (cell.column + 1, cell.column + 2):
+                            nb = ws_c.cell(cell.row + k, cc)
+                            nv = nb.value
+                            if (isinstance(nv, str)
+                                    and re.search(
+                                        r"authorised\s+signat|^for\s+\w|ankush",
+                                        nv.strip(), re.I)):
                                 nb.value = None
                     rr = cell.row
                     for line in BANK_DETAILS_LINES:
@@ -836,6 +835,19 @@ def build_revised_from_source(quotation: dict, items: list, src_path: str) -> st
                                 break
                         if not placed:
                             break
+                    # signature block at the reference offsets from the
+                    # BANK DETAILS heading (For.. on the LOCATION row,
+                    # name + title under it)
+                    sigc = cell.column + 2
+                    for off, txt in ((3, "For SHANTI METAL INDUSTRIES"),
+                                     (5, "ANKUSH JAIN"),
+                                     (6, "Authorised Signatory")):
+                        tgt = ws_c.cell(cell.row + off, sigc)
+                        if _free(tgt):
+                            tgt.value = txt
+                            copy_cell_style(
+                                ws_c.cell(cell.row + 1, cell.column), tgt)
+                            tgt.alignment = Alignment(horizontal="center")
                 elif (bill_to and re.match(r"^\s*(TO|BILL\s*&?\s*SHIP\s*TO)\s*[:\-]?\s*$",
                                             v, re.I)):
                     # write the app's client block into the rows below the
