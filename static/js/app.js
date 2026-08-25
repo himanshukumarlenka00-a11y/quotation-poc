@@ -3941,29 +3941,39 @@ function renderResult(q) {
                          + ((hasBoqPricing || showMargin) ? 1 : 0);
   const labelColspan = colSpan - trailingCols;
 
-  html += `<tr class="quot-subrow" style="background:#eaf4fb;font-weight:700;">
-    <td colspan="${labelColspan}" ${tdR}>SUB TOTAL</td>
-    ${hasBoqPricing ? '<td></td>' : ''}
-    ${showMargin ? `<td class="num" id="foot-cost">₹${fmt(costTotal)}</td>` : ''}
-    ${(hasBoqPricing || showMargin) ? `<td class="num" id="foot-profit">₹${fmt(profitTotal)}</td>` : ''}
-    ${showMargin ? `<td class="num" id="foot-margin">${marginTotal == null ? '—' : marginTotal.toFixed(1) + '%'}</td>` : ''}
-    <td class="num" id="foot-sub">₹${fmt(subTotal)}</td><td></td><td class="num" id="foot-gst">₹${fmt(gstTotal)}</td><td></td>
-  </tr>`;
-  // Packing / freight is manual, varies per quote, and DOES flow into the
-  // downloaded bills — both the company format and the client's revised copy.
+  // Totals live OUTSIDE the horizontally-scrolling table — inside it, the
+  // freight input and grand total scrolled out of view at zoom above 100%.
   const freight = Math.max(0, parseFloat(q.freight_charge) || 0);
-  html += `<tr class="quot-subrow" style="background:#fdf6ec;font-weight:700;">
-    <td colspan="${labelColspan}" ${tdR}>ADD : PACKING, FREIGHT &amp; FORWARDING (₹)</td>
-    <td colspan="${trailingCols}" class="num"><input type="number" id="freight-in" min="0" step="100"
-        value="${freight || ''}" placeholder="0" oninput="freightInput(this)"
-        style="width:120px;text-align:right;font-weight:700;"></td>
-  </tr>`;
-  html += `<tr class="quot-grandrow" style="background:#1a3a6b;color:#fff;font-weight:700;">
-    <td colspan="${labelColspan}" ${tdR} style="text-align:right;padding-right:16px;font-weight:700;color:#fff;">GRAND TOTAL (incl. GST)</td>
-    <td colspan="${trailingCols}" class="num" id="foot-grand" style="font-size:var(--fs-md);color:#fff;">₹${fmt(grandTotal + freight)}</td>
-  </tr>`;
 
   document.getElementById('items-body').innerHTML = html;
+
+  let totBlock = document.getElementById('totals-block');
+  if (!totBlock) {
+    totBlock = document.createElement('div');
+    totBlock.id = 'totals-block';
+    const wrapEl = document.getElementById('items-table').closest('.table-wrap');
+    wrapEl.parentNode.insertBefore(totBlock, wrapEl.nextSibling);
+  }
+  totBlock.innerHTML = `
+    <div class="tot-row tot-sub">
+      <span class="tot-label">SUB TOTAL</span>
+      <span class="tot-cells">
+        ${showMargin ? `<span class="tot-chip">Cost <b id="foot-cost">₹${fmt(costTotal)}</b></span>` : ''}
+        ${(hasBoqPricing || showMargin) ? `<span class="tot-chip">Profit <b id="foot-profit">₹${fmt(profitTotal)}</b></span>` : ''}
+        ${showMargin ? `<span class="tot-chip">Margin <b id="foot-margin">${marginTotal == null ? '—' : marginTotal.toFixed(1) + '%'}</b></span>` : ''}
+        <span class="tot-chip">Amount <b id="foot-sub">₹${fmt(subTotal)}</b></span>
+        <span class="tot-chip">GST <b id="foot-gst">₹${fmt(gstTotal)}</b></span>
+      </span>
+    </div>
+    <div class="tot-row tot-freight">
+      <span class="tot-label">ADD : PACKING, FREIGHT &amp; FORWARDING (₹)</span>
+      <input type="number" id="freight-in" min="0" step="100" value="${freight || ''}"
+             placeholder="0" oninput="freightInput(this)">
+    </div>
+    <div class="tot-row tot-grand">
+      <span class="tot-label">GRAND TOTAL (incl. GST)</span>
+      <span class="tot-grand-val" id="foot-grand">₹${fmt(grandTotal + freight)}</span>
+    </div>`;
   document.getElementById('items-foot').innerHTML = '';
   initRowDrag();
 
@@ -4010,8 +4020,11 @@ function ensureBrandSummary() {
     el.id = 'brand-summary';
     el.className = 'bws no-print';
     const table = document.getElementById('items-table');
-    const host = table.closest('.table-wrap') || table;
-    host.parentNode.insertBefore(el, host.nextSibling);
+    // Anchor AFTER the totals block, so the order stays
+    // table -> totals -> brand summary
+    const anchor = document.getElementById('totals-block')
+      || table.closest('.table-wrap') || table;
+    anchor.parentNode.insertBefore(el, anchor.nextSibling);
   }
   return el;
 }
