@@ -335,6 +335,11 @@ def _parse_items_deterministically(prompt):
     # dimension qualifier already understands the glued form. 2-4 digit
     # numbers only, so "2 x 40" (qty two) keeps meaning quantity.
     p = re.sub(r"(?<=\d\d)\s*[x×*]\s*(?=\d{2,4}\b)", "x", p, flags=re.I)
+    # A lone HSN-style line ("69111000 100") is code + qty — the qty-first
+    # rule would otherwise mangle the 8-digit code.
+    mh = re.match(r"^(\d{6,8})(?:\s+(\d{1,5}))?$", p.strip())
+    if mh:
+        return [{"product": mh.group(1), "qty": int(mh.group(2) or 1)}]
 
     # Pasted-list shape: one product per LINE with the qty at the END —
     # "MIRROR KORIKO BOSTON SHAKER [WBS001-SS]  4". Common when copying
@@ -375,7 +380,9 @@ def _parse_items_deterministically(prompt):
                 r"|[\s\-–/]+(\d{1,5})\s*(?:qty|nos\.?|pcs\.?|pieces?|units?)\.?"
                 r"|[\s\-–]+(\d{1,5})"
                 r")?$", line, re.I)
-            if not m or not re.search(r"[A-Za-z]", m.group(1)):
+            if not m or not (re.search(r"[A-Za-z]", m.group(1))
+                             or re.fullmatch(r"\d{6,8}", m.group(1).strip())):
+                # a product needs letters — except a bare HSN code line
                 items = None
                 break
             qty = next((g for g in m.groups()[1:] if g), None)
@@ -1250,6 +1257,10 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         # came first. Used only as a tie-breaker below: it promotes a row that
         # already matched, never conjures one, so a size like "500" cannot
         # drag in an unrelated model 500.
+        # HSN-looking tokens: 6-8 digit pure numbers (4-digit chapters would
+        # collide with sizes and model fragments). An exact or prefix hit on
+        # a row's HSN code lists that whole GST family.
+        hsn_toks = re.findall(r"\b\d{6,8}\b", t)
         numtoks = [w for w in re.findall(r"\d{3,}", t)]
         # Numbers inside a dimension are sizes, not model references —
         # "crate 540 x 360" once gave its +300 model bonus to LID5436000
@@ -1320,6 +1331,15 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 # this one bug. Separators stripped on both sides.
                 score = 1500 if _model_exact(model, mtoks, t, t_is_code, numtoks) else 1000
                 tier = 'model' if score == 1500 else 'model~'
+            elif hsn_toks and (lambda h: h and any(
+                    ht == h or (len(ht) >= 6 and h.startswith(ht))
+                    for ht in hsn_toks))(
+                        (r.get('hsn_code') or '').strip()):
+                # HSN search: a typed 6-8 digit code lists its whole GST
+                # family; sits under model codes (a model is more specific)
+                # and the cheapest-first band orders the family by price.
+                score = 1400
+                tier = 'hsn'
             elif core and all(_covered(w, name, name_ns) for w in core):
                 score = 600 - min(len(name), 120)              # full name match; tighter ranks higher
                 tier = 'name'
@@ -1468,7 +1488,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             # (partial/spec-only/semantic-only) keep score order — there
             # the ranking IS the accuracy signal. History picks stay
             # pinned; a named brand competes only within that brand.
-            strong = ('exact', 'model', 'model~', 'name', 'name+spec', 'rname')
+            strong = ('exact', 'model', 'model~', 'hsn', 'name', 'name+spec', 'rname')
             if len(rows) < 2 or rows[0].get('_tier') not in strong:
                 return rows
             pf = ("price_4star"
@@ -1489,7 +1509,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                        and rows[n].get('_boosted') == top.get('_boosted')
                        and rows[n].get('_tier') == top.get('_tier')
                        and ts - rows[n].get('_score', 0) <= 120
-                       and (top.get('_tier') in ('exact', 'model')
+                       and (top.get('_tier') in ('exact', 'model', 'hsn')
                             or abs((rows[n].get('_semsim') or 0) - tsem) <= 0.06)):
                     n += 1
                 if n < 2:

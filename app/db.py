@@ -264,7 +264,7 @@ def migrate_db():
     try:
         conn.execute("""
             CREATE VIRTUAL TABLE IF NOT EXISTS master_fts USING fts5(
-                product, original_model, specification, brand,
+                product, original_model, specification, brand, hsn_code,
                 content='master_products', content_rowid='id',
                 tokenize="unicode61 remove_diacritics 2"
             )
