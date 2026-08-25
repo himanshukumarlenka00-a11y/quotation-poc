@@ -3465,7 +3465,7 @@ function _findCards(idx, list, isSuggestion) {
     const thumb = v.image_path ? `<img class="sc-thumb-img" src="${API}/api/image/${v.image_path}" alt="">`
                                : '<div class="sc-thumb-placeholder">📦</div>';
     return `
-      <div class="switch-card" onclick="applyFind(${idx},${ri})" data-hsrc="f" data-hpos="${ri}" style="animation-delay:${ri * 35}ms">
+      <div class="switch-card" onclick="applyFind(${idx},${ri})" data-hsrc="f" data-hpos="${ri}" style="animation-delay:${Math.min(ri, 14) * 35}ms">
         <div class="sc-thumb">${thumb}</div>
         <div class="sc-body">
           <div class="sc-name">${escHtml(v.product || '')}</div>
@@ -3542,7 +3542,7 @@ function findProductSearch(idx) {
       box.innerHTML = _findCards(idx, (it && it._suggestions) || [], true);
       return;
     }
-    const r = await fetch(`${API}/api/master-table/page?q=${encodeURIComponent(term)}&limit=12`);
+    const r = await fetch(`${API}/api/master-table/page?q=${encodeURIComponent(term)}&limit=48`);
     const d = await r.json();
     const cur = document.getElementById(`find-input-${idx}`);
     if (!cur || cur.value.trim() !== term) return;   // superseded by a newer keystroke
