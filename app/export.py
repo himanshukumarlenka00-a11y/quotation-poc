@@ -810,6 +810,16 @@ def build_revised_from_source(quotation: dict, items: list, src_path: str) -> st
                         return (c.__class__.__name__ != "MergedCell"
                                 and (c.value is None
                                      or not str(c.value).strip()))
+
+                    def _style_keep_border(src, dst):
+                        # font/fill/format from src, but a cell's BORDER is
+                        # part of the sheet's box drawing — clobbering it
+                        # once deleted the section's right edge and bottom
+                        # corner.
+                        keep = copy(dst.border)
+                        copy_cell_style(src, dst)
+                        dst.border = keep
+
                     for k in range(1, 13):
                         for cc in (cell.column + 1, cell.column + 2):
                             nb = ws_c.cell(cell.row + k, cc)
@@ -829,7 +839,7 @@ def build_revised_from_source(quotation: dict, items: list, src_path: str) -> st
                             if _free(tgt) and _free(nxt):
                                 tgt.value = line
                                 if rr > cell.row + 1:
-                                    copy_cell_style(
+                                    _style_keep_border(
                                         ws_c.cell(cell.row + 1, cell.column), tgt)
                                 placed = True
                                 break
@@ -845,9 +855,11 @@ def build_revised_from_source(quotation: dict, items: list, src_path: str) -> st
                         tgt = ws_c.cell(cell.row + off, sigc)
                         if _free(tgt):
                             tgt.value = txt
-                            copy_cell_style(
+                            _style_keep_border(
                                 ws_c.cell(cell.row + 1, cell.column), tgt)
+                            keep = copy(tgt.border)
                             tgt.alignment = Alignment(horizontal="center")
+                            tgt.border = keep
                 elif (bill_to and re.match(r"^\s*(TO|BILL\s*&?\s*SHIP\s*TO)\s*[:\-]?\s*$",
                                             v, re.I)):
                     # write the app's client block into the rows below the
