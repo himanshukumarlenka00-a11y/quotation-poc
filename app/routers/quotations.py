@@ -2269,6 +2269,85 @@ def _bg_match_rest(qid, rest, tiers, start_idx, api_key, chunk_size):
             job["running"] = False
 
 
+@router.post("/api/quotations/{qid}/rematch")
+def rematch_quotation(qid: int, user: dict = Depends(get_current_user)):
+    """Re-run every line through the CURRENT matcher. Saved quotations keep
+    their generation-time picks by design; this button re-decides them with
+    today's logic. BOQ-sourced quotes re-parse their stored source workbook
+    so the client's spec/section context is kept; typed quotes re-resolve
+    from each line's original phrase. Current quantities survive; manual
+    per-line price edits on re-matched lines are replaced by current prices.
+    """
+    conn = get_db()
+    row = conn.execute("SELECT * FROM quotations WHERE id=?", (qid,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(404, "Not found")
+    _check_quote_access(row, user)
+    data = json.loads(row["items_json"])
+    old_items = data.get("items", [])
+
+    extracted = None
+    src = data.get("source_file") or ""
+    if re.fullmatch(r"[0-9a-f]{40}\.(xlsx|xls)", src):
+        from app.config import DATA_DIR
+        sp = Path(DATA_DIR) / "boq_sources" / src
+        if sp.exists():
+            try:
+                rows_p, _ = parse_boq_excel(str(sp), src, skip_images=True)
+
+                def _sterm(r):
+                    t = " ".join(x.strip() for x in
+                                 [r.get("product") or "", r.get("model_no") or "",
+                                  r.get("specification") or ""] if x and x.strip())
+                    return " ".join(t.split()[:20])
+                extracted = [
+                    {"product": r.get("product", ""), "search_term": _sterm(r),
+                     "model_no": r.get("model_no", ""),
+                     "section": r.get("sheet_name", ""),
+                     "qty": int(r.get("qty") or 1),
+                     "boq_price": float(r.get("price") or 0)}
+                    for r in rows_p if (r.get("product") or "").strip()]
+            except Exception as e:
+                print(f"rematch source re-parse failed, using saved lines: {e}")
+    if extracted is None:
+        extracted = [
+            {"product": (it.get("requested") or it.get("product") or "").strip(),
+             "section": it.get("section", ""),
+             "qty": int(it.get("qty") or 1),
+             "boq_price": float(it.get("boq_price") or 0)}
+            for it in old_items
+            if (it.get("requested") or it.get("product") or "").strip()]
+    if not extracted:
+        conn.close()
+        raise HTTPException(400, "Nothing to re-match on this quotation.")
+
+    # current on-screen quantities win over the file's originals
+    for i, it in enumerate(extracted):
+        if i < len(old_items) and int(old_items[i].get("qty") or 0) > 0:
+            it["qty"] = int(old_items[i]["qty"])
+
+    api_key = os.environ.get("GROQ_API_KEY", "") or GROQ_API_KEY_DEFAULT
+    groq_client = Groq(api_key=api_key) if api_key else None
+    tiers = [t for t in (data.get("tiers") or ["3star"]) if t in ("3star", "4star")] or ["3star"]
+    result_items, not_found = _resolve_master_matches(
+        conn, extracted, [], tiers, groq_client, prompt="")
+
+    data["items"] = [{k: v for k, v in i.items() if not k.startswith("_")}
+                     for i in result_items]
+    data["not_found"] = not_found
+    conn.execute("UPDATE quotations SET items_json=? WHERE id=?",
+                 (json.dumps(data), qid))
+    conn.commit()
+    conn.close()
+    log_action(user, "rematch_quotation", target=data.get("ref_no", str(qid)),
+               after={"lines": len(result_items)})
+    resp = dict(data)
+    resp["items"] = result_items          # keep _variants etc. for the UI
+    resp["id"] = qid
+    return _strip_cost(resp, user)
+
+
 @router.get("/api/quotations/{qid}/live")
 def quotation_live(qid: int, user: dict = Depends(get_current_user)):
     """Current items + matching progress for a progressively-matched quote —

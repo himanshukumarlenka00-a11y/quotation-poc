@@ -4545,6 +4545,31 @@ async function saveEdits(silent) {
   return res.ok;
 }
 
+async function rematchQuote() {
+  if (!currentQuotation || !currentQuotation.id) return;
+  const ok = await appConfirm({
+    title: 'Re-match this quotation',
+    message: 'Every line is re-decided with the CURRENT matching logic — useful for older quotes. ' +
+             'Quantities are kept; manually edited prices on matched lines are replaced by current prices.',
+    confirmLabel: 'Re-match', danger: false });
+  if (!ok) return;
+  const st = document.getElementById('gen-status');
+  if (st) st.innerHTML = '<div class="alert alert-info">↻ Re-matching every line at current logic…</div>';
+  try {
+    const res = await fetch(`${API}/api/quotations/${currentQuotation.id}/rematch`, { method: 'POST' });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail || 'Re-match failed');
+    Object.assign(currentQuotation, d);
+    renderResult(currentQuotation);
+    const nf = (d.not_found || []).length;
+    if (st) st.innerHTML = `<div class="alert alert-success">✅ Re-matched ${(d.items||[]).length} line(s) at current logic.${nf ? ` ⚠️ ${nf} not found.` : ''}</div>`;
+    toast('Quotation re-matched', 'success');
+  } catch (e) {
+    if (st) st.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+    toast('Re-match failed', 'error');
+  }
+}
+
 async function downloadXLS() {
   if (!currentQuotation) return;
   // Save the current (edited) values first so the file matches the screen.
