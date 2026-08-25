@@ -1077,7 +1077,11 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             if cross < 25:
                 keep.add(b)
         _BRANDS_CACHE = (len(all_products), keep)
-    _pref_hay = _fix_typos((prompt or "") + " " + " ".join(search_terms)).upper()
+    # PROMPT-only: deriving preferences from every line's text at once let
+    # one line's brand word boost that brand for the whole call — in a
+    # 40-line BOQ chunk a single AMAYDA mention pushed AMAYDA junk onto
+    # every Flatware line. Per-line text is handled by _line_prefs below.
+    _pref_hay = _fix_typos(prompt or "").upper()
     brand_pref = {b for b in _BRANDS_CACHE[1]
                   if re.search(r"\b" + re.escape(b) + r"\b", _pref_hay)}
 
@@ -1110,6 +1114,23 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         if re.search(r"\b" + re.escape(tok) + r"\b", _pref_hay):
             file_pref |= fns
             _pref_words.add(tok.lower())
+
+    def _line_prefs(t):
+        """Preferences named in THIS line's own text, unioned with the
+        prompt-wide ones — so 'fns finesse fork' still prefers FNS, but
+        one line's brand word can't contaminate its chunk-mates."""
+        tU = (t or "").upper()
+        ttoks = set(re.findall(r"[A-Z0-9]+", tU))
+        bl = brand_pref | {b for b in _BRANDS_CACHE[1]
+                           if (b in ttoks if " " not in b else
+                               re.search(r"\b" + re.escape(b) + r"\b", tU))}
+        fl = set(file_pref)
+        pw = set(_pref_words)
+        for tok, fns in _FILETOK_CACHE[1].items():
+            if tok in ttoks:
+                fl |= fns
+                pw.add(tok.lower())
+        return bl, fl, pw
 
     # Collection prefixes ("FNS-Casper-Table Fork") are decoration, not a
     # different product — a Casper table fork IS a table fork, so it must
@@ -1226,6 +1247,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         key = (term or "").lower().strip()
         if key in _pool_cache:
             return _pool_cache[key]
+        _bl, _fl, _ = _line_prefs(key)
         words = {w.lower() for w in re.findall(r"[A-Za-z0-9]{2,}", key)}
         pool = []
         if words:
@@ -1247,16 +1269,16 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             # rows never enter the pool: "plate" matches 7,900 rows and the
             # 400-cap keeps none of INDIGO's 14. Pull the preferred sources'
             # own matches in explicitly so the scoring boost has candidates.
-            if (file_pref or brand_pref) and not catalogs:
+            if (_fl or _bl) and not catalogs:
                 try:
                     extra = []
-                    if file_pref:
-                        phf = ",".join("?" * len(file_pref))
+                    if _fl:
+                        phf = ",".join("?" * len(_fl))
                         extra += conn.execute(
                             f"SELECT m.* FROM master_fts f JOIN master_products m ON m.id = f.rowid "
                             f"WHERE master_fts MATCH ? AND m.file_name IN ({phf}) "
-                            f"ORDER BY f.rank LIMIT 200", [match, *file_pref]).fetchall()
-                    for b in brand_pref:
+                            f"ORDER BY f.rank LIMIT 200", [match, *_fl]).fetchall()
+                    for b in _bl:
                         extra += conn.execute(
                             "SELECT m.* FROM master_fts f JOIN master_products m ON m.id = f.rowid "
                             "WHERE master_fts MATCH ? AND UPPER(m.brand) LIKE ? "
@@ -1309,8 +1331,8 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         # done its job selecting the file — product names never contain it
         # (the vocab filter guarantees that), so requiring coverage of it
         # would fail every row it just boosted.
-        if file_pref and _pref_words:
-            core = [w for w in core if w not in _pref_words]
+        if file_pref_l and pref_words_l:
+            core = [w for w in core if w not in pref_words_l]
         # Two-letter designators like the "GN" in "GN pan" are real product
         # qualifiers, but too short for `core` (which needs 3+ chars to avoid
         # noise). Dropping them left "GN pan" as bare "pan", which matched
@@ -1346,6 +1368,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         if _dims:
             numtoks = [n for n in numtoks if not any(n in d for d in _dims)]
         t_ns = t.replace(" ", "")
+        brand_pref_l, file_pref_l, pref_words_l = _line_prefs(t)
         # BOQ lines carry the client's own PRODUCT label separate from the
         # spec blob appended into the term. Weak-tier candidates must anchor
         # in those label words — "Mobile Bar" once matched an Oil Can purely
@@ -1527,14 +1550,14 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                     score = 0
                     tier = ''
             if score:
-                if ((brand_pref or file_pref)
+                if ((brand_pref_l or file_pref_l)
                         and not (mtoks or t_is_code or re.search(r"\d{3}", t))):
                     # Gate only on real code-like tokens (3+ digit runs):
                     # "andy 27431" must resolve by the CODE, but a size like
                     # "kettle 1l" keeps its brand preference.
                     rb = (r.get('brand') or '').strip().upper()
-                    if ((rb and any(b == rb or b in rb or rb in b for b in brand_pref))
-                            or r.get('file_name') in file_pref):
+                    if ((rb and any(b == rb or b in rb or rb in b for b in brand_pref_l))
+                            or r.get('file_name') in file_pref_l):
                         # 1600 on EVERY tier of the named brand — uniform, so
                         # relative order inside the brand survives. Gating it
                         # to sub-1000 scores once let the plain "Finesse
