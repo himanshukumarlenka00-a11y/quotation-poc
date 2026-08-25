@@ -294,6 +294,19 @@ def _lookup_correction(conn, phrase):
             "SELECT * FROM master_products WHERE LOWER(TRIM(product))=LOWER(TRIM(?)) "
             "AND LOWER(TRIM(COALESCE(original_model,'')))=LOWER(TRIM(COALESCE(?,''))) LIMIT 1",
             (r["product"], r["original_model"])).fetchone()
+        if not row:
+            # Catalogue re-imports rename product texts and strand the
+            # stored identity ("serving tong" -> its correct MELANGE tong
+            # went stale and junk answered instead). The model number plus
+            # the brand prefix of the stored name still identify the row.
+            model = (r["original_model"] or "").strip()
+            brand = (r["product"] or "").split("-", 1)[0].strip()
+            if model and brand:
+                row = conn.execute(
+                    "SELECT * FROM master_products "
+                    "WHERE LOWER(TRIM(COALESCE(original_model,'')))=LOWER(?) "
+                    "AND UPPER(TRIM(COALESCE(brand,'')))=UPPER(?) LIMIT 1",
+                    (model.lower(), brand)).fetchone()
         return dict(row) if row else None
     except Exception:
         return None       # a missing table must never break matching
@@ -1497,16 +1510,19 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                 cov = {w for w in prod_core
                        if _covered(w, name, name_ns)
                        or _covered(w, spec, spec_ns)}
-                if tier in ('spec', 'sem'):
-                    # longest-word escape counts NAME coverage only: series
-                    # specs repeat words ("London Serving …") and let Cake
-                    # Server ride into TABLESPOON on a spec-side "server".
+                # Spec-side coverage alone is not an anchor: series specs
+                # list the whole range ("London" cutlery names every piece
+                # in every row's spec), which let Cake Server ride into
+                # TABLESPOON. At least one label word must be in the row
+                # NAME — or the row must agree semantically (keeps "food
+                # pan" -> CAMBRO rows named just "Storage").
+                name_cov = any(_covered(w, name, name_ns) for w in prod_core)
+                ok = name_cov or _sem >= 0.72
+                if ok and tier in ('spec', 'sem'):
                     lw = max(len(w) for w in prod_core)
                     ok = (len(cov) > len(prod_core) // 2
                           or any(len(w) == lw and _covered(w, name, name_ns)
                                  for w in cov))
-                else:
-                    ok = bool(cov)
                 if not ok:
                     score = 0
                     tier = ''
