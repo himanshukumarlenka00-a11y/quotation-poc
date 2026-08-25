@@ -3971,6 +3971,103 @@ function renderResult(q) {
   document.getElementById('btn-bad').classList.remove('selected');
   document.getElementById('feedback-details').style.display = 'none';
   document.getElementById('feedback-status').innerHTML = '';
+
+  renderBrandSummary(q);
+}
+
+// ── Brand-wise summary + per-brand discounts (SCREEN ONLY) ───────────────────
+// Lives under the items table. Never touches exports, downloads, or print —
+// a live negotiation view. Discounts persist with Save Edits via
+// brand_discounts and only ever change what THIS block displays.
+function ensureBrandSummary() {
+  let el = document.getElementById('brand-summary');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'brand-summary';
+    el.className = 'bws no-print';
+    const table = document.getElementById('items-table');
+    const host = table.closest('.table-wrap') || table;
+    host.parentNode.insertBefore(el, host.nextSibling);
+  }
+  return el;
+}
+
+function renderBrandSummary(q) {
+  const el = ensureBrandSummary();
+  const items = q.items || [];
+  const groups = {};
+  items.forEach(i => {
+    const b = (i.brand || '').trim().toUpperCase() || '— NO BRAND / FILL-IN';
+    const g = groups[b] = groups[b] || { items: 0, amt: 0, gst: 0 };
+    g.items++; g.amt += (i._amtInr || 0); g.gst += (i._gstVal || 0);
+  });
+  const brands = Object.keys(groups).sort((a, b) => groups[b].amt - groups[a].amt);
+  if (!items.length || !brands.some(b => groups[b].amt > 0)) {
+    el.style.display = 'none'; el.innerHTML = ''; return;
+  }
+  window._bwsBrands = brands;
+  const bd = q.brand_discounts || {};
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div class="bws-head"><span class="bws-title">◔ Brand wise summary</span>
+      <span class="bws-note">${brands.filter(b => groups[b].amt > 0).length} brand(s) · ${items.length} items · screen only, not in downloads</span></div>
+    <table class="bws-table">
+      <thead><tr><th>Brand</th><th class="c">Items</th><th class="num">Amount (₹)</th>
+        <th class="c">Disc %</th><th class="num">Discount (₹)</th><th class="num">GST (₹)</th>
+        <th class="num">Total (₹)</th></tr></thead>
+      <tbody>${brands.map((b, i) => {
+        const g = groups[b];
+        const noAmt = g.amt <= 0;
+        return `<tr><td class="bws-brand">${escHtml(b)}</td><td class="c">${g.items}</td>
+          <td class="num">${noAmt ? '—' : fmt(g.amt)}</td>
+          <td class="c">${noAmt ? '—' : `<input type="number" class="bws-in" min="0" max="100" step="0.5"
+               value="${bd[b] || 0}" data-bi="${i}" oninput="bwsInput(this)">`}</td>
+          <td class="num bws-red" id="bws-d${i}"></td>
+          <td class="num" id="bws-g${i}"></td>
+          <td class="num" id="bws-t${i}"><b></b></td></tr>`;
+      }).join('')}</tbody>
+      <tfoot><tr class="bws-total"><td>Total</td><td class="c">${items.length}</td>
+        <td class="num" id="bws-ta"></td><td class="c" id="bws-tp"></td>
+        <td class="num bws-red" id="bws-td"></td><td class="num" id="bws-tg"></td>
+        <td class="num" id="bws-tt"></td></tr>
+      <tr class="bws-grand"><td colspan="6">GRAND TOTAL (incl. GST, after discounts)</td>
+        <td class="num" id="bws-grand"></td></tr></tfoot>
+    </table>`;
+  window._bwsGroups = groups;
+  bwsRecalc();
+}
+
+function bwsInput(inp) {
+  if (!currentQuotation) return;
+  const b = window._bwsBrands[parseInt(inp.dataset.bi, 10)];
+  const v = Math.max(0, Math.min(100, parseFloat(inp.value) || 0));
+  currentQuotation.brand_discounts = currentQuotation.brand_discounts || {};
+  if (v > 0) currentQuotation.brand_discounts[b] = v;
+  else delete currentQuotation.brand_discounts[b];
+  bwsRecalc();
+}
+
+function bwsRecalc() {
+  const brands = window._bwsBrands || [], groups = window._bwsGroups || {};
+  const bd = (currentQuotation && currentQuotation.brand_discounts) || {};
+  let A = 0, D = 0, G = 0, T = 0;
+  brands.forEach((b, i) => {
+    const g = groups[b];
+    const p = Math.max(0, Math.min(100, parseFloat(bd[b]) || 0));
+    const disc = g.amt * p / 100, gst = g.gst * (1 - p / 100), tot = g.amt - disc + gst;
+    const set = (id, v) => { const e = document.getElementById(id); if (e) e.innerHTML = v; };
+    set('bws-d' + i, g.amt <= 0 ? '—' : (disc ? '− ' + fmt(disc) : '—'));
+    set('bws-g' + i, g.amt <= 0 ? '—' : fmt(gst));
+    set('bws-t' + i, g.amt <= 0 ? '<span class="bws-red">unpriced</span>' : '<b>' + fmt(tot) + '</b>');
+    A += g.amt; D += disc; G += gst; T += tot;
+  });
+  const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+  set('bws-ta', fmt(A));
+  set('bws-tp', A > 0 ? (D / A * 100).toFixed(1) + '%' : '—');
+  set('bws-td', D ? '− ' + fmt(D) : '—');
+  set('bws-tg', fmt(G));
+  set('bws-tt', fmt(T));
+  set('bws-grand', '₹' + fmt(T));
 }
 
 // Pull the current master-table 3star/4star prices into an already-saved
@@ -4402,7 +4499,8 @@ async function saveEdits(silent) {
   const res = await fetch(`${API}/api/quotations/${currentQuotation.id}`, {
     method: 'PUT',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({items: currentQuotation.items, client_name: currentQuotation.client_name})
+    body: JSON.stringify({items: currentQuotation.items, client_name: currentQuotation.client_name,
+                          brand_discounts: currentQuotation.brand_discounts || null})
   });
   if (!silent) { if (res.ok) toast('Changes saved', 'success'); else toast('Save failed', 'error'); }
   return res.ok;

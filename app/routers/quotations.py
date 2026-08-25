@@ -2330,6 +2330,9 @@ class UpdateItemsRequest(BaseModel):
     client_name: str = ""
     sales_person: dict | None = None
     bill_to: str | None = None
+    # Screen-only brand-wise discount percentages {brand: pct} — persisted
+    # so the quote view restores them; exports never read this.
+    brand_discounts: dict | None = None
 
 
 @router.post("/api/extract-pdf")
@@ -2539,6 +2542,9 @@ def update_quotation(qid: int, req: UpdateItemsRequest, user: dict = Depends(get
         data["sales_person"] = req.sales_person
     if req.bill_to is not None:
         data["bill_to"] = req.bill_to
+    if req.brand_discounts is not None:
+        data["brand_discounts"] = {str(k)[:60]: max(0.0, min(100.0, float(v or 0)))
+                                   for k, v in req.brand_discounts.items()}
     for item in data["items"]:
         qty = int(item.get("qty") or 0)
         price = float(item.get("price_per_pc") or 0)
