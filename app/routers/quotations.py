@@ -1460,8 +1460,13 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         # Scored as a bonus rather than a requirement, so they can only
         # promote the right row, never exclude a legitimate one.
         short = [w for w in toks if len(w) == 2 and w.isalpha() and w not in _UNITS]
-        # model-number-like tokens in the request (mix of letters+digits, codes)
-        mtoks = [w for w in re.findall(r"[a-z0-9][a-z0-9\-/\.]+", t)
+        # model-number-like tokens in the request (mix of letters+digits,
+        # codes). Trailing punctuation is stripped BEFORE classifying:
+        # a client's "8 Ltr." normalized to "8l." and the dot made it fail
+        # the size test below, minting an unsatisfiable model-token
+        # qualifier that wiped every correct candidate.
+        mtoks = [w for w in (m.rstrip("./-")
+                             for m in re.findall(r"[a-z0-9][a-z0-9\-/\.]+", t))
                  if any(c.isdigit() for c in w) and any(c.isalpha() for c in w)
                  # "1l" / "450ml" / "28cm" / "300x200" are SIZES, not model
                  # codes — they must not trip the code gates (brand boost,

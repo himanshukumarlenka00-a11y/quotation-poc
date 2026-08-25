@@ -5,7 +5,9 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 BASE = Path(__file__).parent.parent
-DATA_DIR = BASE / "data"
+# Env override so tests/scripts can point at a copy of the real data —
+# without it every "DATA_DIR=…" invocation silently used the demo DB.
+DATA_DIR = Path(os.environ.get("DATA_DIR") or (BASE / "data"))
 UPLOADS_DIR = BASE / "uploads"
 MASTER_UPLOADS_DIR = BASE / "uploads" / "master_table"
 EXPORTS_DIR = BASE / "exports"
