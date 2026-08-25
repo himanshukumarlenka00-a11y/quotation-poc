@@ -2962,6 +2962,7 @@ async function generateFromBoqFile() {
   const label = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '<span class="loader"></span> Generating...';
+  _mpStart = Date.now();
   status.innerHTML = '<div class="alert alert-info">🤖 Reading the file and matching against the Master Table...</div>';
 
   const fd = new FormData();
@@ -3002,6 +3003,11 @@ async function generateFromBoqFile() {
 
 // Progress bar above the quote doc while a giant BOQ matches in the
 // background. done===total flips it green, then it fades out.
+let _mpStart = 0;
+function _mpElapsed() {
+  const s = Math.round((Date.now() - _mpStart) / 1000);
+  return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
+}
 function updateMatchProgress(done, total, running) {
   const box = document.getElementById('match-progress');
   if (!box) return;
@@ -3017,7 +3023,8 @@ function updateMatchProgress(done, total, running) {
   if (!running) {
     // Stays green until the user presses Done — no auto-vanish.
     box.classList.add('mp-done');
-    lbl.innerHTML = '✔ <strong>Matching complete</strong>';
+    lbl.innerHTML = '✔ <strong>Matching complete</strong>'
+      + (_mpStart ? ` <span class="mp-time">· took ${_mpElapsed()}</span>` : '');
   } else {
     box.classList.remove('mp-done');
     lbl.innerHTML = '<span class="mp-spin">↻</span> <strong>Matching products…</strong>';

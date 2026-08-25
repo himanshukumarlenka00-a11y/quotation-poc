@@ -2430,3 +2430,5 @@ html[data-theme=dark] .sc-hist { color: #e5b95c; }
           cursor: pointer; }
 .mp-btn:hover { background: #0F6E56; }
 .mp-card.mp-done .mp-btn { display: inline-block; }
+.mp-time { font-weight: 400; color: #557; font-size: 13px; }
+.mp-card.mp-done .mp-time { color: #0F6E56; }
