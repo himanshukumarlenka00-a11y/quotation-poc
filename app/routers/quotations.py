@@ -2229,42 +2229,67 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
 _MATCH_JOBS = {}
 
 
-def _bg_match_rest(qid, rest, tiers, start_idx, api_key, chunk_size):
-    """Resolve the remaining BOQ lines chunk by chunk, merging each batch
-    into the saved quotation. Single writer: the UI keeps the quote
-    read-only while matching runs."""
+def _match_chunk_worker(payload):
+    """Runs in a WORKER PROCESS: resolve one chunk read-only and return the
+    cleaned items. No DB writes here — the parent is the single writer."""
+    offset, chunk, tiers, api_key = payload
+    conn = get_db()
     try:
         groq_client = Groq(api_key=api_key) if api_key else None
-        for i in range(0, len(rest), chunk_size):
-            chunk = rest[i:i + chunk_size]
-            conn = get_db()
-            try:
-                new_items, nf = _resolve_master_matches(
-                    conn, chunk, [], tiers, groq_client, prompt="")
-                clean = [{k: v for k, v in x.items() if not k.startswith("_")}
-                         for x in new_items]
-                row = conn.execute("SELECT items_json FROM quotations WHERE id=?",
-                                   (qid,)).fetchone()
-                if not row:
-                    break
-                data = json.loads(row["items_json"])
-                items = data.get("items", [])
-                for j, ni in enumerate(clean):
-                    idx = start_idx + i + j
-                    if idx < len(items):
-                        ni["sl_no"] = idx + 1
-                        items[idx] = ni
-                data["items"] = items
-                if nf:
-                    data["not_found"] = (data.get("not_found") or []) + nf
-                conn.execute("UPDATE quotations SET items_json=? WHERE id=?",
-                             (json.dumps(data), qid))
-                conn.commit()
-            finally:
-                conn.close()
-            job = _MATCH_JOBS.get(qid)
-            if job:
-                job["done"] = min(start_idx + i + len(chunk), job["total"])
+        new_items, nf = _resolve_master_matches(
+            conn, chunk, [], tiers, groq_client, prompt="")
+        clean = [{k: v for k, v in x.items() if not k.startswith("_")}
+                 for x in new_items]
+        return offset, clean, nf
+    finally:
+        conn.close()
+
+
+def _bg_match_rest(qid, rest, tiers, start_idx, api_key, chunk_size):
+    """Resolve the remaining BOQ lines in PARALLEL worker processes (the
+    matcher is CPU-bound Python, so threads can't scale it), merging each
+    finished chunk into the saved quotation as it lands. Single writer:
+    only this thread touches items_json while matching runs."""
+    import concurrent.futures as cf
+    import multiprocessing as mp
+    try:
+        payloads = [(i, rest[i:i + chunk_size], tiers, api_key)
+                    for i in range(0, len(rest), chunk_size)]
+        done_lines = 0
+        # spawn, not fork: forking a threaded uvicorn process can deadlock.
+        # ponytail: fixed 4 workers — polite on the shared box; bump if a
+        # 2k-line BOQ ever needs to beat ~90s
+        with cf.ProcessPoolExecutor(max_workers=4,
+                                    mp_context=mp.get_context("spawn")) as pool:
+            for fut in cf.as_completed([pool.submit(_match_chunk_worker, p)
+                                        for p in payloads]):
+                offset, clean, nf = fut.result()
+                conn = get_db()
+                try:
+                    row = conn.execute(
+                        "SELECT items_json FROM quotations WHERE id=?",
+                        (qid,)).fetchone()
+                    if not row:
+                        break
+                    data = json.loads(row["items_json"])
+                    items = data.get("items", [])
+                    for j, ni in enumerate(clean):
+                        idx = start_idx + offset + j
+                        if idx < len(items):
+                            ni["sl_no"] = idx + 1
+                            items[idx] = ni
+                    data["items"] = items
+                    if nf:
+                        data["not_found"] = (data.get("not_found") or []) + nf
+                    conn.execute("UPDATE quotations SET items_json=? WHERE id=?",
+                                 (json.dumps(data), qid))
+                    conn.commit()
+                finally:
+                    conn.close()
+                done_lines += len(clean)
+                job = _MATCH_JOBS.get(qid)
+                if job:
+                    job["done"] = min(start_idx + done_lines, job["total"])
     except Exception as e:
         print(f"background BOQ matching failed for quote {qid}: {e}")
     finally:
