@@ -2166,11 +2166,11 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
     # the quote is on screen in seconds, park the rest as pending rows, and
     # let a background thread fill them in (the UI polls /live and re-renders
     # as chunks land). Small files keep the plain synchronous path.
-    PROG_THRESHOLD, PROG_CHUNK = 150, 60
+    PROG_THRESHOLD, PROG_FIRST, PROG_CHUNK = 40, 25, 30
     progressive = len(extracted) > PROG_THRESHOLD
     rest = []
     if progressive:
-        first, rest = extracted[:PROG_CHUNK], extracted[PROG_CHUNK:]
+        first, rest = extracted[:PROG_FIRST], extracted[PROG_FIRST:]
         result_items, not_found = _resolve_master_matches(conn, first, [], tiers, groq_client, prompt="")
         for it in rest:
             result_items.append({
@@ -2215,9 +2215,9 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
     log_action(user, "smart_generate_from_boq", target=ref_no)
     if progressive:
         qid = data["id"]
-        _MATCH_JOBS[qid] = {"done": PROG_CHUNK, "total": len(extracted), "running": True}
+        _MATCH_JOBS[qid] = {"done": PROG_FIRST, "total": len(extracted), "running": True}
         threading.Thread(target=_bg_match_rest,
-                         args=(qid, rest, tiers, PROG_CHUNK, api_key, PROG_CHUNK),
+                         args=(qid, rest, tiers, PROG_FIRST, api_key, PROG_CHUNK),
                          daemon=True).start()
         data["matching"] = dict(_MATCH_JOBS[qid])
     return data
