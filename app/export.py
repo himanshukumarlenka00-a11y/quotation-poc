@@ -774,14 +774,27 @@ def build_revised_from_source(quotation: dict, items: list, src_path: str) -> st
                     cell.value = re.sub(r"(?i)QUOTATION", "REVISED QUOTATION", v, count=1)
                 elif re.match(r"^\s*BANK\s*DETAILS?\s*[:\-]?\s*$", v, re.I):
                     # our bank block is constant on every bill — client
-                    # covers ship this section empty
-                    for k, line in enumerate(BANK_DETAILS_LINES, 1):
-                        tgt = ws_c.cell(cell.row + k, cell.column)
-                        if (tgt.__class__.__name__ == "MergedCell"
-                                or (tgt.value is not None
-                                    and str(tgt.value).strip())):
+                    # covers ship this section empty. Each line needs its
+                    # RIGHT NEIGHBOUR empty too, or the text can't overflow
+                    # and Excel clips it ("BASAVANG…" beside the client's
+                    # Authorised Signatory cell) — such rows are skipped.
+                    rr = cell.row
+                    for line in BANK_DETAILS_LINES:
+                        placed = False
+                        for _try in range(10):
+                            rr += 1
+                            tgt = ws_c.cell(rr, cell.column)
+                            nxt = ws_c.cell(rr, cell.column + 1)
+                            def _free(c):
+                                return (c.__class__.__name__ != "MergedCell"
+                                        and (c.value is None
+                                             or not str(c.value).strip()))
+                            if _free(tgt) and _free(nxt):
+                                tgt.value = line
+                                placed = True
+                                break
+                        if not placed:
                             break
-                        tgt.value = line
                 elif (bill_to and re.match(r"^\s*(TO|BILL\s*&?\s*SHIP\s*TO)\s*[:\-]?\s*$",
                                             v, re.I)):
                     # write the app's client block into the rows below the
