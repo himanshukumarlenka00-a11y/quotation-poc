@@ -1514,6 +1514,12 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                     n += 1
                 if n < 2:
                     return rows
+                if top.get('_tier') == 'hsn':
+                    # extras are noise against a numeric code — priced
+                    # first, then cheapest, nothing else
+                    return sorted(rows[:n],
+                                  key=lambda r: ((r.get(pf) or 0) <= 0,
+                                                 r.get(pf) or 0)) + rows[n:]
                 return sorted(rows[:n], key=_pkey) + rows[n:]
             # Word-only requests: EVERY row that is the same actual product
             # competes on price, wherever score ranked it — membership is
