@@ -799,11 +799,27 @@ def build_revised_from_source(quotation: dict, items: list, src_path: str) -> st
                         and "REVISED" not in v.upper()):
                     cell.value = re.sub(r"(?i)QUOTATION", "REVISED QUOTATION", v, count=1)
                 elif re.match(r"^\s*BANK\s*DETAILS?\s*[:\-]?\s*$", v, re.I):
-                    # our bank block is constant on every bill — client
-                    # covers ship this section empty. Each line needs its
-                    # RIGHT NEIGHBOUR empty too, or the text can't overflow
-                    # and Excel clips it ("BASAVANG…" beside the client's
-                    # Authorised Signatory cell) — such rows are skipped.
+                    # our bank block is constant on every bill, laid out
+                    # like the reference: seven CONTIGUOUS lines in the
+                    # label column, signatory off to the RIGHT. A client
+                    # file with "Authorised Signatory" in the very next
+                    # column split the block and clipped the overflow —
+                    # such cells are shifted one column right first.
+                    def _free(c):
+                        return (c.__class__.__name__ != "MergedCell"
+                                and (c.value is None
+                                     or not str(c.value).strip()))
+                    for k in range(1, 13):
+                        nb = ws_c.cell(cell.row + k, cell.column + 1)
+                        nv = nb.value
+                        if (isinstance(nv, str)
+                                and re.search(r"authorised\s+signat|^for\s+\w",
+                                              nv.strip(), re.I)):
+                            dst = ws_c.cell(cell.row + k, cell.column + 2)
+                            if _free(dst):
+                                dst.value = nv
+                                copy_cell_style(nb, dst)
+                                nb.value = None
                     rr = cell.row
                     for line in BANK_DETAILS_LINES:
                         placed = False
@@ -811,12 +827,11 @@ def build_revised_from_source(quotation: dict, items: list, src_path: str) -> st
                             rr += 1
                             tgt = ws_c.cell(rr, cell.column)
                             nxt = ws_c.cell(rr, cell.column + 1)
-                            def _free(c):
-                                return (c.__class__.__name__ != "MergedCell"
-                                        and (c.value is None
-                                             or not str(c.value).strip()))
                             if _free(tgt) and _free(nxt):
                                 tgt.value = line
+                                if rr > cell.row + 1:
+                                    copy_cell_style(
+                                        ws_c.cell(cell.row + 1, cell.column), tgt)
                                 placed = True
                                 break
                         if not placed:
