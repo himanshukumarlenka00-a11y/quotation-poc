@@ -3949,9 +3949,18 @@ function renderResult(q) {
     ${showMargin ? `<td class="num" id="foot-margin">${marginTotal == null ? '—' : marginTotal.toFixed(1) + '%'}</td>` : ''}
     <td class="num" id="foot-sub">₹${fmt(subTotal)}</td><td></td><td class="num" id="foot-gst">₹${fmt(gstTotal)}</td><td></td>
   </tr>`;
+  // Packing / freight is manual, varies per quote, and DOES flow into the
+  // downloaded bills — both the company format and the client's revised copy.
+  const freight = Math.max(0, parseFloat(q.freight_charge) || 0);
+  html += `<tr class="quot-subrow" style="background:#fdf6ec;font-weight:700;">
+    <td colspan="${labelColspan}" ${tdR}>ADD : PACKING, FREIGHT &amp; FORWARDING (₹)</td>
+    <td colspan="${trailingCols}" class="num"><input type="number" id="freight-in" min="0" step="100"
+        value="${freight || ''}" placeholder="0" oninput="freightInput(this)"
+        style="width:120px;text-align:right;font-weight:700;"></td>
+  </tr>`;
   html += `<tr class="quot-grandrow" style="background:#1a3a6b;color:#fff;font-weight:700;">
     <td colspan="${labelColspan}" ${tdR} style="text-align:right;padding-right:16px;font-weight:700;color:#fff;">GRAND TOTAL (incl. GST)</td>
-    <td colspan="${trailingCols}" class="num" id="foot-grand" style="font-size:var(--fs-md);color:#fff;">₹${fmt(grandTotal)}</td>
+    <td colspan="${trailingCols}" class="num" id="foot-grand" style="font-size:var(--fs-md);color:#fff;">₹${fmt(grandTotal + freight)}</td>
   </tr>`;
 
   document.getElementById('items-body').innerHTML = html;
@@ -3973,6 +3982,21 @@ function renderResult(q) {
   document.getElementById('feedback-status').innerHTML = '';
 
   renderBrandSummary(q);
+}
+
+// Manual packing/freight charge — flat add on top of GST'd totals, exactly
+// like the company bill's "ADD : PACKING..." line. Persists via Save Edits
+// and is written into both downloaded formats.
+function freightInput(inp) {
+  if (!currentQuotation) return;
+  const v = Math.max(0, parseFloat(inp.value) || 0);
+  currentQuotation.freight_charge = v;
+  const items = currentQuotation.items || [];
+  const g = items.reduce((s, i) => s + (i._amtInr || 0) + (i._gstVal || 0), 0);
+  const el = document.getElementById('foot-grand');
+  if (el) el.textContent = '₹' + fmt(g + v);
+  const wEl = document.getElementById('doc-words');
+  if (wEl) wEl.textContent = amtWords(g + v);
 }
 
 // ── Brand-wise summary + per-brand discounts (SCREEN ONLY) ───────────────────
@@ -4500,7 +4524,9 @@ async function saveEdits(silent) {
     method: 'PUT',
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({items: currentQuotation.items, client_name: currentQuotation.client_name,
-                          brand_discounts: currentQuotation.brand_discounts || null})
+                          brand_discounts: currentQuotation.brand_discounts || null,
+                          freight_charge: currentQuotation.freight_charge != null
+                            ? currentQuotation.freight_charge : null})
   });
   if (!silent) { if (res.ok) toast('Changes saved', 'success'); else toast('Save failed', 'error'); }
   return res.ok;

@@ -684,6 +684,32 @@ def build_revised_from_source(quotation: dict, items: list, src_path: str) -> st
         # there, so fail loudly and let the caller fall back.
         raise ValueError("source has no price/amount column to fill")
 
+    # Manual freight/packing charge: written into the client's own
+    # "ADD : PACKING , FREIGHT..." row BEFORE formulas recompute, so their
+    # grand-total formula absorbs it. Untouched when not entered in the app.
+    _fr = quotation.get("freight_charge")
+    if _fr is not None:
+        _fr = round(max(0.0, float(_fr)), 2)
+        for sn in wb.sheetnames:
+            ws_f = wb[sn]
+            for row_cells in ws_f.iter_rows():
+                for cell in row_cells:
+                    v = cell.value
+                    if (isinstance(v, str)
+                            and re.search(r"PACKING|FREIGHT|FORWARDING", v, re.I)
+                            and re.search(r"^\s*ADD\b|CHARGE", v, re.I)):
+                        for cc in range(cell.column + 1, ws_f.max_column + 1):
+                            t2 = ws_f.cell(cell.row, cc)
+                            if t2.__class__.__name__ == "MergedCell":
+                                continue
+                            tv = t2.value
+                            if (isinstance(tv, (int, float))
+                                    or (isinstance(tv, str) and tv.startswith("="))):
+                                t2.value = _fr
+                                written[(sn, cell.row, cc)] = _fr
+                                break
+                        break
+
     # ── Recompute every formula we can into a VALUE (visible in Protected
     # View); anything unresolvable keeps its formula + calc-on-load ──
     from openpyxl.utils import range_boundaries, column_index_from_string
@@ -925,6 +951,8 @@ def build_final_bill(quotation: dict, items: list) -> str:
         sheet.print_area = f"A1:I{total_row}"
         return tg
 
+    freight = max(0.0, float(quotation.get("freight_charge") or 0))
+
     sections = []
     for it in items:
         s = (it.get("section") or "").strip()
@@ -969,10 +997,30 @@ def build_final_bill(quotation: dict, items: list) -> str:
         ws_s.cell(17 + n, 3, grand)
         ws_s.merge_cells(start_row=17 + n, start_column=1,
                          end_row=17 + n, end_column=2)
+        total_row_s = 17 + n
     else:
         grand = _fill_sheet(ws, items)
         ws_s["C17"] = grand
         ws_s["C18"] = grand
+        total_row_s = 18
+    if freight > 0:
+        # Manual per-quote charge, exactly like the reference cover:
+        # TOTAL / ADD : PACKING... / GRAND TOTAL. Two inserted rows styled
+        # after the TOTAL row (inserting BELOW it leaves merges intact).
+        ws_s.insert_rows(total_row_s + 1, 2)
+        for k in (1, 2):
+            for c in range(1, 4):
+                copy_cell_style(ws_s.cell(total_row_s, c),
+                                ws_s.cell(total_row_s + k, c))
+        ws_s.merge_cells(start_row=total_row_s + 1, start_column=1,
+                         end_row=total_row_s + 1, end_column=2)
+        ws_s.merge_cells(start_row=total_row_s + 2, start_column=1,
+                         end_row=total_row_s + 2, end_column=2)
+        ws_s.cell(total_row_s + 1, 1,
+                  "ADD : PACKING , FREIGHT AND FORWARDING CHARGES")
+        ws_s.cell(total_row_s + 1, 3, round(freight, 2))
+        ws_s.cell(total_row_s + 2, 1, "GRAND TOTAL")
+        ws_s.cell(total_row_s + 2, 3, round(grand + freight, 2))
     out = EXPORTS_DIR / f"Quote_{(ref_no or 'export').replace('/', '-')}.xlsx"
     wb.save(str(out))
     return str(out)
