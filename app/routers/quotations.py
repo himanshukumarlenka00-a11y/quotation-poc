@@ -1,4 +1,4 @@
-import os, re, json, base64, tempfile, threading
+import os, re, json, base64, tempfile, threading, time
 from pathlib import Path
 from datetime import datetime
 from fastapi import APIRouter, Depends, Request, HTTPException, UploadFile, File, Form
@@ -692,6 +692,30 @@ def suggest_products(conn, term, catalogs=None, limit=6):
 
 
 
+# Progressive matching: files/quotes above THRESHOLD lines resolve FIRST
+# inline (fast screen), the rest stream in CHUNK-sized batches from worker
+# processes while the UI polls /live.
+PROG_THRESHOLD, PROG_FIRST, PROG_CHUNK = 40, 25, 30
+
+
+def _pending_stub(it, sl_no, tiers_requested):
+    """Placeholder row for a line the background matcher hasn't reached yet."""
+    return {
+        "sl_no": sl_no,
+        "product": (it.get("product") or "").strip(), "qty": int(it.get("qty") or 1),
+        "description": "", "model_no": it.get("model_no", ""), "brand": "",
+        "specification": "", "hsn_code": "", "price_per_pc": 0,
+        "price_currency": "INR", "cost": 0, "gst_pct": 18.0, "image_path": "",
+        "tiers": tiers_requested or ["3star"],
+        "price_3star": 0, "price_3star_usd": 0, "price_4star": 0, "price_4star_usd": 0,
+        "requested": (it.get("product") or "").strip(),
+        "matched_by": "pending", "not_in_catalog": True,
+        "section": it.get("section", ""),
+        "src_key": it.get("src_key", ""),
+        "boq_price": float(it.get("boq_price") or 0),
+    }
+
+
 def _llm_apply_variant(it, v):
     """Server-side equivalent of the UI's Switch: point the line at one of
     its own variants."""
@@ -716,8 +740,8 @@ def _llm_apply_variant(it, v):
 def _llm_demote_placeholder(it):
     """No candidate is the requested product: honest fill-in row instead of
     a confident wrong pick. Variants stay so Switch still offers them."""
-    it["product"] = (it.get("_req_raw") or it.get("requested")
-                     or it.get("product") or "").strip()
+    it["product"] = (it.get("req_raw") or it.get("_req_raw")
+                     or it.get("requested") or it.get("product") or "").strip()
     for k in ("description", "model_no", "brand", "specification", "hsn_code",
               "image_path", "size_note"):
         it[k] = ""
@@ -728,35 +752,58 @@ def _llm_demote_placeholder(it):
     it["not_in_catalog"] = True
 
 
-def _llm_verify_matches(groq_client, items, batch=20):
+_LLM_WEAK = {"name", "name+spec", "rname", "part", "spec", "sem"}
+
+
+def _llm_cands_of(it):
+    return (it.get("llm_cands") or (it.get("_variants") or [])[:5])
+
+
+def _llm_verify_matches(groq_client, items, batch=20, paced=False):
     """Ask the LLM, for each WEAK-evidence match, which of the line's own
     top candidates really is the requested product — or none. Weak means
     the word tiers below name-certainty, unboosted by brand or history;
     exact/model/HSN/learned lines are never questioned. Verdict A..E
     switches the line to that variant, none demotes it to a fill-in
-    placeholder. Every failure path leaves the line untouched."""
-    WEAK = {"name", "name+spec", "rname", "part", "spec", "sem"}
+    placeholder. Every failure path leaves the line untouched.
+    paced=True (the central post-match phase): batches run one at a time
+    with pauses and retries instead of bursting into the rate limit, and
+    duplicate lines share one verdict."""
     idxs = []
     for i, it in enumerate(items):
         if it.get("not_in_catalog") or it.get("matched_by") != "ai":
             continue
-        vs = it.get("_variants") or []
-        if not vs:
+        if it.get("llm_cands"):
+            idxs.append(i)
             continue
-        v0 = vs[0]
-        if (v0.get("_tier") in WEAK and (v0.get("_score") or 0) < 1000):
+        vs = it.get("_variants") or []
+        if vs and vs[0].get("_tier") in _LLM_WEAK \
+                and (vs[0].get("_score") or 0) < 1000:
             idxs.append(i)
     if not idxs:
         return
-    for start in range(0, len(idxs), batch):
-        chunk = idxs[start:start + batch]
+
+    def _key(it):
+        return ((it.get("req_raw") or it.get("_req_raw")
+                 or it.get("requested") or "").lower(),
+                tuple((c.get("product") or "") for c in _llm_cands_of(it)))
+    verdict_cache = {}
+    uniq = []
+    for i in idxs:
+        k = _key(items[i])
+        if k not in verdict_cache:
+            verdict_cache[k] = None
+            uniq.append(i)
+
+    for start in range(0, len(uniq), batch):
+        chunk = uniq[start:start + batch]
         lines = []
         for n, i in enumerate(chunk, 1):
             it = items[i]
-            req = (it.get("_req_raw") or it.get("requested")
-                   or it.get("product") or "")[:90]
+            req = (it.get("req_raw") or it.get("_req_raw")
+                   or it.get("requested") or it.get("product") or "")[:90]
             cands = [f"{L}) {v.get('brand', '')} {(v.get('product') or '')[:70]}"
-                     for L, v in zip("ABCDE", (it.get("_variants") or [])[:5])]
+                     for L, v in zip("ABCDE", _llm_cands_of(it))]
             lines.append(f"{n}. NEED: {req}\n   " + "\n   ".join(cands))
         prompt = (
             "A hotel-supply client asked for products; our word-matcher "
@@ -766,30 +813,41 @@ def _llm_verify_matches(groq_client, items, batch=20):
             "candidate is that type of product.\n"
             'Answer with ONLY compact JSON, no explanation, like '
             '{"1":"A","2":"none"}.\n\n' + "\n".join(lines))
-        try:
-            txt = _llm_chat(groq_client,
-                            [{"role": "user", "content": prompt}],
-                            max_tokens=1200, temperature=0)
-            m = re.search(r"\{[^{}]*\}", txt or "", re.S)
-            if not m:
-                print("LLM verify batch skipped: no JSON in reply")
-                continue
-            verdicts = json.loads(m.group(0))
-        except Exception as e:
-            print(f"LLM verify batch skipped: {e}")
+        verdicts = None
+        for attempt in range(3 if paced else 1):
+            try:
+                txt = _llm_chat(groq_client,
+                                [{"role": "user", "content": prompt}],
+                                max_tokens=1200, temperature=0)
+                m = re.search(r"\{[^{}]*\}", txt or "", re.S)
+                if m:
+                    verdicts = json.loads(m.group(0))
+                    break
+                print("LLM verify: no JSON in reply")
+            except Exception as e:
+                print(f"LLM verify attempt {attempt + 1} failed: {e}")
+                if paced:
+                    time.sleep(5 * (attempt + 1))
+        if verdicts is None:
             continue
         for n, i in enumerate(chunk, 1):
-            v = str(verdicts.get(str(n), "") or "").strip().upper()
-            it = items[i]
-            vs = it.get("_variants") or []
-            if v == "A" or not v:
-                continue
-            if v in ("B", "C", "D", "E") and "ABCDE".index(v) < len(vs):
-                _llm_apply_variant(it, vs["ABCDE".index(v)])
-                it["llm_check"] = "switched"
-            elif v == "NONE":
-                _llm_demote_placeholder(it)
-                it["llm_check"] = "rejected"
+            verdict_cache[_key(items[i])] = \
+                str(verdicts.get(str(n), "") or "").strip().upper()
+        if paced:
+            time.sleep(1.5)
+
+    for i in idxs:
+        it = items[i]
+        v = verdict_cache.get(_key(it))
+        cands = _llm_cands_of(it)
+        if not v or v == "A":
+            continue
+        if v in ("B", "C", "D", "E") and "ABCDE".index(v) < len(cands):
+            _llm_apply_variant(it, cands["ABCDE".index(v)])
+            it["llm_check"] = "switched"
+        elif v == "NONE":
+            _llm_demote_placeholder(it)
+            it["llm_check"] = "rejected"
 
 
 _CAP_ML = {"l": 1000, "ltr": 1000, "ltrs": 1000, "litre": 1000, "litres": 1000,
@@ -871,7 +929,7 @@ def _term_with_sizes(term, full):
 
 
 def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, prompt="",
-                            variant_cap=15):
+                            variant_cap=15, llm_verify=True):
     """Match extracted {product, qty} items against the Master Table only —
     shared by both the free-text prompt flow and the client-BOQ-file-upload
     flow, so the two entry points always resolve products identically."""
@@ -2315,7 +2373,9 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             # Without `requested` a correction cannot be attributed; without
             # `matched_by` a re-save would re-learn lines a human already set.
             "requested":    item.get("product", ""),
-            "_req_raw":     item.get("_req_raw", ""),
+            # non-underscore: survives the save, so the central LLM verify
+            # phase judges the client's raw wording, not the typo-fixed one
+            "req_raw":      item.get("_req_raw", ""),
             "matched_by":   matched_by,
             "section":      item.get("section", ""),
             "src_key":      item.get("src_key", ""),
@@ -2330,11 +2390,30 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
     # LLM sanity pass over weak-evidence matches: the word scorer can't
     # tell a Teapot from a TEA CUP it part-covered — an LLM reads the
     # names. Fail-open: any API problem leaves the deterministic picks.
-    if groq_client is not None and result_items:
-        try:
-            _llm_verify_matches(groq_client, result_items)
-        except Exception as e:
-            print(f"LLM verify pass skipped (non-fatal): {e}")
+    # Worker processes defer it (llm_verify=False): 4 workers bursting
+    # batches tripped the free-tier rate limit and throttled batches
+    # silently kept junk — they attach slim candidate lists instead, and
+    # _bg_match_rest verifies centrally, one paced batch at a time.
+    if llm_verify:
+        if groq_client is not None and result_items:
+            try:
+                _llm_verify_matches(groq_client, result_items)
+            except Exception as e:
+                print(f"LLM verify pass skipped (non-fatal): {e}")
+    else:
+        for it in result_items:
+            if it.get("not_in_catalog") or it.get("matched_by") != "ai":
+                continue
+            vs = it.get("_variants") or []
+            if vs and vs[0].get("_tier") in _LLM_WEAK \
+                    and (vs[0].get("_score") or 0) < 1000:
+                it["llm_cands"] = [
+                    {k: v.get(k) for k in
+                     ("product", "model_no", "brand", "specification",
+                      "description", "hsn_code", "image_path", "price",
+                      "cost", "gst_pct", "price_3star", "price_3star_usd",
+                      "price_4star", "price_4star_usd")}
+                    for v in vs[:5]]
 
     return result_items, not_found
 
@@ -2457,27 +2536,14 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
     # the quote is on screen in seconds, park the rest as pending rows, and
     # let a background thread fill them in (the UI polls /live and re-renders
     # as chunks land). Small files keep the plain synchronous path.
-    PROG_THRESHOLD, PROG_FIRST, PROG_CHUNK = 40, 25, 30
     progressive = len(extracted) > PROG_THRESHOLD
     rest = []
     if progressive:
         first, rest = extracted[:PROG_FIRST], extracted[PROG_FIRST:]
         result_items, not_found = _resolve_master_matches(conn, first, [], tiers, groq_client, prompt="")
         for it in rest:
-            result_items.append({
-                "sl_no": len(result_items) + 1,
-                "product": (it.get("product") or "").strip(), "qty": int(it.get("qty") or 1),
-                "description": "", "model_no": it.get("model_no", ""), "brand": "",
-                "specification": "", "hsn_code": "", "price_per_pc": 0,
-                "price_currency": "INR", "cost": 0, "gst_pct": 18.0, "image_path": "",
-                "tiers": tiers_requested or ["3star"],
-                "price_3star": 0, "price_3star_usd": 0, "price_4star": 0, "price_4star_usd": 0,
-                "requested": (it.get("product") or "").strip(),
-                "matched_by": "pending", "not_in_catalog": True,
-                "section": it.get("section", ""),
-                "src_key": it.get("src_key", ""),
-                "boq_price": float(it.get("boq_price") or 0),
-            })
+            result_items.append(
+                _pending_stub(it, len(result_items) + 1, tiers_requested))
     else:
         result_items, not_found = _resolve_master_matches(conn, extracted, [], tiers, groq_client, prompt="")
 
@@ -2528,7 +2594,7 @@ def _match_chunk_worker(payload):
     try:
         groq_client = Groq(api_key=api_key) if api_key else None
         new_items, nf = _resolve_master_matches(
-            conn, chunk, [], tiers, groq_client, prompt="")
+            conn, chunk, [], tiers, groq_client, prompt="", llm_verify=False)
         clean = [{k: v for k, v in x.items() if not k.startswith("_")}
                  for x in new_items]
         return offset, clean, nf
@@ -2581,6 +2647,37 @@ def _bg_match_rest(qid, rest, tiers, start_idx, api_key, chunk_size):
                 job = _MATCH_JOBS.get(qid)
                 if job:
                     job["done"] = min(start_idx + done_lines, job["total"])
+        # ── Central LLM verify phase ──
+        # Workers attach llm_cands instead of verifying inline; here the
+        # whole quote's weak lines verify in ONE paced sequence (retry on
+        # throttle, duplicates share a verdict) — bursting from 4 workers
+        # hit the rate limit and silently kept junk picks.
+        job = _MATCH_JOBS.get(qid)
+        if job:
+            job["phase"] = "verifying"
+        groq_client = Groq(api_key=api_key) if api_key else None
+        if groq_client:
+            conn = get_db()
+            try:
+                row = conn.execute(
+                    "SELECT items_json FROM quotations WHERE id=?",
+                    (qid,)).fetchone()
+                if row:
+                    data = json.loads(row["items_json"])
+                    items = data.get("items", [])
+                    try:
+                        _llm_verify_matches(groq_client, items, paced=True)
+                    except Exception as e:
+                        print(f"central LLM verify skipped (non-fatal): {e}")
+                    for it in items:
+                        it.pop("llm_cands", None)
+                    data["items"] = items
+                    conn.execute(
+                        "UPDATE quotations SET items_json=? WHERE id=?",
+                        (json.dumps(data), qid))
+                    conn.commit()
+            finally:
+                conn.close()
     except Exception as e:
         print(f"background BOQ matching failed for quote {qid}: {e}")
     finally:
@@ -2656,8 +2753,23 @@ def rematch_quotation(qid: int, user: dict = Depends(get_current_user)):
     api_key = os.environ.get("GROQ_API_KEY", "") or GROQ_API_KEY_DEFAULT
     groq_client = Groq(api_key=api_key) if api_key else None
     tiers = [t for t in (data.get("tiers") or ["3star"]) if t in ("3star", "4star")] or ["3star"]
-    result_items, not_found = _resolve_master_matches(
-        conn, extracted, [], tiers, groq_client, prompt="")
+
+    # Giant quotes re-match PROGRESSIVELY like uploads: the old synchronous
+    # path was single-core (~5 min for 1,900 lines) against nginx's 300s
+    # timeout — the request died mid-way and the screen kept a mix of old
+    # and new picks.
+    progressive = len(extracted) > PROG_THRESHOLD
+    if progressive:
+        first, rest = extracted[:PROG_FIRST], extracted[PROG_FIRST:]
+        result_items, not_found = _resolve_master_matches(
+            conn, first, [], tiers, groq_client, prompt="")
+        for it in rest:
+            result_items.append(
+                _pending_stub(it, len(result_items) + 1,
+                              data.get("tiers") or ["3star"]))
+    else:
+        result_items, not_found = _resolve_master_matches(
+            conn, extracted, [], tiers, groq_client, prompt="")
 
     data["items"] = [{k: v for k, v in i.items() if not k.startswith("_")}
                      for i in result_items]
@@ -2671,6 +2783,14 @@ def rematch_quotation(qid: int, user: dict = Depends(get_current_user)):
     resp = dict(data)
     resp["items"] = result_items          # keep _variants etc. for the UI
     resp["id"] = qid
+    if progressive:
+        _MATCH_JOBS[qid] = {"done": PROG_FIRST, "total": len(extracted),
+                            "running": True}
+        threading.Thread(target=_bg_match_rest,
+                         args=(qid, rest, tiers, PROG_FIRST, api_key,
+                               PROG_CHUNK),
+                         daemon=True).start()
+        resp["matching"] = dict(_MATCH_JOBS[qid])
     return _strip_cost(resp, user)
 
 
@@ -2691,7 +2811,8 @@ def quotation_live(qid: int, user: dict = Depends(get_current_user)):
     return _strip_cost({"items": items, "not_found": data.get("not_found", []),
                         "matching": {"done": len(items) - pending,
                                      "total": len(items),
-                                     "running": bool(job.get("running"))}}, user)
+                                     "running": bool(job.get("running")),
+                                     "phase": job.get("phase", "")}}, user)
 
 
 

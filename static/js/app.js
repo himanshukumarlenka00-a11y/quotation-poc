@@ -3008,7 +3008,7 @@ function _mpElapsed() {
   const s = Math.round((Date.now() - _mpStart) / 1000);
   return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
 }
-function updateMatchProgress(done, total, running) {
+function updateMatchProgress(done, total, running, phase) {
   const box = document.getElementById('match-progress');
   if (!box) return;
   if (!total) { box.style.display = 'none'; return; }
@@ -3027,7 +3027,9 @@ function updateMatchProgress(done, total, running) {
       + (_mpStart ? ` <span class="mp-time">· took ${_mpElapsed()}</span>` : '');
   } else {
     box.classList.remove('mp-done');
-    lbl.innerHTML = '<span class="mp-spin">↻</span> <strong>Matching products…</strong>';
+    lbl.innerHTML = phase === 'verifying'
+      ? '<span class="mp-spin">↻</span> <strong>Verifying picks with AI…</strong>'
+      : '<span class="mp-spin">↻</span> <strong>Matching products…</strong>';
   }
 }
 
@@ -3059,8 +3061,10 @@ function pollLiveMatching(qid, status) {
         status.innerHTML = `<div class="alert alert-success">✅ All ${d.matching.total} lines processed.${nf ? ` ⚠️ ${nf} not found — price them inline or use Find.` : ''}</div>`;
         updateMatchProgress(d.matching.total, d.matching.total, false);
       } else {
-        status.innerHTML = `<div class="alert alert-info">⚡ Matched ${d.matching.done} of ${d.matching.total} lines — filling in live…</div>`;
-        updateMatchProgress(d.matching.done, d.matching.total, true);
+        status.innerHTML = d.matching.phase === 'verifying'
+          ? `<div class="alert alert-info">🤖 All lines matched — AI is double-checking the doubtful picks…</div>`
+          : `<div class="alert alert-info">⚡ Matched ${d.matching.done} of ${d.matching.total} lines — filling in live…</div>`;
+        updateMatchProgress(d.matching.done, d.matching.total, true, d.matching.phase);
       }
     } catch (e) {
       clearInterval(liveMatchTimer); liveMatchTimer = null;
@@ -4601,9 +4605,18 @@ async function rematchQuote() {
     if (!res.ok) throw new Error(d.detail || 'Re-match failed');
     Object.assign(currentQuotation, d);
     renderResult(currentQuotation);
-    const nf = (d.not_found || []).length;
-    if (st) st.innerHTML = `<div class="alert alert-success">✅ Re-matched ${(d.items||[]).length} line(s) at current logic.${nf ? ` ⚠️ ${nf} not found.` : ''}</div>`;
-    toast('Quotation re-matched', 'success');
+    if (d.matching && d.matching.running) {
+      // Giant quote: first rows are fresh, the rest stream in with the bar.
+      _mpStart = Date.now();
+      updateMatchProgress(d.matching.done, d.matching.total, true);
+      if (st) st.innerHTML = `<div class="alert alert-info">↻ Re-matching ${d.matching.total} lines — first ${d.matching.done} done, the rest are streaming in.</div>`;
+      pollLiveMatching(currentQuotation.id, st);
+      toast('Re-match running — watch the bar', 'success');
+    } else {
+      const nf = (d.not_found || []).length;
+      if (st) st.innerHTML = `<div class="alert alert-success">✅ Re-matched ${(d.items||[]).length} line(s) at current logic.${nf ? ` ⚠️ ${nf} not found.` : ''}</div>`;
+      toast('Quotation re-matched', 'success');
+    }
   } catch (e) {
     if (st) st.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
     toast('Re-match failed', 'error');
