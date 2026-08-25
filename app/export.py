@@ -666,7 +666,7 @@ def build_boq_response(quotation: dict, items: list, src_path: str) -> str:
             pairs.append((row, items[hit]))
             ptr = hit + 1
 
-    HEADS = ["SMI IMAGE", "SMI SPECS", "PRICE/PC\n(INR)", "AMOUNT\n(INR)"]
+    HEADS = ["MODEL", "BRAND", "IMAGE", "SPECIFICATIONS", "PRICE/PC", "AMOUNT"]
     done_sheets = {}
     wrote = 0
     for row, item in pairs:
@@ -690,16 +690,18 @@ def build_boq_response(quotation: dict, items: list, src_path: str) -> str:
             for k, h in enumerate(HEADS):
                 cell = ws.cell(hdr_r, start + k, h)
                 copy_cell_style(proto, cell)
+                cell.fill = PatternFill("solid", start_color="A6A6A6")
                 cell.alignment = Alignment(wrap_text=True, horizontal="center",
                                            vertical="center")
-            for k, wdt in enumerate((14, 42, 13, 14)):
+            for k, wdt in enumerate((16, 13, 14, 40, 11, 13)):
                 ws.column_dimensions[get_column_letter(start + k)].width = wdt
             done_sheets[sn] = (start, hdr_r)
         start, _hdr = done_sheets[sn]
         r = srcp["row"]
-        img_c, spec_c, price_c, amt_c = start, start + 1, start + 2, start + 3
+        model_c, brand_c, img_c, spec_c, price_c, amt_c = (
+            start, start + 1, start + 2, start + 3, start + 4, start + 5)
         thin = Side(style="thin", color="9CA3AF")
-        for c in (img_c, spec_c, price_c, amt_c):
+        for c in (model_c, brand_c, img_c, spec_c, price_c, amt_c):
             ws.cell(r, c).border = Border(left=thin, right=thin,
                                           top=thin, bottom=thin)
         if item.get("not_in_catalog"):
@@ -709,6 +711,12 @@ def build_boq_response(quotation: dict, items: list, src_path: str) -> str:
             continue
         qty = int(item.get("qty") or row.get("qty") or 0)
         price = float(item.get("price_per_pc") or item.get("price") or 0)
+        mc = ws.cell(r, model_c, (item.get("model_no") or "").strip()[:40])
+        mc.alignment = Alignment(wrap_text=True, horizontal="center",
+                                 vertical="center")
+        bc = ws.cell(r, brand_c, (item.get("brand") or "").strip()[:30])
+        bc.alignment = Alignment(wrap_text=True, horizontal="center",
+                                 vertical="center")
         spec_txt = " — ".join(x for x in
                               [(item.get("product") or "").strip(),
                                (item.get("specification") or "").strip()] if x)
