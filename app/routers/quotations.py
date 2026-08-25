@@ -1269,6 +1269,19 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         if _dims:
             numtoks = [n for n in numtoks if not any(n in d for d in _dims)]
         t_ns = t.replace(" ", "")
+        # BOQ lines carry the client's own PRODUCT label separate from the
+        # spec blob appended into the term. Weak-tier candidates must anchor
+        # in those label words — "Mobile Bar" once matched an Oil Can purely
+        # because its spec said "prevent OIL immersion … bearing CAN
+        # effectively prevent". Only active for the line currently being
+        # resolved (label != term means spec/model text was appended);
+        # typed prompts and side-searches are exempt.
+        _pl = (_cur_line.get("product") or "").lower().strip()
+        prod_core = ([w for w in re.findall(r"[a-z]+", _pl)
+                      if len(w) >= 3 and w not in _UNITS]
+                     if _pl and _pl != t
+                     and (_cur_line.get("search_term") or "").lower().strip() == t
+                     else [])
         # this line's own candidates; rows_pool only as a fallback when FTS
         # is unavailable, so a missing index still cannot fail a quotation
         pool = _line_pool(t) or rows_pool
@@ -1409,6 +1422,26 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             elif not score and _sem >= 0.74:
                 score = 150 + int((_sem - 0.74) * 1200)
                 tier = 'sem'
+            if score and prod_core and tier in ('name', 'name+spec', 'rname',
+                                                'part', 'spec', 'sem'):
+                # Product-label anchoring (see prod_core above). Word tiers
+                # need at least one label word in the row; the scrap tiers
+                # (spec/sem) need a strict majority OR the label's most
+                # specific (longest) word — "Creamer, Small" may keep a
+                # CREAMER on "creamer" alone, but a shared generic "board"
+                # must not turn Flipchart into Chop Board.
+                cov = {w for w in prod_core
+                       if _covered(w, name, name_ns)
+                       or _covered(w, spec, spec_ns)}
+                if tier in ('spec', 'sem'):
+                    lw = max(len(w) for w in prod_core)
+                    ok = (len(cov) > len(prod_core) // 2
+                          or any(len(w) == lw for w in cov))
+                else:
+                    ok = bool(cov)
+                if not ok:
+                    score = 0
+                    tier = ''
             if score:
                 if ((brand_pref or file_pref)
                         and not (mtoks or t_is_code or re.search(r"\d{3}", t))):
