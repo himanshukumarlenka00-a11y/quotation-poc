@@ -732,16 +732,24 @@ def build_revised_from_source(quotation: dict, items: list, src_path: str) -> st
     if unresolved:
         wb.calculation.fullCalcOnLoad = True
 
-    # ── Cover text: DATE -> today, REF version bump, SUB gains REVISED ──
+    # ── Cover text: DATE -> today, REF version bump, SUB gains REVISED,
+    # and the app's own BILL & SHIP TO + PREPARED BY reflect onto the
+    # client's cover (replacing their TO block / filling under the date) ──
     today = datetime.now().strftime("%d-%m-%Y")
+    _STOP = re.compile(r"^\s*(SUB\b|REF\b|DEAR\b|S\.?\s?NO|SL\.?\s?NO|TERMS|BANK|WE ARE)", re.I)
+    bill_to = (quotation.get("bill_to") or "").strip() or (quotation.get("client_name") or "").strip()
+    sp = quotation.get("sales_person") or {}
     for sn in wb.sheetnames:
-        for row_cells in wb[sn].iter_rows():
+        ws_c = wb[sn]
+        date_cell = None
+        for row_cells in ws_c.iter_rows():
             for cell in row_cells:
                 v = cell.value
                 if not isinstance(v, str):
                     continue
                 if re.match(r"^\s*DATE\s*[:\-]", v, re.I):
                     cell.value = re.sub(r"(^\s*DATE\s*[:\-]\s*).*", rf"\g<1>{today}", v, flags=re.I)
+                    date_cell = date_cell or cell
                 elif re.search(r"\bREF\s*\.?\s*NO\b", v, re.I):
                     if re.search(r"_V(\d+)", v, re.I):
                         cell.value = re.sub(r"_V(\d+)",
@@ -751,6 +759,32 @@ def build_revised_from_source(quotation: dict, items: list, src_path: str) -> st
                 elif (re.match(r"^\s*SUB\b", v, re.I) and "QUOTATION" in v.upper()
                         and "REVISED" not in v.upper()):
                     cell.value = re.sub(r"(?i)QUOTATION", "REVISED QUOTATION", v, count=1)
+                elif (bill_to and re.match(r"^\s*(TO|BILL\s*&?\s*SHIP\s*TO)\s*[:\-]?\s*$",
+                                            v, re.I)):
+                    # write the app's client block into the rows below the
+                    # TO label, stopping at the next section keyword
+                    lines = [l.strip() for l in bill_to.splitlines() if l.strip()][:4]
+                    r0 = cell.row
+                    for k, line in enumerate(lines, 1):
+                        tgt = ws_c.cell(r0 + k, cell.column)
+                        tv = tgt.value
+                        if tv is not None and (not isinstance(tv, str)
+                                               or _STOP.match(tv)):
+                            break
+                        if tgt.__class__.__name__ == "MergedCell":
+                            break
+                        tgt.value = line
+        # PREPARED BY under the date cell, only into genuinely empty cells
+        if date_cell is not None and sp.get("name"):
+            lines = [f"PREPARED BY : {sp['name']}"]
+            if sp.get("phone"):
+                lines.append(f"CONTACT NO : {sp['phone']}")
+            for k, line in enumerate(lines, 1):
+                tgt = ws_c.cell(date_cell.row + k, date_cell.column)
+                if tgt.value is not None or tgt.__class__.__name__ == "MergedCell":
+                    break
+                tgt.value = line
+                copy_cell_style(date_cell, tgt)
 
     ref_no = quotation.get("ref_no", "")
     out = EXPORTS_DIR / f"Quote_{(ref_no or 'revised').replace('/', '-')}.xlsx"
