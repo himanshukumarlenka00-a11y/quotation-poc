@@ -679,6 +679,66 @@ def suggest_products(conn, term, catalogs=None, limit=6):
 
 
 
+_CAP_ML = {"l": 1000, "ltr": 1000, "ltrs": 1000, "litre": 1000, "litres": 1000,
+           "liter": 1000, "liters": 1000, "lt": 1000, "ml": 1, "cl": 10,
+           "oz": 29.57, "qt": 946}
+_SIZE_RX = (r"\d+(?:\.\d+)?\s*(?:litres?|liters?|ltrs?|lt|ml|cl|oz|qt|l|cm|mm)\b"
+            r"|\d{2,4}\s*[x*×]\s*\d{2,4}")
+
+
+def _size_facts(text):
+    """Capacities (as ml), lengths (as mm) and NxN dims stated in a text."""
+    s = (text or "").lower()
+    caps = {round(float(v) * _CAP_ML[u]) for v, u in re.findall(
+        r"(\d+(?:\.\d+)?)\s*(litres?|liters?|ltrs?|lt|ml|cl|oz|qt|l)\b", s)}
+    lens = {round(float(v) * (10 if u == "cm" else 1)) for v, u in
+            re.findall(r"(\d+(?:\.\d+)?)\s*(cm|mm)\b", s)}
+    dims = set(re.findall(r"\d{2,4}\s*[x*×]\s*\d{2,4}", s.replace(" ", "")))
+    return caps, lens, dims
+
+
+def _size_note(req_text, got_text):
+    """'client asked 9 L — this is 7 L' when the matched product's stated
+    size conflicts with the client's. Empty when compatible or when either
+    side states no size (offering the nearest stocked size is normal — the
+    note just says so instead of quoting silently)."""
+    qc, ql, qd = _size_facts(req_text)
+    gc, gl, gd = _size_facts(got_text)
+
+    def fml(ml):
+        return f"{ml/1000:g} L" if ml >= 1000 else f"{ml:g} ml"
+
+    def fmm(mm):
+        return f"{mm/10:g} cm" if mm >= 10 else f"{mm:g} mm"
+
+    if qc and gc and not any(abs(a - b) <= 0.12 * max(a, b)
+                             for a in qc for b in gc):
+        return (f"client asked {' / '.join(fml(m) for m in sorted(qc))}"
+                f" — this is {' / '.join(fml(m) for m in sorted(gc))}")
+    if ql and gl and not any(abs(a - b) <= 0.1 * max(a, b)
+                             for a in ql for b in gl):
+        return (f"client asked {' / '.join(fmm(m) for m in sorted(ql))}"
+                f" — this is {' / '.join(fmm(m) for m in sorted(gl))}")
+    if qd and gd and not (qd & gd):
+        return f"client asked {sorted(qd)[0]} — this is {sorted(gd)[0]}"
+    return ""
+
+
+def _term_with_sizes(term, full):
+    """The 20-word search-term cap can drop a size buried deep in a client
+    spec (then a 1 Qt bucket answers a 5 Ltr line) — re-append any size
+    tokens the cap cut off so the qualifier machinery sees them."""
+    tl = (term or "").lower()
+    extra = []
+    for m in re.finditer(_SIZE_RX, (full or "").lower()):
+        tok = re.sub(r"\s+", " ", m.group(0).strip())
+        if tok not in tl and tok not in extra:
+            extra.append(tok)
+        if len(extra) >= 4:
+            break
+    return term + (" " + " ".join(extra) if extra else "")
+
+
 def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, prompt="",
                             variant_cap=15):
     """Match extracted {product, qty} items against the Master Table only —
@@ -1438,9 +1498,13 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                        if _covered(w, name, name_ns)
                        or _covered(w, spec, spec_ns)}
                 if tier in ('spec', 'sem'):
+                    # longest-word escape counts NAME coverage only: series
+                    # specs repeat words ("London Serving …") and let Cake
+                    # Server ride into TABLESPOON on a spec-side "server".
                     lw = max(len(w) for w in prod_core)
                     ok = (len(cov) > len(prod_core) // 2
-                          or any(len(w) == lw for w in cov))
+                          or any(len(w) == lw and _covered(w, name, name_ns)
+                                 for w in cov))
                 else:
                     ok = bool(cov)
                 if not ok:
@@ -2085,6 +2149,11 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             "section":      item.get("section", ""),
             "src_key":      item.get("src_key", ""),
             "boq_price":    float(item.get("boq_price") or 0),
+            # "client asked 9 L — this is 7 L": nearest stocked size is a
+            # normal offer, but it must be SAID, not silently quoted.
+            "size_note":    _size_note(item.get("_fulltext") or search_term,
+                                       f'{best.get("product", "")} '
+                                       f'{best.get("specification", "")}'),
         })
 
     return result_items, not_found
@@ -2167,12 +2236,16 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
     # search_catalog's model-number/spec ranking the signal it needs to tell
     # rows apart. "product" itself stays the clean label, used for display
     # and the not_found list.
-    def _search_term(r):
+    def _full_text(r):
         parts = [r.get("product") or "", r.get("model_no") or "", r.get("specification") or ""]
-        term = " ".join(p.strip() for p in parts if p and p.strip())
+        return " ".join(p.strip() for p in parts if p and p.strip())
+
+    def _search_term(r):
+        term = _full_text(r)
         # Scoring cost grows with every word × every candidate row; past
-        # ~20 words a spec is boilerplate, not signal.
-        return " ".join(term.split()[:20])
+        # ~20 words a spec is boilerplate, not signal — but sizes cut off
+        # by the cap are re-appended (they are the signal).
+        return _term_with_sizes(" ".join(term.split()[:20]), term)
 
     # The client's own price per row (their budget/target, or a competitor's
     # quote) — carried through so it can be compared against our Master Table
@@ -2180,6 +2253,7 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
     # price column at all (a pure requirement list).
     extracted = [
         {"product": r.get("product", ""), "search_term": _search_term(r),
+         "_fulltext": _full_text(r),
          "model_no": r.get("model_no", ""),
          # source sheet — the quote view groups by it (tabs) and the final
          # bill rebuilds one sheet per section, mirroring the upload
@@ -2362,13 +2436,17 @@ def rematch_quotation(qid: int, user: dict = Depends(get_current_user)):
             try:
                 rows_p, _ = parse_boq_excel(str(sp), src, skip_images=True)
 
+                def _full(r):
+                    return " ".join(x.strip() for x in
+                                    [r.get("product") or "", r.get("model_no") or "",
+                                     r.get("specification") or ""] if x and x.strip())
+
                 def _sterm(r):
-                    t = " ".join(x.strip() for x in
-                                 [r.get("product") or "", r.get("model_no") or "",
-                                  r.get("specification") or ""] if x and x.strip())
-                    return " ".join(t.split()[:20])
+                    t = _full(r)
+                    return _term_with_sizes(" ".join(t.split()[:20]), t)
                 extracted = [
                     {"product": r.get("product", ""), "search_term": _sterm(r),
+                     "_fulltext": _full(r),
                      "model_no": r.get("model_no", ""),
                      "section": r.get("sheet_name", ""),
                      "src_key": f"{r.get('sheet_name','')}|{(r.get('_src') or {}).get('row',0)}",

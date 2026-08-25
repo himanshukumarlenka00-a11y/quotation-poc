@@ -720,7 +720,13 @@ def build_boq_response(quotation: dict, items: list, src_path: str) -> str:
         spec_txt = " — ".join(x for x in
                               [(item.get("product") or "").strip(),
                                (item.get("specification") or "").strip()] if x)
-        sc = ws.cell(r, spec_c, spec_txt[:300])
+        spec_txt = spec_txt[:300]
+        note = (item.get("size_note") or "").strip()
+        if note:
+            # size differs from what the client asked — say so in the
+            # response instead of quoting the nearest size silently
+            spec_txt += f"\n⚠ {note}"
+        sc = ws.cell(r, spec_c, spec_txt)
         sc.alignment = Alignment(wrap_text=True, vertical="center")
         pc = ws.cell(r, price_c, round(price, 2))
         pc.number_format = "#,##0.00"

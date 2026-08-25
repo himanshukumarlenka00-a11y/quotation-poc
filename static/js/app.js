@@ -3197,7 +3197,7 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing, showOrig, showMar
         (x.product || '').trim().toLowerCase() === (item.product || '').trim().toLowerCase() &&
         (x.model || '').trim().toLowerCase() === (item.model_no || '').trim().toLowerCase());
       return h ? `<span class="hist-badge" title="A colleague chose this product for this phrase before${h.client ? ' (' + h.client + ')' : ''}">★ chosen ${h.count}× before</span>` : '';
-    })()}${switchBtn}</td>
+    })()}${item.size_note && !ph ? `<div class="size-note" title="Nearest stocked size — tell the client">⚠ ${item.size_note}</div>` : ''}${switchBtn}</td>
     <td class="c"><input type="number" class="qty-input" value="${qty}" onchange="recalcRow(${idx})" style="width:60px"></td>
     <td style="font-size:var(--fs-sm)">${ph ? phInput('model_no', item.model_no, 90) : (item.model_no||'')}</td>
     <td>${ph ? phInput('brand', item.brand, 90) : (item.brand||'')}</td>
@@ -3809,6 +3809,7 @@ function applySwitch(idx, vi, cardEl) {
   item.hsn_code      = v.hsn_code     || '';
   item.image_path     = v.image_path  || '';
   item.local_image   = '';            // use the variant's catalog image
+  item.size_note     = '';            // stale — it described the OLD pick
   item.price_3star     = v.price_3star     || 0;
   item.price_3star_usd = v.price_3star_usd || 0;
   item.price_4star     = v.price_4star     || 0;
