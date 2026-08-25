@@ -828,10 +828,25 @@ def _size_note(req_text, got_text):
                              for a in qc for b in gc):
         return (f"client asked {' / '.join(fml(m) for m in sorted(qc))}"
                 f" — this is {' / '.join(fml(m) for m in sorted(gc))}")
-    if ql and gl and not any(abs(a - b) <= 0.1 * max(a, b)
-                             for a in ql for b in gl):
-        return (f"client asked {' / '.join(fmm(m) for m in sorted(ql))}"
-                f" — this is {' / '.join(fmm(m) for m in sorted(gl))}")
+    # Lengths compare only within the same magnitude class — a client
+    # spec's 19MM board THICKNESS must not be held against a plate's
+    # 21 cm DIAMETER (<40mm ≈ thickness/edge, 40-400mm ≈ dish sizes,
+    # >400mm ≈ furniture).
+    def _buckets(vals):
+        b = {}
+        for v in vals:
+            b.setdefault(0 if v < 40 else (1 if v <= 400 else 2),
+                         set()).add(v)
+        return b
+    if ql and gl:
+        qb, gb = _buckets(ql), _buckets(gl)
+        for k in sorted(qb.keys() & gb.keys(), reverse=True):
+            if not any(abs(a - b) <= 0.1 * max(a, b)
+                       for a in qb[k] for b in gb[k]):
+                return (f"client asked "
+                        f"{' / '.join(fmm(m) for m in sorted(qb[k]))}"
+                        f" — this is "
+                        f"{' / '.join(fmm(m) for m in sorted(gb[k]))}")
     if qd and gd and not (qd & gd):
         return f"client asked {sorted(qd)[0]} — this is {sorted(gd)[0]}"
     return ""
@@ -2907,32 +2922,23 @@ def update_quotation(qid: int, req: UpdateItemsRequest, user: dict = Depends(get
                 learned.append((item.get("requested") or ph,
                                 old.get("product"), item.get("product")))
             elif not (item.get("not_in_catalog") or item.get("matched_by") == "not_found"):
-                # Line saved untouched — a confirmation. Weaker than a
-                # correction, so the ON CONFLICT guard only bumps the counter
-                # when the stored row already points at this same product;
-                # it can never overwrite a human correction aimed elsewhere.
-                # No audit entry: every save confirms every untouched line,
-                # and logging each would drown the Activity page.
-                #
-                # Placeholder lines are excluded above: their `product` is the
-                # client's raw request text, not a catalogue product, so this
-                # branch was writing "Strogae Rack" -> "Strogae Rack" into the
-                # learning table on every save. 33 of 99 rows were that junk.
-                # Harmless while nothing in the master matches the text, but a
-                # landmine — import a product with that name and the row
-                # silently becomes a live auto-selection learned from nothing.
+                # Line saved untouched — a confirmation. It may only STRENGTHEN
+                # an existing correction for the same product, never create
+                # one: the old INSERT turned every untouched AI line into an
+                # authoritative mapping on every save, so a 1,900-line BOQ
+                # canonized its own junk ("mobile bar" -> Oil Can was
+                # "confirmed" 6x by nobody). _lookup_correction serves these
+                # rows as matched_by=learned, which bypasses every guard —
+                # only a human choice may mint one.
                 conn.execute("""
-                    INSERT INTO match_corrections
-                        (phrase_norm, product, original_model, corrected_by,
-                         created_at, source)
-                    VALUES (?,?,?,?,?,'confirmed')
-                    ON CONFLICT(phrase_norm) DO UPDATE SET
-                        times_confirmed = match_corrections.times_confirmed + 1
-                    WHERE LOWER(TRIM(match_corrections.product)) = LOWER(TRIM(excluded.product))
-                      AND LOWER(TRIM(COALESCE(match_corrections.original_model,''))) =
-                          LOWER(TRIM(COALESCE(excluded.original_model,'')))
-                """, (ph, item.get("product") or "", item.get("model_no") or "",
-                      user["id"], datetime.now().isoformat()))
+                    UPDATE match_corrections
+                       SET times_confirmed = times_confirmed + 1
+                     WHERE phrase_norm = ?
+                       AND LOWER(TRIM(product)) = LOWER(TRIM(?))
+                       AND LOWER(TRIM(COALESCE(original_model,''))) =
+                           LOWER(TRIM(COALESCE(?,'')))
+                """, (ph, item.get("product") or "",
+                      item.get("model_no") or ""))
     except Exception as e:
         print(f"Correction learning skipped (non-fatal): {e}")
 

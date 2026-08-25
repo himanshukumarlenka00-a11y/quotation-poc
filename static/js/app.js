@@ -3159,7 +3159,7 @@ function renderItemRow(item, idx, show3, show4, hasBoqPricing, showOrig, showMar
       ? findBtn + revertBtn
       : (hasVariants
         ? `<button class="btn-switch" onclick="switchVariant(${idx})" style="display:block;margin-top:4px;">🔄 Switch</button>`
-        : '');
+        : findBtn);
 
   // Image cell — manually uploaded image first, else the catalog image (served
   // from disk via the API, never shipped inline in the JSON response)
