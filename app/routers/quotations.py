@@ -692,6 +692,106 @@ def suggest_products(conn, term, catalogs=None, limit=6):
 
 
 
+def _llm_apply_variant(it, v):
+    """Server-side equivalent of the UI's Switch: point the line at one of
+    its own variants."""
+    it["product"] = v.get("product", "") or it.get("product", "")
+    it["model_no"] = v.get("model_no", "")
+    it["brand"] = v.get("brand", "")
+    it["specification"] = v.get("specification", "")
+    it["description"] = v.get("description", "")
+    it["hsn_code"] = v.get("hsn_code", "")
+    it["image_path"] = v.get("image_path", "") or ""
+    it["price_per_pc"] = v.get("price", 0)
+    it["cost"] = v.get("cost", 0)
+    it["gst_pct"] = v.get("gst_pct", 18.0)
+    for k in ("price_3star", "price_3star_usd", "price_4star",
+              "price_4star_usd", "orig_price_3star", "orig_price_4star"):
+        it[k] = v.get(k, 0 if not k.startswith("orig") else None)
+    it["size_note"] = _size_note(it.get("requested", ""),
+                                 f'{v.get("product", "")} '
+                                 f'{v.get("specification", "")}')
+
+
+def _llm_demote_placeholder(it):
+    """No candidate is the requested product: honest fill-in row instead of
+    a confident wrong pick. Variants stay so Switch still offers them."""
+    it["product"] = (it.get("_req_raw") or it.get("requested")
+                     or it.get("product") or "").strip()
+    for k in ("description", "model_no", "brand", "specification", "hsn_code",
+              "image_path", "size_note"):
+        it[k] = ""
+    for k in ("price_per_pc", "cost", "price_3star", "price_3star_usd",
+              "price_4star", "price_4star_usd"):
+        it[k] = 0
+    it["gst_pct"] = 18.0
+    it["not_in_catalog"] = True
+
+
+def _llm_verify_matches(groq_client, items, batch=20):
+    """Ask the LLM, for each WEAK-evidence match, which of the line's own
+    top candidates really is the requested product — or none. Weak means
+    the word tiers below name-certainty, unboosted by brand or history;
+    exact/model/HSN/learned lines are never questioned. Verdict A..E
+    switches the line to that variant, none demotes it to a fill-in
+    placeholder. Every failure path leaves the line untouched."""
+    WEAK = {"name", "name+spec", "rname", "part", "spec", "sem"}
+    idxs = []
+    for i, it in enumerate(items):
+        if it.get("not_in_catalog") or it.get("matched_by") != "ai":
+            continue
+        vs = it.get("_variants") or []
+        if not vs:
+            continue
+        v0 = vs[0]
+        if (v0.get("_tier") in WEAK and (v0.get("_score") or 0) < 1000):
+            idxs.append(i)
+    if not idxs:
+        return
+    for start in range(0, len(idxs), batch):
+        chunk = idxs[start:start + batch]
+        lines = []
+        for n, i in enumerate(chunk, 1):
+            it = items[i]
+            req = (it.get("_req_raw") or it.get("requested")
+                   or it.get("product") or "")[:90]
+            cands = [f"{L}) {v.get('brand', '')} {(v.get('product') or '')[:70]}"
+                     for L, v in zip("ABCDE", (it.get("_variants") or [])[:5])]
+            lines.append(f"{n}. NEED: {req}\n   " + "\n   ".join(cands))
+        prompt = (
+            "A hotel-supply client asked for products; our word-matcher "
+            "proposed candidates.\nFor each numbered item say which "
+            "candidate IS the requested product TYPE (a different size or "
+            "series of the right type still counts), or none if no "
+            "candidate is that type of product.\n"
+            'Answer with ONLY compact JSON, no explanation, like '
+            '{"1":"A","2":"none"}.\n\n' + "\n".join(lines))
+        try:
+            txt = _llm_chat(groq_client,
+                            [{"role": "user", "content": prompt}],
+                            max_tokens=1200, temperature=0)
+            m = re.search(r"\{[^{}]*\}", txt or "", re.S)
+            if not m:
+                print("LLM verify batch skipped: no JSON in reply")
+                continue
+            verdicts = json.loads(m.group(0))
+        except Exception as e:
+            print(f"LLM verify batch skipped: {e}")
+            continue
+        for n, i in enumerate(chunk, 1):
+            v = str(verdicts.get(str(n), "") or "").strip().upper()
+            it = items[i]
+            vs = it.get("_variants") or []
+            if v == "A" or not v:
+                continue
+            if v in ("B", "C", "D", "E") and "ABCDE".index(v) < len(vs):
+                _llm_apply_variant(it, vs["ABCDE".index(v)])
+                it["llm_check"] = "switched"
+            elif v == "NONE":
+                _llm_demote_placeholder(it)
+                it["llm_check"] = "rejected"
+
+
 _CAP_ML = {"l": 1000, "ltr": 1000, "ltrs": 1000, "litre": 1000, "litres": 1000,
            "liter": 1000, "liters": 1000, "lt": 1000, "ml": 1, "cl": 10,
            "oz": 29.57, "qt": 946}
@@ -995,6 +1095,10 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         return re.sub(r"\bounces?\b", "oz", s, flags=re.I)
 
     for it in extracted:
+        # The client's untouched wording, kept for the LLM verify pass —
+        # the typo-fixer can corrupt real labels ("CART" -> "card") and an
+        # LLM judging the corrupted text would bless the wrong verdict.
+        it.setdefault("_req_raw", (it.get("product") or "").strip())
         for key in ("product", "search_term"):
             if it.get(key):
                 # Merge BEFORE typo-fixing: 'corn' alone is unknown to the
@@ -2184,6 +2288,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             # Without `requested` a correction cannot be attributed; without
             # `matched_by` a re-save would re-learn lines a human already set.
             "requested":    item.get("product", ""),
+            "_req_raw":     item.get("_req_raw", ""),
             "matched_by":   matched_by,
             "section":      item.get("section", ""),
             "src_key":      item.get("src_key", ""),
@@ -2194,6 +2299,15 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
                                        f'{best.get("product", "")} '
                                        f'{best.get("specification", "")}'),
         })
+
+    # LLM sanity pass over weak-evidence matches: the word scorer can't
+    # tell a Teapot from a TEA CUP it part-covered — an LLM reads the
+    # names. Fail-open: any API problem leaves the deterministic picks.
+    if groq_client is not None and result_items:
+        try:
+            _llm_verify_matches(groq_client, result_items)
+        except Exception as e:
+            print(f"LLM verify pass skipped (non-fatal): {e}")
 
     return result_items, not_found
 
