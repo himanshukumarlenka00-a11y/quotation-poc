@@ -800,12 +800,15 @@ _SIZE_RX = (r"\d+(?:\.\d+)?\s*(?:litres?|liters?|ltrs?|lt|ml|cl|oz|qt|l|cm|mm)\b
 
 
 def _size_facts(text):
-    """Capacities (as ml), lengths (as mm) and NxN dims stated in a text."""
+    """Capacities (as ml), lengths (as mm, inches converted) and NxN dims
+    stated in a text."""
     s = (text or "").lower()
     caps = {round(float(v) * _CAP_ML[u]) for v, u in re.findall(
         r"(\d+(?:\.\d+)?)\s*(litres?|liters?|ltrs?|lt|ml|cl|oz|qt|l)\b", s)}
     lens = {round(float(v) * (10 if u == "cm" else 1)) for v, u in
             re.findall(r"(\d+(?:\.\d+)?)\s*(cm|mm)\b", s)}
+    lens |= {round(float(v) * 25.4) for v in re.findall(
+        r"(\d+(?:\.\d+)?)\s*(?:\"|''|inch(?:es)?\b)", s)}
     dims = set(re.findall(r"\d{2,4}\s*[x*×]\s*\d{2,4}", s.replace(" ", "")))
     return caps, lens, dims
 
@@ -1864,8 +1867,12 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         # Inch sizes — 5", 9'', 6 inch. These name most of the catalog's
         # near-identical variants (Scraper 3"/4"/5") and were previously
         # invisible to this filter, so every size collapsed onto one row.
-        for m in re.findall(r"(\d+(?:\.\d+)?)\s*(?:\"|''|inch|inches)", t):
-            qgroups.append([m + '"'])
+        # Multiple inch values are a dia x ht pair ('4.5" dia x 1.25" ht'):
+        # only the LARGEST (the defining size) becomes a constraint — the
+        # height as its own AND-group made every row unsatisfiable.
+        _inches = re.findall(r"(\d+(?:\.\d+)?)\s*(?:\"|''|inch|inches)", t)
+        if _inches:
+            qgroups.append([max(_inches, key=float) + '"'])
         # GN pan fractions — "food pan 1/1" must never return a 1/9 pan.
         for f in re.findall(r"\b[1-9]\s*/\s*[1-9]\b", t):
             qgroups.append([re.sub(r"\s", "", f)])

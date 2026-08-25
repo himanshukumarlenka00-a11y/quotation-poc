@@ -289,6 +289,9 @@ def parse_boq_excel(filepath: str, filename: str, skip_images: bool = False):
             "model_no":      col("model_no", "MODEL NO", "MODEL", "ITEM CODE", "ITEM CODES"),
             "brand":         col("brand", "BRAND", "MAKE"),
             "specification": col("specification", "OUR SPECIFICATION", "SPECIFICATION", "SPEC"),
+            # Capacity often sits in its own column ("VOLUME 180ml") — fold
+            # it into the spec text or the size constraint is lost entirely.
+            "volume":        find_col("VOLUME", "CAPACITY", "CAP."),
             "hsn_code":      col("hsn_code", "HSN"),
             # INR price: explicitly exclude any column containing USD.
             # "AMOUNT" is a last-resort fallback — some client templates use
@@ -409,7 +412,9 @@ def parse_boq_excel(filepath: str, filename: str, skip_images: bool = False):
                 "description": g("description"),
                 "model_no": g("model_no"),
                 "brand": g("brand"),
-                "specification": g("specification"),
+                "specification": " ".join(x for x in
+                                          [g("specification"), g("volume")]
+                                          if x and str(x).strip()),
                 "hsn_code": g("hsn_code"),
                 "price": gn("price_inr") or gn("price_usd") or gn("price"),
                 "price_currency": "INR" if gn("price_inr") else ("USD" if gn("price_usd") else "INR"),
