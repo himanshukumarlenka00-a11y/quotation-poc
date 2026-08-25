@@ -589,6 +589,19 @@ def build_company_quotation(quotation: dict, items: list) -> str:
 
 FINAL_BILL_TEMPLATE_PATH = Path(__file__).parent / "assets" / "final_bill_template.xlsx"
 
+# Company bank block — constant on every outgoing bill. The company-format
+# template carries it natively; the revised-copy export writes it under the
+# client file's BANK DETAILS heading (their covers ship it empty).
+BANK_DETAILS_LINES = [
+    "CHEQUE PRINT NAME     : SHANTI METAL INDUSTRIES",
+    "PAYMENT MODE          : E-TRANSFER OR CHEQUE",
+    "LOCATION                  : BANGALORE",
+    "ACCOUNT NO              : 2512011789",
+    "IFSC CODE                : KKBK0000423",
+    "BANK NAME               : KOTAK MAHINDRA BANK",
+    "BANK ADDRESS          : BASAVANGUDI, BANGALORE - 560004",
+]
+
 
 def _norm_join(s):
     return re.sub(r"[^a-z0-9]+", "", str(s or "").lower())
@@ -759,6 +772,16 @@ def build_revised_from_source(quotation: dict, items: list, src_path: str) -> st
                 elif (re.match(r"^\s*SUB\b", v, re.I) and "QUOTATION" in v.upper()
                         and "REVISED" not in v.upper()):
                     cell.value = re.sub(r"(?i)QUOTATION", "REVISED QUOTATION", v, count=1)
+                elif re.match(r"^\s*BANK\s*DETAILS?\s*[:\-]?\s*$", v, re.I):
+                    # our bank block is constant on every bill — client
+                    # covers ship this section empty
+                    for k, line in enumerate(BANK_DETAILS_LINES, 1):
+                        tgt = ws_c.cell(cell.row + k, cell.column)
+                        if (tgt.__class__.__name__ == "MergedCell"
+                                or (tgt.value is not None
+                                    and str(tgt.value).strip())):
+                            break
+                        tgt.value = line
                 elif (bill_to and re.match(r"^\s*(TO|BILL\s*&?\s*SHIP\s*TO)\s*[:\-]?\s*$",
                                             v, re.I)):
                     # write the app's client block into the rows below the
