@@ -1325,6 +1325,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         t = (term or "").lower().strip()
         if not t:
             return []
+        brand_pref_l, file_pref_l, pref_words_l = _line_prefs(t)
         toks = re.findall(r"[a-z0-9]+", t)
         core = [w for w in toks if len(w) >= 3 and w.isalpha() and w not in _UNITS]
         # A catalogue-file word used inline ("montavo dessert knife") has
@@ -1368,7 +1369,6 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
         if _dims:
             numtoks = [n for n in numtoks if not any(n in d for d in _dims)]
         t_ns = t.replace(" ", "")
-        brand_pref_l, file_pref_l, pref_words_l = _line_prefs(t)
         # BOQ lines carry the client's own PRODUCT label separate from the
         # spec blob appended into the term. Weak-tier candidates must anchor
         # in those label words — "Mobile Bar" once matched an Oil Can purely
