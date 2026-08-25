@@ -2425,3 +2425,8 @@ html[data-theme=dark] .sc-hist { color: #e5b95c; }
 .mp-card.mp-done .mp-label { color: #0F6E56; }
 .mp-card.mp-done .mp-track { background: #E1F5EE; }
 .mp-card.mp-done .mp-fill { background: #1D9E75; }
+.mp-btn { display: none; background: #1D9E75; color: #fff; border: none;
+          border-radius: 6px; padding: 5px 14px; font-size: 13px; font-weight: 600;
+          cursor: pointer; }
+.mp-btn:hover { background: #0F6E56; }
+.mp-card.mp-done .mp-btn { display: inline-block; }

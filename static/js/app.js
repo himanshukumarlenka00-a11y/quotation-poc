@@ -3015,14 +3015,18 @@ function updateMatchProgress(done, total, running) {
   document.getElementById('mp-fill').style.width = pct + '%';
   const lbl = box.querySelector('.mp-label');
   if (!running) {
+    // Stays green until the user presses Done — no auto-vanish.
     box.classList.add('mp-done');
     lbl.innerHTML = '✔ <strong>Matching complete</strong>';
-    setTimeout(() => { box.classList.add('mp-fading'); }, 4000);
-    setTimeout(() => { box.style.display = 'none'; box.classList.remove('mp-done', 'mp-fading'); }, 5200);
   } else {
     box.classList.remove('mp-done');
     lbl.innerHTML = '<span class="mp-spin">↻</span> <strong>Matching products…</strong>';
   }
+}
+
+function dismissMatchProgress() {
+  const box = document.getElementById('match-progress');
+  if (box) { box.style.display = 'none'; box.classList.remove('mp-done'); }
 }
 
 // Live progress for progressively-matched giant BOQs: poll /live, re-render
