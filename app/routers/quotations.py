@@ -86,10 +86,13 @@ def _llm_chat(client, messages, max_tokens, temperature):
                              if m.get("role") == "system" and m.get("content"))
         conv = [{"role": m["role"], "content": m["content"]}
                 for m in messages if m.get("role") in ("user", "assistant")]
-        kwargs = dict(model=ANTHROPIC_MODEL,
-                      # roomy cap so a brief think-first never truncates the
-                      # answer JSON (the caller parses the outer {...})
-                      max_tokens=max(max_tokens, 2048), messages=conv)
+        kwargs = dict(model=ANTHROPIC_MODEL, max_tokens=max(max_tokens, 1024),
+                      messages=conv,
+                      # These are bounded extraction/verify calls. Sonnet's
+                      # base judgment already far exceeds the old model here, so
+                      # adaptive thinking (on by default) only adds several
+                      # seconds PER call — a slow quote. Off = fast, still sharp.
+                      thinking={"type": "disabled"})
         if system:
             kwargs["system"] = system
         resp = client.messages.create(**kwargs)
