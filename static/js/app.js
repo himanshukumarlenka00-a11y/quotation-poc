@@ -3314,6 +3314,35 @@ function showAiUsage() {
   const row = (label, val, color) =>
     `<tr><td style="padding:8px 0;color:var(--muted,#8a8a99)">${label}</td>`
     + `<td style="padding:8px 0;text-align:right;font-weight:600;${color ? 'color:' + color : ''}">${val}</td></tr>`;
+  const daily = a.daily || [];
+  const dmax = Math.max(...daily.map(x => x.inr), 0.001);
+  let chart = '';
+  if (daily.length) {
+    const W = 320, H = 84, n = daily.length;
+    const bw = Math.min(40, (W / n) * 0.6);
+    const gap = (W - bw * n) / (n + 1);
+    const bars = daily.map((x, i) => {
+      const bh = Math.max(4, (x.inr / dmax) * (H - 14));
+      const bx = gap + i * (bw + gap), by = H - bh, last = i === n - 1;
+      const lbl = last
+        ? `<text x="${(bx + bw / 2).toFixed(1)}" y="${(by - 5).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="600" fill="#6b4ff0">&#8377;${x.inr}</text>`
+        : '';
+      return `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="4" fill="${last ? 'url(#aiBarGrad)' : '#d3caf3'}"><title>${x.d}: &#8377;${x.inr}</title></rect>${lbl}`;
+    }).join('');
+    chart = `
+      <div style="margin-top:18px;">
+        <div style="font-size:12px;color:var(--muted,#8a8a99);margin-bottom:10px;">Daily spend (last ${n} ${n === 1 ? 'day' : 'days'})</div>
+        <svg viewBox="0 0 ${W} ${H + 4}" width="100%" height="94" style="overflow:visible;">
+          <defs><linearGradient id="aiBarGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#8f74ff"/><stop offset="1" stop-color="#7c5cff"/></linearGradient></defs>
+          <line x1="0" y1="${H}" x2="${W}" y2="${H}" stroke="var(--line,#eee)" stroke-width="1"/>
+          ${bars}
+        </svg>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted,#8a8a99);margin-top:5px;">
+          <span>${daily[0].d}</span><span>peak &#8377;${dmax.toFixed(2)}/day</span><span>${daily[n - 1].d}</span>
+        </div>
+      </div>`;
+  }
   ov.innerHTML = `
     <div style="background:var(--card,#fff);color:var(--text,#1c1c28);border-radius:14px;
                 padding:22px 24px;max-width:430px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.28);">
@@ -3329,6 +3358,7 @@ function showAiUsage() {
         ${row('Sonnet calls', nf(a.calls))}
         ${row('Tokens used', nf(a.input_tokens) + ' in &middot; ' + nf(a.output_tokens) + ' out')}
       </table>
+      ${chart}
       <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line,#eee);
                   font-size:11.5px;color:var(--muted,#8a8a99);">
         Estimated from live token counts &middot; official balance in the

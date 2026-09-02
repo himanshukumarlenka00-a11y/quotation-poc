@@ -3474,12 +3474,22 @@ def dashboard(user: dict = Depends(get_current_user)):
                     (datetime.now().strftime("%Y-%m"),)).fetchone()
                 spent_m = mrow["it"] / 1e6 * ANTHROPIC_PRICE_IN + mrow["ot"] / 1e6 * ANTHROPIC_PRICE_OUT
                 cred = ANTHROPIC_CREDIT_USD or 0
+                # Daily spend (last 14 active days, oldest-first) for the graph.
+                drows = conn.execute(
+                    "SELECT substr(ts,1,10) d, COALESCE(SUM(input_tokens),0) it, "
+                    "COALESCE(SUM(output_tokens),0) ot FROM ai_usage "
+                    "GROUP BY d ORDER BY d DESC LIMIT 14").fetchall()
+                daily = [{"d": r["d"][5:],
+                          "inr": round((r["it"] / 1e6 * ANTHROPIC_PRICE_IN
+                                        + r["ot"] / 1e6 * ANTHROPIC_PRICE_OUT) * USD_INR, 2)}
+                         for r in reversed(drows)]
                 out["ai_usage"] = {
                     "spent_usd": round(spent, 4), "spent_inr": round(spent * USD_INR, 2),
                     "spent_month_usd": round(spent_m, 4), "spent_month_inr": round(spent_m * USD_INR, 2),
                     "credit_usd": cred, "remaining_usd": round(max(0.0, cred - spent), 3),
                     "pct_used": round(min(100.0, spent / cred * 100), 2) if cred else 0,
                     "calls": calls, "input_tokens": it, "output_tokens": ot,
+                    "daily": daily,
                 }
             except Exception:
                 out["ai_usage"] = None
