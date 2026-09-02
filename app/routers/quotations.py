@@ -5,7 +5,9 @@ from fastapi import APIRouter, Depends, Request, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from groq import Groq
-from app.config import limiter, GROQ_API_KEY_DEFAULT, CEREBRAS_API_KEY, CEREBRAS_MODEL, ANTHROPIC_MODEL, make_llm_client, server_error
+from app.config import (limiter, GROQ_API_KEY_DEFAULT, CEREBRAS_API_KEY, CEREBRAS_MODEL,
+                        ANTHROPIC_MODEL, make_llm_client, server_error,
+                        ANTHROPIC_CREDIT_USD, ANTHROPIC_PRICE_IN, ANTHROPIC_PRICE_OUT, USD_INR)
 from app.db import get_db
 from app.auth import get_current_user, require_role, _check_quote_access, log_action
 from app.matching import get_boq_context, get_feedback_context, generate_ref_no, get_latest_template
@@ -47,6 +49,29 @@ def smart_generate(request: Request, req: GenerateRequest, user: dict = Depends(
         import traceback
         raise server_error(e, "Request")
 
+def _record_ai_usage(model, input_tokens, output_tokens):
+    """Append one Claude call's token counts to the ai_usage table — feeds the
+    dashboard 'AI usage' tile. Best-effort and self-contained: it creates the
+    table if absent and swallows every error, so it can never disturb matching.
+    The table is tiny (a few rows per quote) and only weak lines ever call the
+    LLM, so the per-call insert is negligible."""
+    try:
+        c = get_db()
+        try:
+            c.execute("CREATE TABLE IF NOT EXISTS ai_usage ("
+                      "id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, model TEXT, "
+                      "input_tokens INTEGER DEFAULT 0, output_tokens INTEGER DEFAULT 0)")
+            c.execute("INSERT INTO ai_usage (ts, model, input_tokens, output_tokens) "
+                      "VALUES (?,?,?,?)",
+                      (datetime.now().isoformat(), model,
+                       int(input_tokens or 0), int(output_tokens or 0)))
+            c.commit()
+        finally:
+            c.close()
+    except Exception:
+        pass
+
+
 def _llm_chat(client, messages, max_tokens, temperature):
     """One LLM chat call. Claude (Anthropic) when the client is an Anthropic
     client — the primary, best-judgment path. Otherwise Groq, with a Cerebras
@@ -68,6 +93,12 @@ def _llm_chat(client, messages, max_tokens, temperature):
         if system:
             kwargs["system"] = system
         resp = client.messages.create(**kwargs)
+        try:
+            u = getattr(resp, "usage", None)
+            _record_ai_usage(ANTHROPIC_MODEL,
+                             getattr(u, "input_tokens", 0), getattr(u, "output_tokens", 0))
+        except Exception:
+            pass   # usage tracking is best-effort; never break a real request
         return "".join(b.text for b in resp.content
                        if getattr(b, "type", "") == "text")
     try:
@@ -3421,6 +3452,34 @@ def dashboard(user: dict = Depends(get_current_user)):
                 "SELECT a.action, a.target, a.created_at, u.name AS user_name "
                 "FROM audit_log a LEFT JOIN users u ON u.id=a.user_id "
                 "ORDER BY a.id DESC LIMIT 6")]
+            # AI usage tile: estimated Claude spend from logged token counts
+            # vs the starting credit. Admin-only — it is a cost figure. The
+            # real balance lives in the Anthropic console; this is the
+            # at-a-glance estimate (accurate to ~a rupee).
+            try:
+                conn.execute("CREATE TABLE IF NOT EXISTS ai_usage ("
+                             "id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, model TEXT, "
+                             "input_tokens INTEGER DEFAULT 0, output_tokens INTEGER DEFAULT 0)")
+                u = conn.execute("SELECT COALESCE(SUM(input_tokens),0) it, "
+                                 "COALESCE(SUM(output_tokens),0) ot, COUNT(*) n "
+                                 "FROM ai_usage").fetchone()
+                it, ot, calls = u["it"], u["ot"], u["n"]
+                spent = it / 1e6 * ANTHROPIC_PRICE_IN + ot / 1e6 * ANTHROPIC_PRICE_OUT
+                mrow = conn.execute(
+                    "SELECT COALESCE(SUM(input_tokens),0) it, COALESCE(SUM(output_tokens),0) ot "
+                    "FROM ai_usage WHERE substr(ts,1,7)=?",
+                    (datetime.now().strftime("%Y-%m"),)).fetchone()
+                spent_m = mrow["it"] / 1e6 * ANTHROPIC_PRICE_IN + mrow["ot"] / 1e6 * ANTHROPIC_PRICE_OUT
+                cred = ANTHROPIC_CREDIT_USD or 0
+                out["ai_usage"] = {
+                    "spent_usd": round(spent, 4), "spent_inr": round(spent * USD_INR, 2),
+                    "spent_month_usd": round(spent_m, 4), "spent_month_inr": round(spent_m * USD_INR, 2),
+                    "credit_usd": cred, "remaining_usd": round(max(0.0, cred - spent), 3),
+                    "pct_used": round(min(100.0, spent / cred * 100), 2) if cred else 0,
+                    "calls": calls, "input_tokens": it, "output_tokens": ot,
+                }
+            except Exception:
+                out["ai_usage"] = None
         return out
     finally:
         conn.close()

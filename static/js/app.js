@@ -391,6 +391,19 @@ function renderDashboard(d) {
     stats += stat('var(--pink-soft2)', '🧠', 'Learning',
                   d.learned + d.mappings,
                   `${d.learned} corrections · ${d.mappings} mappings`);
+    // AI usage — estimated Claude spend; click the tile for the full breakdown.
+    if (d.ai_usage) {
+      const a = d.ai_usage;
+      window._aiUsage = a;
+      stats += `<div class="dstat ai-usage-tile" onclick="showAiUsage()" title="Click for the full breakdown" style="cursor:pointer;">
+        <div class="dhead"><span class="dchip" style="background:var(--accent-soft2)">🤖</span>
+          <span class="dlbl">AI usage</span></div>
+        <div class="dval">₹${Number(a.spent_inr).toFixed(2)}</div>
+        <div class="dsub">≈ $${Number(a.spent_usd).toFixed(3)} of $${a.credit_usd} used</div>
+        ${meterbar(a.pct_used, '#7c5cff')}
+        <div style="font-size:11px;color:var(--muted);margin-top:5px;">${a.pct_used}% used · click for details</div>
+      </div>`;
+    }
   }
 
   // Live AI progress strip — updates itself every 20s while this tab is open.
@@ -3282,6 +3295,48 @@ function initRowDrag() {
       saveEdits(true);
     });
   });
+}
+
+// The dashboard AI-usage tile opens this breakdown on click. Estimated from
+// logged Sonnet token counts vs the starting credit; the console holds the
+// official balance. Built inline (no shared modal system in this app yet).
+function showAiUsage() {
+  const a = window._aiUsage;
+  if (!a) return;
+  const rem = (a.credit_usd || 0) - (a.spent_usd || 0);
+  const nf = n => Number(n || 0).toLocaleString('en-IN');
+  document.getElementById('ai-usage-modal')?.remove();
+  const ov = document.createElement('div');
+  ov.id = 'ai-usage-modal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(20,20,40,.45);display:flex;'
+    + 'align-items:center;justify-content:center;z-index:9999;';
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  const row = (label, val, color) =>
+    `<tr><td style="padding:8px 0;color:var(--muted,#8a8a99)">${label}</td>`
+    + `<td style="padding:8px 0;text-align:right;font-weight:600;${color ? 'color:' + color : ''}">${val}</td></tr>`;
+  ov.innerHTML = `
+    <div style="background:var(--card,#fff);color:var(--text,#1c1c28);border-radius:14px;
+                padding:22px 24px;max-width:430px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.28);">
+      <div style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:16px;margin-bottom:14px;">
+        <span>🤖</span> Claude Sonnet — AI usage
+        <span onclick="document.getElementById('ai-usage-modal').remove()"
+              style="margin-left:auto;cursor:pointer;color:var(--muted,#8a8a99);font-size:22px;line-height:1;">&times;</span>
+      </div>
+      <table style="width:100%;font-size:14px;border-collapse:collapse;">
+        ${row('Credit remaining', '&asymp; $' + rem.toFixed(3) + ' of $' + Number(a.credit_usd).toFixed(2), '#1e9e56')}
+        ${row('Spent this month', '&#8377;' + Number(a.spent_month_inr || 0).toFixed(2) + ' (~$' + Number(a.spent_month_usd || 0).toFixed(3) + ')')}
+        ${row('Spent total', '&#8377;' + Number(a.spent_inr).toFixed(2) + ' (~$' + Number(a.spent_usd).toFixed(3) + ')')}
+        ${row('Sonnet calls', nf(a.calls))}
+        ${row('Tokens used', nf(a.input_tokens) + ' in &middot; ' + nf(a.output_tokens) + ' out')}
+      </table>
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line,#eee);
+                  font-size:11.5px;color:var(--muted,#8a8a99);">
+        Estimated from live token counts &middot; official balance in the
+        <a href="https://console.anthropic.com/settings/billing" target="_blank"
+           style="color:#7c5cff;">Anthropic console</a>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
 }
 
 // Non-blocking replacement for alert(). The app had 18 of them: a native

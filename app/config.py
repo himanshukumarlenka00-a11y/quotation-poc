@@ -54,6 +54,16 @@ CEREBRAS_MODEL = os.environ.get("CEREBRAS_MODEL", "gpt-oss-120b")
 ANTHROPIC_API_KEY_DEFAULT = os.environ.get("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
 
+# For the dashboard "AI usage" tile: the app can't read the real Anthropic
+# balance with a normal API key, so it ESTIMATES spend from each call's token
+# counts × these per-1M prices, counted down from the starting credit. All
+# env-overridable so the figures track a model swap or a top-up without a code
+# change. Prices below are Claude Sonnet's ($/1M tokens); USD_INR is display-only.
+ANTHROPIC_CREDIT_USD = float(os.environ.get("ANTHROPIC_CREDIT_USD", "5"))
+ANTHROPIC_PRICE_IN = float(os.environ.get("ANTHROPIC_PRICE_IN", "2"))
+ANTHROPIC_PRICE_OUT = float(os.environ.get("ANTHROPIC_PRICE_OUT", "10"))
+USD_INR = float(os.environ.get("USD_INR", "88"))
+
 
 def make_llm_client():
     """The configured LLM client: Anthropic (Claude) when ANTHROPIC_API_KEY is
