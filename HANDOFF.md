@@ -1,5 +1,241 @@
 # HANDOFF — quotation-poc session state (2026-08-10)
 
+## Session 2026-09-01 — REAL PROBLEM FOUND (hallucination) + CLAUDE SONNET FIX BUILT (not deployed)
+
+Read this first. This session found the ACTUAL cause of the user's complaint
+and built the fix. The fix is IN THE WORKING TREE, uncommitted, NOT deployed.
+
+### THE REAL PROBLEM (not what we thought)
+User's actual pain: paste an Excel BOQ / search, and results are "not accurate,"
+sometimes "totally different" / hallucinating (ask X, get unrelated Y). This is
+WRONG MATCHES, not blanks (not_found). We spent a day on not_found first — most
+of that is genuinely-absent items (correct behaviour), a dead end for this.
+
+ROOT CAUSE, proven from prod logs (`journalctl -u quotegen`): 235× "LLM verify
+batch skipped: Error code: 429 - Rate limit reached ... tokens per day (TPD):
+Limit 200000" (model openai/gpt-oss-120b, Groq FREE tier). The LLM verify pass
+that CATCHES wrong picks gets rate-limited OFF once the 200k-tokens/day free cap
+is hit — one big BOQ exhausts it, then every quote that day ships UNVERIFIED and
+free-associated junk goes through. Logs show the hallucination directly (only
+caught when zero shared word): "Sticks"->"Chopstick Stand", "Gel 14-3D"->"Bridge
+Large", "Plisse"->"Classic Beer Plisner". App itself healthy (0 server errors).
+
+### THE FIX — Claude Sonnet integration (BUILT + TESTED, in working tree, UNCOMMITTED)
+Swapped the LLM layer to Claude Sonnet as primary, Groq auto-fallback, fully
+reversible. Files changed (git diff will show them):
+  - app/config.py       — ANTHROPIC_API_KEY_DEFAULT, ANTHROPIC_MODEL
+                          (default "claude-sonnet-5"), and make_llm_client():
+                          returns Anthropic client if ANTHROPIC_API_KEY set,
+                          else Groq if GROQ_API_KEY set, else None.
+  - app/routers/quotations.py — _llm_chat now dispatches by provider (detects
+                          Anthropic by client module); Claude branch splits out
+                          `system`, DROPS `temperature` (Sonnet 5 returns 400 on
+                          it), roomy max_tokens. All 7 Groq(api_key=...) sites +
+                          background workers now call make_llm_client().
+  - app/routers/master_table.py — same helper.
+  - requirements.txt    — added `anthropic>=0.40.0` (installed 1.2.0 locally).
+TESTED WITHOUT A KEY (scratchpad/test_llm_wiring.py, dummy key + faked call):
+routes to claude-sonnet-5, no temperature, system split, Groq fallback intact,
+no-key->None, full app imports (75 routes). NOTHING deployed; prod still on Groq.
+
+TO GO LIVE (needs the user's ANTHROPIC_API_KEY — buy $20 credit at
+console.anthropic.com, generate sk-ant-... , ~₹2/quote at their volume):
+  1. add ANTHROPIC_API_KEY=sk-ant-... to /etc/quotegen/env on the server
+  2. copy the 3 changed .py files + requirements to /opt/quotegen
+  3. /opt/quotegen/venv/bin/pip install anthropic   (server venv)
+  4. sudo systemctl restart quotegen
+  5. MEASURE: replay real BOQs and EYEBALL the picks for correctness (not just
+     that it runs) — see the replay method below; then confirm the "429 verify
+     skipped" log lines stop. To revert: unset ANTHROPIC_API_KEY, restart.
+Model is env-swappable: ANTHROPIC_MODEL=claude-haiku-4-5 for ~5x cheaper if
+Sonnet feels pricey; keep Sonnet for best judgment. Left Sonnet on default
+thinking (best judgment, a bit more cost) — tune to lower effort after measuring.
+CHEAPEST ALTERNATIVE if they don't want Claude: paid Groq "Dev" tier (billing
+at console.groq.com/settings/billing) removes the 200k cap with ZERO code change
+— fixes the rate-limit half but keeps the weaker model.
+
+### Diagnosis findings (measured on prod, read-only) — report artifact:
+https://claude.ai/code/artifact/cb676316-ab87-47e7-86e9-00e3da0cbf2a
+- not_found is ~75% GENUINELY ABSENT (furniture, katori/sigri/tiffin, galvanized
+  ware — out of the 14-catalogue range, correct). ~15-20% matcher-miss.
+- The 14 loaded catalogues ARE the intended master by design (user confirmed);
+  the ~120 files in E:\niewttdt\Master\ are raw archive, NOT to be imported.
+- Find-panel SUGGESTIONS already good (~90% surface the right product) — nothing
+  to improve. Name-fallback auto-match TESTED and REJECTED (traded blanks for
+  wrong picks: "Wok"->Soup Station). See memory [[name-fallback-unsafe]].
+
+### Master-data health audit (prod, 15,938 products)
+Commercially solid: no-price 170 (1%), no-HSN 5, no-cost 141 (1%), GST=0 15,
+no-brand 0. GAP: 9,453 (59%) have NO IMAGE (BONNA all 7,488, ARIANE 1,152) —
+USER SAID LEAVE IMAGES AS-IS, no action. Hygiene: 591 dirty names (newline/
+double-space, mostly NILKAMAL 298 + PM KITCHEN 191), 323 rows in 142 dup-name
+groups (mostly legit — same name, diff model code).
+
+### Dirty-name cleanup — TESTED on copy, BACKED UP, NOT APPLIED to prod
+Whitespace-only normalise (scratchpad/master_clean.py). On an isolated copy:
+591/591 cleaned, 0 unsafe (safety assert: non-whitespace chars must be
+identical), 0 rows lost. BACKUP made: /srv/quotegen-data/backups/
+quotations.pre-nameclean.bak (verified, 15,938 rows). PROD WRITE WAS BLOCKED by
+the auto-mode classifier — apply needs the user to allow the write or run it.
+Honest note: FTS already tokenises whitespace, so this mainly helps DISPLAY +
+exact-name paths, not FTS matching. Modest win.
+
+### REUSABLE TEST METHOD (how we measured everything, isolated from prod)
+Real client BOQs are saved on the server: /srv/quotegen-data/boq_sources/*.xls[x]
+(10 files). To replay one through the REAL matcher on an ISOLATED copy without
+touching prod: cp prod db + semantic_index.npz to /tmp/qg_baseline; cp -r
+/opt/quotegen/app to /tmp/qg_app (patch there, clear __pycache__); run with
+/opt/quotegen/venv, DATA_DIR=/tmp/qg_baseline APP_DIR=/tmp/qg_app, monkeypatch
+app.routers.quotations._llm_chat -> "" to neutralise LLM, call
+_resolve_master_matches(conn,[items],[],["3star"],object(),llm_verify=False).
+NEVER import the app against the live prod DB — import runs init_db() (db.py:117)
++ _bootstrap_admin() (auth.py:43). Scripts now carried in the repo at
+scripts/diagnostics/ (see its README.md): boq_rerun.py (THE real-BOQ replay),
+baseline_harness.py, suggest_quality.py, master_clean.py, master_audit.sql, etc.
+LESSON: judge a matcher change by CORRECTNESS (eyeball request->pick), never by
+not_found count alone — the name-fallback dropped the count but added wrong picks.
+
+### Access / infra state
+SSH works: `ssh -o BatchMode=yes melange@192.168.0.146` (key at ~/.ssh on THIS
+machine). Tailscale addr 100.94.230.77 works off-LAN (use it instead of
+192.168.0.x when not on office wifi). Prod: quotegen active, /health 200, app
+/opt/quotegen, db /srv/quotegen-data/quotations.db (15,938 products).
+git: branch restructure-auth-smart-import, 57+ commits ahead of origin, still
+UNPUSHED. The Sonnet integration is UNCOMMITTED on top of that — carry the
+FOLDER (not just git) to keep it, or commit it first.
+
+## Session 2026-08-31 — NEW MACHINE, local server revived, SERVER ACCESS RESTORED
+
+UPDATE (end of session): SSH access to the office server is BACK. User ran
+the append-key command with the correct melange password, so this machine's
+key (C:\Users\SMI\.ssh\id_ed25519) is now in melange@192.168.0.146's
+authorized_keys. Verified: `ssh -o BatchMode=yes melange@192.168.0.146`
+connects with NO password. Deploy path is open again.
+Prod verified live this session: service `quotegen` active, /health 200, app
+/opt/quotegen, prod db /srv/quotegen-data/quotations.db (29.9 MB, modified
+during the session — it's live). PROD PRODUCT COUNT IS 15,938, not the 51,938
+this doc claims below (that number is stale). The shipped prod semantic index
+(15,450 ids) matches THIS prod db closely — it was only mismatched vs the
+small local dev copy. Everything below about "SERVER ACCESS LOST" is now
+resolved; kept for the record of how it was fixed.
+
+
+
+Whole project was copied from the old PC (user `itzan`, drive `E:\rtk-bin`)
+to this one (user `SMI`, drive `E:\niewttdt\rtk-bin`). This session was spent
+getting local dev working again on the new box. NOTHING deployed — we can't
+reach the server (see below). No commits; git tree still `restructure-auth-
+smart-import`, 57 ahead of origin, unpushed, unchanged by this session.
+
+THE DOC BELOW IS STALE. It is dated 2026-08-10 but there are 136 commits
+after it (through 2026-08-26) that were never written up. Trust the code over
+this doc. Verified-still-open items from the old backlog:
+  - `.xls/.xlsx` price columns still don't parse into boq_price (needs one of
+    the actual failing files; an export WE generate round-trips fine). The
+    app now routes around it — price-less BOQs fall back to SMI/company
+    format (a124596, c2745c6).
+  - asList() guards only 2 of the many array-assuming loaders in app.js; the
+    rest still throw the whole page down on a lapsed session.
+Superseded, do NOT act on: the "400-row FTS pool cap" — _line_pool is now
+LIMIT 220 by design, compensated by brand/file preference pulls + a semantic
+embedding layer. The in-code comments still say "400"; that text is stale,
+the logic is not.
+
+### Machine migration — paths fixed (in-repo, safe)
+Every launcher/script still pointed at the old `E:\rtk-bin`. Repointed to
+`E:\niewttdt\rtk-bin`:
+  - run_local.ps1 (Set-Location)
+  - scripts/attribute_audit.py, scripts/variant_coverage_audit.py (sys.path)
+  - scripts/debug/{fix_gst,test_db,test_lookup}.py (sqlite3 path)
+  - .claude/launch.json — BUT the preview launcher reads the SESSION ROOT,
+    which is now E:\niewttdt (one level above rtk-bin). Created a NEW
+    E:\niewttdt\.claude\launch.json for it; the rtk-bin one is now a leftover.
+TRAP: `sed -i` silently no-ops on backslash Windows-path patterns in this
+shell (reports success, changes nothing). Forward-slash paths were fine.
+Edit backslash paths with a file edit, not sed — same family as the existing
+"RTK proxy corrupts piped grep" warning.
+
+### Python + venv revived
+This machine had NO Python/Node/sqlite3 (the python.exe on PATH is the MS
+Store stub). User installed Python 3.10.11 to
+C:\Users\SMI\AppData\Local\Programs\Python\Python310.
+The existing venv is intact (112 pkgs, cp310 wheels) — only its pyvenv.cfg
+pointed at the old `itzan` home. Repointed `home` + `version=3.10.11` and the
+venv came back without reinstalling anything. Verified: 17/17 pinned deps
+import, SQLite FTS5 available (3.40.1), app.main imports (75 routes).
+fastembed was MISSING from the venv (import is lazy + swallowed, so the app
+still boots, semantic layer just silently off) — `pip install fastembed`
+(0.8.0 + onnxruntime 1.23.2, bge-small model downloaded).
+RUN LOCAL: preview config "quotation-poc" (port 8000), or run_local.ps1.
+Server confirmed up: /health 200, login renders, assets v144/v154.
+
+### Semantic index rebuilt for the LOCAL db
+data/semantic_index.npz shipped in the copy was built against PRODUCTION
+(15,450 ids, range 71672–87121) — ZERO overlap with the local db's ids
+(6,134 rows, range 2192–12227), so semantic matching contributed nothing
+locally (no error, silent). Backed up the prod artifact to
+data/semantic_index.prod.npz, then rebuilt against local: 6,134 vecs in 115s,
+6,134/6,134 ids resolve. Spot-checked sane ("water jug" -> KMW water jugs,
+"chafing dish" -> AMAYDA chafing dishes). _load_index() reloads on mtime, no
+restart needed.
+
+### LOCAL DB is a small DEV copy, not prod
+6,134 products (prod = 51,938), 131 quotations, match_corrections EMPTY
+(prod had 66 real rows). Local matching WILL diverge from prod on anything
+catalogue-dependent. Biggest real quote for testing: QT-20260728-132711,
+704 items, ARIANE tableware, has_boq_pricing false.
+Admin accounts in the LOCAL db: #1 admin@local, #12
+himanshukumarlenka00@gmail.com. Passwords are bcrypt (unrecoverable) but a
+local dev db can have a hash written in directly if login is needed. Employee
+test login unchanged: emplyoee@melangeindia.in / 12345678.
+
+### SERVER ACCESS LOST — this is the blocker
+The box is UP and reachable from this PC (LAN 192.168.0.146:8443/health 200,
+Tailscale 100.94.230.77:8443/health 200; crm-server active on the tailnet).
+Host key still SHA256:4s71FMUiP+1JG7gRa455kwPi7Rhf3g48l2FzNfdgCUE — same box,
+not a rebuild. BUT no SSH: this PC has no ~/.ssh key at all (keys live in the
+Windows profile, C:\Users\itzan\.ssh on the old machine — NOT in the copied
+E:\ folder, so they didn't come across). Server offers publickey,password;
+`Permission denied (publickey,password)`. The password the user has is
+rejected by the server (do NOT keep retrying — fail2ban). Tailscale SSH is
+NOT enabled (plain sshd only). No other account exists on the box.
+Old deploy history proves the old PC had a working key (BatchMode=yes calls
+succeeded). So the key isn't lost, it's on the itzan PC.
+TO RECONNECT (any one):
+  1. Copy C:\Users\itzan\.ssh\id_ed25519 + .pub from the OLD pc into
+     C:\Users\SMI\.ssh\ — instant, no password, nothing changes on server.
+  2. Have someone who can already get in add THIS machine's new public key
+     (generated this session, at C:\Users\SMI\.ssh\id_ed25519.pub:
+     ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGWXHFrLoxm1xWHM9ceBQfwYBznVGQAdFn18ESj9v5XU SMI-quotegen-DESKTOP-BAJ97JQ)
+     to melange's ~/.ssh/authorized_keys — or give the real password.
+  3. Console access to the box, add the key there.
+Server layout (from deploy history): app /opt/quotegen, prod db
+/srv/quotegen-data/quotations.db, service `quotegen` (sudo systemctl restart),
+venv /opt/quotegen/venv. Deploy = tar-pipe to /opt/quotegen, restart if .py
+changed. ASK BEFORE EVERY SERVER-CHANGING COMMAND still stands.
+
+### In flight when session paused: Current Quote (#sec-result) density
+User picked "table density / readability" for the Current Quote screen.
+Problem is real and data-driven: renderResult renders up to 15 cols (20 with
+Cost&margin on) and scrolls sideways. The widest cols are DUPLICATE data —
+`product` already contains BRAND-MODEL- prefix + the spec text, sitting right
+beside the separate Brand, Model and Specification cols. Mocked (visualize) a
+15->8 col layout: fold brand/model/HSN into the product cell as a meta line,
+strip the redundant prefix from the display name (DISPLAY ONLY — leave the
+`product` field untouched so exports/corrections/matcher are unaffected; fall
+back to full string when the prefix doesn't cleanly match), trim spec to the
+non-redundant tail, collapse 3star/4star/Price into one price cell, merge
+GST%+GST Val. Awaiting user's yes on direction before writing code.
+renderItemRow is at app.js:3118 (140 lines), renderResult at :3860 (184
+lines), called from 20+ sites; colSpan/trailingCols/labelColspan math must
+stay in sync or the totals footer misaligns (a gap was measured this way
+before). Check print/PDF too.
+Also found, not yet fixed: index.html:404 not-found-banner has TWO style
+attrs (2nd ignored -> no bottom margin). And the whole items table still uses
+emoji glyphs (Switch/Add Image/size-note/history/tier ticks/etc.) against the
+standing "emoji render as tofu on Windows, use inline SVG" rule — the bottom
+action buttons already use SVG, the table doesn't.
+
 ## Session 2026-08-10 (24 commits, f6878c5..8f33e05, all deployed + pushed)
 
 ### "tray" solved (540aafd) — 3 variants -> 465

@@ -1,6 +1,7 @@
 fastapi==0.115.0
 uvicorn==0.30.6
 groq==0.37.1
+anthropic>=0.40.0
 pandas==2.2.3
 openpyxl==3.1.5
 xlrd==2.0.1

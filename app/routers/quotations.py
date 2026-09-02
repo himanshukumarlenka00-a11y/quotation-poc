@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Request, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from groq import Groq
-from app.config import limiter, GROQ_API_KEY_DEFAULT, CEREBRAS_API_KEY, CEREBRAS_MODEL, server_error
+from app.config import limiter, GROQ_API_KEY_DEFAULT, CEREBRAS_API_KEY, CEREBRAS_MODEL, ANTHROPIC_MODEL, make_llm_client, server_error
 from app.db import get_db
 from app.auth import get_current_user, require_role, _check_quote_access, log_action
 from app.matching import get_boq_context, get_feedback_context, generate_ref_no, get_latest_template
@@ -47,14 +47,31 @@ def smart_generate(request: Request, req: GenerateRequest, user: dict = Depends(
         import traceback
         raise server_error(e, "Request")
 
-def _llm_chat(groq_client, messages, max_tokens, temperature):
-    """One LLM chat call: Groq first; if Groq is rate-limited and a Cerebras
-    key is configured, the same prompt goes to Cerebras (OpenAI-compatible,
-    plain stdlib HTTP — no extra dependency). Returns the content string.
-    Cerebras gets a higher token budget because gpt-oss spends some of it on
-    reasoning before the answer."""
+def _llm_chat(client, messages, max_tokens, temperature):
+    """One LLM chat call. Claude (Anthropic) when the client is an Anthropic
+    client — the primary, best-judgment path. Otherwise Groq, with a Cerebras
+    HTTP fallback when Groq answers 429. Returns the content string.
+
+    The OpenAI-style `messages` (with `system` role entries) and `temperature`
+    are the Groq/Cerebras shape; the Claude branch adapts them — system becomes
+    a separate field, and `temperature` is dropped (the Sonnet/Opus 5 family
+    rejects it with a 400). Both providers take the same call sites unchanged."""
+    if client is not None and type(client).__module__.split(".")[0] == "anthropic":
+        system = "\n\n".join(m["content"] for m in messages
+                             if m.get("role") == "system" and m.get("content"))
+        conv = [{"role": m["role"], "content": m["content"]}
+                for m in messages if m.get("role") in ("user", "assistant")]
+        kwargs = dict(model=ANTHROPIC_MODEL,
+                      # roomy cap so a brief think-first never truncates the
+                      # answer JSON (the caller parses the outer {...})
+                      max_tokens=max(max_tokens, 2048), messages=conv)
+        if system:
+            kwargs["system"] = system
+        resp = client.messages.create(**kwargs)
+        return "".join(b.text for b in resp.content
+                       if getattr(b, "type", "") == "text")
     try:
-        r = groq_client.chat.completions.create(
+        r = client.chat.completions.create(
             model="openai/gpt-oss-120b", messages=messages,
             max_tokens=max_tokens, temperature=temperature)
         return r.choices[0].message.content
@@ -85,11 +102,9 @@ def _llm_chat(groq_client, messages, max_tokens, temperature):
 
 
 def _smart_generate(req: GenerateRequest, user: dict):
-    api_key = os.environ.get("GROQ_API_KEY", "") or GROQ_API_KEY_DEFAULT
-    if not api_key:
-        raise HTTPException(400, "Groq API key required")
-
-    groq_client = Groq(api_key=api_key)
+    groq_client = make_llm_client()
+    if groq_client is None:
+        raise HTTPException(400, "No LLM API key configured (set ANTHROPIC_API_KEY or GROQ_API_KEY)")
 
     # Step 1: read the request. A plainly list-shaped prompt is parsed here and
     # never reaches the LLM — no tokens, no latency, no rate limit. Anything
@@ -2446,8 +2461,8 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
         raise HTTPException(400, "Only .xls/.xlsx files allowed")
 
     api_key = os.environ.get("GROQ_API_KEY", "") or GROQ_API_KEY_DEFAULT
-    if not api_key:
-        raise HTTPException(400, "Groq API key required")
+    if make_llm_client() is None:
+        raise HTTPException(400, "No LLM API key configured (set ANTHROPIC_API_KEY or GROQ_API_KEY)")
 
     suffix = ".xlsx" if file.filename.endswith(".xlsx") else ".xls"
     fd, tmp_path = tempfile.mkstemp(suffix=suffix)
@@ -2529,7 +2544,7 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
     tiers_requested = [t.strip() for t in (tiers_str or "").split(",") if t.strip() in ("3star", "4star")]
     tiers = tiers_requested or ["3star"]
 
-    groq_client = Groq(api_key=api_key)
+    groq_client = make_llm_client()
     conn = get_db()
 
     # Progressive matching for GIANT BOQs: resolve the first chunk inline so
@@ -2592,7 +2607,7 @@ def _match_chunk_worker(payload):
     offset, chunk, tiers, api_key = payload
     conn = get_db()
     try:
-        groq_client = Groq(api_key=api_key) if api_key else None
+        groq_client = make_llm_client()
         new_items, nf = _resolve_master_matches(
             conn, chunk, [], tiers, groq_client, prompt="", llm_verify=False)
         clean = [{k: v for k, v in x.items() if not k.startswith("_")}
@@ -2655,7 +2670,7 @@ def _bg_match_rest(qid, rest, tiers, start_idx, api_key, chunk_size):
         job = _MATCH_JOBS.get(qid)
         if job:
             job["phase"] = "verifying"
-        groq_client = Groq(api_key=api_key) if api_key else None
+        groq_client = make_llm_client()
         if groq_client:
             conn = get_db()
             try:
@@ -2751,7 +2766,7 @@ def rematch_quotation(qid: int, user: dict = Depends(get_current_user)):
             it["qty"] = int(old_items[i]["qty"])
 
     api_key = os.environ.get("GROQ_API_KEY", "") or GROQ_API_KEY_DEFAULT
-    groq_client = Groq(api_key=api_key) if api_key else None
+    groq_client = make_llm_client()
     tiers = [t for t in (data.get("tiers") or ["3star"]) if t in ("3star", "4star")] or ["3star"]
 
     # Giant quotes re-match PROGRESSIVELY like uploads: the old synchronous

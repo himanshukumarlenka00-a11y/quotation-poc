@@ -44,6 +44,30 @@ GROQ_API_KEY_DEFAULT = os.environ.get("GROQ_API_KEY", "")
 CEREBRAS_API_KEY = os.environ.get("CEREBRAS_API_KEY", "")
 CEREBRAS_MODEL = os.environ.get("CEREBRAS_MODEL", "gpt-oss-120b")
 
+# Primary LLM = Claude (Anthropic) when ANTHROPIC_API_KEY is set — the best
+# judgment for product-match verification, and no free-tier daily token cap
+# (the cap on the old Groq free tier was silently skipping the verify pass
+# and letting wrong matches through). Falls back to Groq automatically when
+# only a Groq key is present, so nothing breaks before the Anthropic key is
+# added, and unsetting ANTHROPIC_API_KEY reverts cleanly. Key lives in
+# /etc/quotegen/env on the server, never in the repo.
+ANTHROPIC_API_KEY_DEFAULT = os.environ.get("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
+
+
+def make_llm_client():
+    """The configured LLM client: Anthropic (Claude) when ANTHROPIC_API_KEY is
+    set, else Groq when GROQ_API_KEY is set, else None. _llm_chat dispatches on
+    the client's provider (detected from its module), so switching providers is
+    only a matter of which key is present in the environment — no code change."""
+    if ANTHROPIC_API_KEY_DEFAULT:
+        from anthropic import Anthropic
+        return Anthropic(api_key=ANTHROPIC_API_KEY_DEFAULT)
+    if GROQ_API_KEY_DEFAULT:
+        from groq import Groq
+        return Groq(api_key=GROQ_API_KEY_DEFAULT)
+    return None
+
 # Self-registration is only allowed for company email addresses — keeps
 # random visitors from creating themselves an account if this is ever
 # reachable off the internal network. Configurable via env in case the

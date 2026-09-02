@@ -954,8 +954,7 @@ async def check_boq_coverage(file: UploadFile = File(...),
     # importing each other at startup.
     from app.parser import parse_boq_excel
     from app.routers.quotations import _resolve_master_matches
-    from app.config import GROQ_API_KEY_DEFAULT
-    from groq import Groq
+    from app.config import make_llm_client
 
     suffix = ".xlsx" if file.filename.endswith(".xlsx") else ".xls"
     fd, tmp_path = tempfile.mkstemp(suffix=suffix)
@@ -1018,11 +1017,10 @@ async def check_boq_coverage(file: UploadFile = File(...),
             r.get("specification") or "") if p and p.strip()),
     } for r in src]
 
-    api_key = os.environ.get("GROQ_API_KEY", "") or GROQ_API_KEY_DEFAULT
     conn = get_db()
     try:
         matched, _ = _resolve_master_matches(
-            conn, extracted, [], ["3star"], Groq(api_key=api_key), prompt="")
+            conn, extracted, [], ["3star"], make_llm_client(), prompt="")
     finally:
         conn.close()
 
