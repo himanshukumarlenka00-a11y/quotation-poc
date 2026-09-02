@@ -12,6 +12,11 @@ exports/
 data/images/
 # DB is included for Railway deployment (contains catalog data)
 
+# Semantic search index — a local artifact rebuilt from the catalog DB on
+# startup; large binary, machine-specific, never committed.
+data/semantic_index.npz
+data/semantic_index.prod.npz
+
 # Session signing key — committing this would let anyone forge a login cookie
 data/.session_secret
 
