@@ -62,6 +62,11 @@ ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
 ANTHROPIC_CREDIT_USD = float(os.environ.get("ANTHROPIC_CREDIT_USD", "5"))
 ANTHROPIC_PRICE_IN = float(os.environ.get("ANTHROPIC_PRICE_IN", "2"))
 ANTHROPIC_PRICE_OUT = float(os.environ.get("ANTHROPIC_PRICE_OUT", "10"))
+# Spend that hit the account OUTSIDE the app (e.g. diagnostic runs against
+# isolated DB copies) and so was never logged per-call. Added to the lifetime
+# total so "credit remaining" matches the real console balance instead of
+# drifting above it. A fixed reconciliation constant; env-overridable.
+ANTHROPIC_SPENT_OFFSET_USD = float(os.environ.get("ANTHROPIC_SPENT_OFFSET_USD", "0"))
 USD_INR = float(os.environ.get("USD_INR", "88"))
 
 

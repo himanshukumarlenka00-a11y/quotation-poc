@@ -7,7 +7,8 @@ from pydantic import BaseModel, Field
 from groq import Groq
 from app.config import (limiter, GROQ_API_KEY_DEFAULT, CEREBRAS_API_KEY, CEREBRAS_MODEL,
                         ANTHROPIC_MODEL, make_llm_client, server_error,
-                        ANTHROPIC_CREDIT_USD, ANTHROPIC_PRICE_IN, ANTHROPIC_PRICE_OUT, USD_INR)
+                        ANTHROPIC_CREDIT_USD, ANTHROPIC_PRICE_IN, ANTHROPIC_PRICE_OUT,
+                        ANTHROPIC_SPENT_OFFSET_USD, USD_INR)
 from app.db import get_db
 from app.auth import get_current_user, require_role, _check_quote_access, log_action
 from app.matching import get_boq_context, get_feedback_context, generate_ref_no, get_latest_template
@@ -3500,6 +3501,11 @@ def dashboard(user: dict = Depends(get_current_user)):
                     "FROM ai_usage WHERE substr(ts,1,7)=?",
                     (datetime.now().strftime("%Y-%m"),)).fetchone()
                 spent_m = mrow["it"] / 1e6 * ANTHROPIC_PRICE_IN + mrow["ot"] / 1e6 * ANTHROPIC_PRICE_OUT
+                # Fold in spend made outside the app (isolated-copy testing etc.,
+                # never logged per-call) into the LIFETIME total and remaining so
+                # they match the real console balance; the monthly figure stays
+                # the tool's own this-month usage.
+                spent += ANTHROPIC_SPENT_OFFSET_USD or 0
                 cred = ANTHROPIC_CREDIT_USD or 0
                 # Daily spend (last 14 active days, oldest-first) for the graph.
                 drows = conn.execute(
