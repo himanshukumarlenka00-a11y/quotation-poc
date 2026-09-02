@@ -1,5 +1,79 @@
 # HANDOFF — quotation-poc session state (2026-08-10)
 
+## Session 2026-09-02 — WORD-COLLISION FIX DEPLOYED + LIVE-VERIFIED; dashboard balance reconciled
+
+Continues 2026-09-01 (Sonnet was deployed live earlier). This session fixed the
+remaining wrong-match CLASS, deployed it, proved it LIVE in the user's browser,
+reconciled the AI-usage balance, and cleaned the repo. All pushed.
+
+### THE BUG FIXED — word-collision wrong matches ("Iron" -> "Cast Iron Round Casserole")
+A short request whose word(s) are fully present in a LONGER product name of a
+DIFFERENT type shipped confidently WITH A PRICE. Root cause: the Sonnet
+meaning-check (`_llm_verify_matches`) only fired when a match scored < 1000;
+"Iron" fully covered a longer name, scored 1017, so it SKIPPED the check. This is
+a whole CLASS, not one product (steel, brass, corer, deep, square, gold, milk...).
+
+FIX (app/routers/quotations.py, commit 9c98525): added `_sig_words()` +
+`_needs_verify(it)`. The meaning-check now ALSO fires on a THIN weak-tier match —
+request has 1-2 significant words AND the matched name has >=2 MORE significant
+words — regardless of score. Both trigger sites (the central `_llm_verify_matches`
+selector and the llm_verify=False else-branch that attaches llm_cands) call
+`_needs_verify`. It reads the ORIGINAL request via req_raw/_req_raw/requested (NOT
+`product`, which is overwritten with the matched name).
+
+### MEASURED (isolated copy, read-only, Sonnet on) — the fix is SURGICAL
+Test pattern: cp prod DB + semantic_index.npz to a /tmp copy; APP_DIR=/opt/quotegen
+DATA_DIR=/tmp/copy; env from /etc/quotegen/env via sudo; stub `_llm_chat` for
+zero-cost deterministic runs or use the real client for the meaning-check. NEVER
+run bulk against the live prod DB (isolated copies keep prod ai_usage clean).
+- Full catalogue vocabulary (1443 real words): fix changes only 18 matches. Sonnet
+  on those 18: iron + corer REJECTED (real wrong matches), every genuine type match
+  kept. ~₹1.
+- ALL 11,342 distinct real BOQ request lines (boq_items.product): fix changes only
+  15 (0.13%): 12 kept, 3 lateral same-type switches, 0 regressions.
+- Broad meaning-check over all 1443 words: rejected 680 / switched 91 / kept 666
+  (most rejects are non-product fragments correctly refused; ~30 clean real-word
+  wrong matches caught — iron is one of a CLASS). ~₹41 (isolated, off the prod tile).
+
+### DEPLOYED + LIVE-VERIFIED
+Deployed to /opt/quotegen, `sudo systemctl restart quotegen`. Verified LIVE in the
+user's own browser: BOQ line "Iron 10" -> "Nothing matched. No quotation was saved."
+Server proof: POST /api/smart-generate at 17:27:03 + 3 fresh claude-sonnet-5 rows
+in prod ai_usage (271/10 tokens each) = the meaning-check firing and answering
+"none". Backup: /opt/quotegen/app/routers/quotations.py.bak-20260902-155539.
+
+### AI-usage dashboard balance reconciled to the real console (commit 00fe0b4)
+Dashboard ESTIMATES remaining = $5 - (spend from prod ai_usage tokens); a normal
+API key can't read the real Anthropic balance. Today's isolated-copy testing spent
+~$0.50 of real credit that logged to throwaway copies, NOT prod, so the tile drifted
+above the console ($4.67 shown vs $4.17 real). Added ANTHROPIC_SPENT_OFFSET_USD
+(app/config.py, env, default 0): a fixed reconciliation for untracked external spend,
+folded into the LIFETIME total + remaining only (monthly stays the tool's own usage).
+Prod env set ANTHROPIC_SPENT_OFFSET_USD=0.503 -> dashboard now reads remaining
+$4.170 / total $0.83, matching the console. Backups: config.py.bak-* + a 2nd
+quotations.py.bak-* (same timestamp).
+
+### Repo cleanup (commit 24bc3cc)
+Reverted stray local changes (two scripts had a STALE `E:/niewttdt/` path; a
+run_local.ps1 machine path; ~12KB of dev-DB runtime noise — prod DB is separate on
+the server, untouched). Added data/semantic_index*.npz to .gitignore (regenerated
+from the catalog DB on startup). Working tree clean.
+
+### STATE / OPEN ITEMS (next session start here)
+- Branch: restructure-auth-smart-import. Pushed to
+  github.com/himanshukumarlenka00-a11y/quotation-poc — 9c98525, 00fe0b4, 24bc3cc
+  (+ earlier 48cfa84, e82bf69, 7274e33). Push works (creds cached; git binary at
+  C:\Program Files\Git\cmd\git.exe; use GIT_TERMINAL_PROMPT=0 to fail fast).
+- OPEN — API KEY ROTATION (pending user, NOT done): the sk-ant-...Upas... key was
+  pasted in chat earlier — treat as compromised. User must create a new key + revoke
+  the old one in the console, then on the server:
+  `sudo sed -i 's|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=NEW|' /etc/quotegen/env`
+  then Claude restarts + verifies. Claude must NOT write the key value itself.
+- Optional: merge branch to main; delete /opt/quotegen/**/*.bak-* once deploy proven.
+- Server: melange@192.168.0.146 (passwordless sudo), prod data /srv/quotegen-data.
+  Real Anthropic balance $4.17 of $5 as of this session. Memory:
+  [[word-collision-meaning-check-fix]].
+
 ## Session 2026-09-01 — REAL PROBLEM FOUND (hallucination) + CLAUDE SONNET FIX BUILT (not deployed)
 
 Read this first. This session found the ACTUAL cause of the user's complaint
