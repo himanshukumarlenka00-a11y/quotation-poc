@@ -804,6 +804,36 @@ def _llm_demote_placeholder(it):
 _LLM_WEAK = {"name", "name+spec", "rname", "part", "spec", "sem"}
 
 
+def _sig_words(text):
+    """Significant words of a request or product name: alphabetic, 3+
+    letters, not a bare unit token. Used to gauge how much of a product
+    NAME the request actually accounts for."""
+    return [w for w in re.findall(r"[a-z]+", (text or "").lower())
+            if len(w) >= 3 and w not in _UNITS]
+
+
+def _needs_verify(it):
+    """Should this line get the LLM meaning-check? Yes for a weak-tier AI
+    match that is EITHER low-scoring (the original rule) OR a thin
+    word-collision: a short request (1-2 significant words) matched to a
+    much longer product name it barely accounts for. That second case is
+    how "iron" landed on "Cast Iron Round Casserole" — the one request word
+    is fully present, so the match scored just over the old 1000 cutoff and
+    skipped the check, yet a casserole is not an iron. Detailed multi-word
+    lines (the common case) never trip the thin rule, so cost barely moves."""
+    vs = it.get("_variants") or []
+    if not (vs and vs[0].get("_tier") in _LLM_WEAK):
+        return False
+    v0 = vs[0]
+    if (v0.get("_score") or 0) < 1000:
+        return True
+    req = (it.get("req_raw") or it.get("_req_raw")
+           or it.get("requested") or it.get("product") or "")
+    req_w = _sig_words(req)
+    name_w = _sig_words(v0.get("product") or "")
+    return bool(req_w and len(req_w) <= 2 and len(name_w) - len(req_w) >= 2)
+
+
 def _llm_cands_of(it):
     return (it.get("llm_cands") or (it.get("_variants") or [])[:5])
 
@@ -825,9 +855,7 @@ def _llm_verify_matches(groq_client, items, batch=20, paced=False):
         if it.get("llm_cands"):
             idxs.append(i)
             continue
-        vs = it.get("_variants") or []
-        if vs and vs[0].get("_tier") in _LLM_WEAK \
-                and (vs[0].get("_score") or 0) < 1000:
+        if _needs_verify(it):
             idxs.append(i)
     if not idxs:
         return
@@ -2454,8 +2482,7 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
             if it.get("not_in_catalog") or it.get("matched_by") != "ai":
                 continue
             vs = it.get("_variants") or []
-            if vs and vs[0].get("_tier") in _LLM_WEAK \
-                    and (vs[0].get("_score") or 0) < 1000:
+            if _needs_verify(it):
                 it["llm_cands"] = [
                     {k: v.get(k) for k in
                      ("product", "model_no", "brand", "specification",
