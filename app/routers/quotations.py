@@ -1,4 +1,4 @@
-import os, re, json, base64, tempfile, threading, time
+import os, re, json, base64, tempfile, threading, time, hashlib
 import concurrent.futures
 from pathlib import Path
 from datetime import datetime
@@ -852,6 +852,52 @@ def _llm_cands_of(it):
     return (it.get("llm_cands") or (it.get("_variants") or [])[:5])
 
 
+def _verdict_cache_lookup(conn, keys):
+    """{cache_key: verdict} for phrase+candidate keys the AI already decided in
+    an EARLIER quote (any file, same or different name). A miss just means a
+    fresh call — best-effort, never fatal."""
+    if not keys:
+        return {}
+    out = {}
+    try:
+        conn.execute("CREATE TABLE IF NOT EXISTS ai_verdict_cache ("
+                     "cache_key TEXT PRIMARY KEY, phrase TEXT, verdict TEXT, "
+                     "created_at TEXT, last_used TEXT)")
+        kl = list(keys)
+        for i in range(0, len(kl), 400):
+            chunk = kl[i:i + 400]
+            ph = ",".join("?" * len(chunk))
+            for row in conn.execute(
+                    f"SELECT cache_key, verdict FROM ai_verdict_cache "
+                    f"WHERE cache_key IN ({ph})", chunk):
+                out[row[0]] = row[1]
+    except Exception as e:
+        print(f"verdict cache lookup skipped (non-fatal): {e}")
+    return out
+
+
+def _verdict_cache_store(conn, entries):
+    """Persist freshly-decided verdicts: entries = [(cache_key, phrase, verdict)].
+    Only real verdicts are kept, so a repeat reuses them instead of paying for
+    the AI again. Best-effort."""
+    rows = [(k, (p or "")[:120], v) for k, p, v in entries if v]
+    if not rows:
+        return
+    try:
+        now = datetime.now().isoformat()
+        conn.execute("CREATE TABLE IF NOT EXISTS ai_verdict_cache ("
+                     "cache_key TEXT PRIMARY KEY, phrase TEXT, verdict TEXT, "
+                     "created_at TEXT, last_used TEXT)")
+        conn.executemany(
+            "INSERT INTO ai_verdict_cache (cache_key, phrase, verdict, created_at, "
+            "last_used) VALUES (?,?,?,?,?) ON CONFLICT(cache_key) DO UPDATE SET "
+            "verdict=excluded.verdict, last_used=excluded.last_used",
+            [(k, p, v, now, now) for k, p, v in rows])
+        conn.commit()
+    except Exception as e:
+        print(f"verdict cache store skipped (non-fatal): {e}")
+
+
 def _llm_verify_matches(groq_client, items, batch=20, paced=False):
     """Ask the LLM, for each WEAK-evidence match, which of the line's own
     top candidates really is the requested product — or none. Weak means
@@ -886,6 +932,27 @@ def _llm_verify_matches(groq_client, items, batch=20, paced=False):
         if k not in verdict_cache:
             verdict_cache[k] = None
             uniq.append(i)
+
+    # Persistent verdict cache: a phrase+candidate set the AI already ruled on
+    # in an earlier quote (regardless of the file's name) reuses that answer
+    # here instead of paying for the call again. Only the genuinely-new phrases
+    # (`fresh`) go to the AI below.
+    vkey = {i: hashlib.sha1(repr(_key(items[i])).encode("utf-8")).hexdigest()
+            for i in uniq}
+    _cconn = None
+    try:
+        _cconn = get_db()
+        _cached = _verdict_cache_lookup(_cconn, set(vkey.values()))
+    except Exception:
+        _cached = {}
+    fresh = []
+    for i in uniq:
+        cv = _cached.get(vkey[i])
+        if cv:
+            verdict_cache[_key(items[i])] = str(cv or "").strip().upper()
+        else:
+            fresh.append(i)
+    uniq = fresh
 
     chunks = [uniq[start:start + batch] for start in range(0, len(uniq), batch)]
 
@@ -938,6 +1005,18 @@ def _llm_verify_matches(groq_client, items, batch=20, paced=False):
         for n, i in enumerate(chunk, 1):
             verdict_cache[_key(items[i])] = \
                 str(verdicts.get(str(n), "") or "").strip().upper()
+
+    # Persist the just-decided verdicts so the next upload reuses them for free.
+    if _cconn is not None:
+        try:
+            _verdict_cache_store(_cconn, [
+                (vkey[i],
+                 (items[i].get("req_raw") or items[i].get("_req_raw")
+                  or items[i].get("requested") or ""),
+                 verdict_cache.get(_key(items[i])))
+                for i in fresh])
+        finally:
+            _cconn.close()
 
     for i in idxs:
         it = items[i]
