@@ -3083,7 +3083,10 @@ async function generateFromBoqFile() {
       pollLiveMatching(data.id, status);
     } else {
       const nf = (data.not_found || []).length;
-      status.innerHTML = `<div class="alert alert-success">✅ Quotation ready — ${(data.items||[]).length} item(s) matched.${nf ? ` ⚠️ ${nf} not found.` : ''}</div>`
+      const reused = data.reused_from
+        ? `<div class="alert alert-info">♻ Reused your earlier match for this file (${data.reused_from}) — no re-matching, prices refreshed from the catalogue.</div>` : '';
+      status.innerHTML = reused
+        + `<div class="alert alert-success">✅ Quotation ready — ${(data.items||[]).length} item(s) matched.${nf ? ` ⚠️ ${nf} not found.` : ''}</div>`
         + renderFileTypeNotice(data.file_type, 'client_boq');
     }
   } catch (e) {

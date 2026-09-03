@@ -2733,6 +2733,64 @@ def smart_generate_from_boq(
         raise server_error(e, "Request")
 
 
+def _find_prior_quote(conn, source_file):
+    """The most recent COMPLETE quotation generated from this EXACT file (matched
+    by content hash, not name), or None. Complete = no line still 'pending', so
+    a half-matched giant BOQ is never reused."""
+    if not source_file:
+        return None
+    try:
+        rows = conn.execute(
+            "SELECT items_json FROM quotations "
+            "WHERE json_extract(items_json,'$.source_file')=? "
+            "ORDER BY id DESC LIMIT 10", (source_file,)).fetchall()
+    except Exception:
+        return None
+    for r in rows:
+        try:
+            d = json.loads(r["items_json"])
+        except Exception:
+            continue
+        items = d.get("items", [])
+        if items and not any(it.get("matched_by") == "pending" for it in items):
+            return d
+    return None
+
+
+def _refresh_item_prices(conn, items, tiers):
+    """Update each matched line's tier prices + price-per-pc from the CURRENT
+    master table, so a reused quote never shows stale numbers. Best-effort per
+    line — a product since removed from the catalogue keeps its last price."""
+    try:
+        price_map = {}
+        for r in conn.execute(
+                "SELECT product, original_model, price_3star, price_3star_usd, "
+                "price_4star, price_4star_usd, cost, gst_pct, hsn_code "
+                "FROM master_products"):
+            k = ((r["product"] or "").strip().lower(),
+                 (r["original_model"] or "").strip().lower())
+            price_map.setdefault(k, r)
+    except Exception:
+        return
+    pf = "price_4star" if (tiers or ["3star"])[0] == "4star" else "price_3star"
+    for it in items:
+        if it.get("not_in_catalog"):
+            continue
+        m = price_map.get(((it.get("product") or "").strip().lower(),
+                           (it.get("model_no") or "").strip().lower()))
+        if not m:
+            continue
+        it["price_3star"] = float(m["price_3star"] or 0)
+        it["price_3star_usd"] = float(m["price_3star_usd"] or 0)
+        it["price_4star"] = float(m["price_4star"] or 0)
+        it["price_4star_usd"] = float(m["price_4star_usd"] or 0)
+        it["cost"] = float(m["cost"] or 0)
+        it["gst_pct"] = float(m["gst_pct"] or 18)
+        if m["hsn_code"]:
+            it["hsn_code"] = m["hsn_code"]
+        it["price_per_pc"] = float(m[pf] or 0)
+
+
 def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
                              user: dict, sheets_str: str = ""):
     if not file.filename.endswith((".xls", ".xlsx")):
@@ -2849,6 +2907,36 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
 
     groq_client = make_llm_client()
     conn = get_db()
+
+    # Same file uploaded again → REUSE the previous quote's product matches
+    # instead of re-matching every line (the slow part). Prices are refreshed
+    # from the current catalogue so numbers stay live. Only when the WHOLE file
+    # is re-uploaded (no section filter) and a COMPLETE prior quote exists — a
+    # section-filtered upload is a subset and matches fresh (it's fast anyway).
+    prior = (_find_prior_quote(conn, source_file)
+             if (source_file and not (sheets_str or "").strip()) else None)
+    if prior:
+        r_items = prior.get("items", [])
+        _refresh_item_prices(conn, r_items, tiers)
+        ref_no = f"QT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        data = {**prior, "ref_no": ref_no, "source_file": source_file,
+                "tiers": tiers_requested, "items": r_items,
+                "reused_from": prior.get("ref_no")}
+        if client_name.strip():
+            data["client_name"] = client_name
+        clean = [{k: v for k, v in i.items() if not k.startswith("_")} for i in r_items]
+        cur = conn.execute(
+            "INSERT INTO quotations (ref_no,client_name,items_json,status,created_by,created_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (ref_no, data.get("client_name", ""),
+             json.dumps({**data, "items": clean}), "draft", user["id"],
+             datetime.now().isoformat()))
+        data["id"] = cur.lastrowid
+        conn.commit()
+        conn.close()
+        log_action(user, "smart_generate_from_boq_reused", target=ref_no,
+                   after={"reused_from": prior.get("ref_no")})
+        return data
 
     # Progressive matching for GIANT BOQs: resolve the first chunk inline so
     # the quote is on screen in seconds, park the rest as pending rows, and
