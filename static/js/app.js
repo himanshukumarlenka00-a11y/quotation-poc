@@ -3083,10 +3083,11 @@ async function generateFromBoqFile() {
       pollLiveMatching(data.id, status);
     } else {
       const nf = (data.not_found || []).length;
+      const took = _mpElapsed();
       const reused = data.reused_from
-        ? `<div class="alert alert-info">♻ Reused your earlier match for this file (${data.reused_from}) — no re-matching, prices refreshed from the catalogue.</div>` : '';
+        ? `<div class="alert alert-info">♻ Reused your earlier match for this file (${data.reused_from}) in ${took} — no re-matching, prices refreshed from the catalogue.</div>` : '';
       status.innerHTML = reused
-        + `<div class="alert alert-success">✅ Quotation ready — ${(data.items||[]).length} item(s) matched.${nf ? ` ⚠️ ${nf} not found.` : ''}</div>`
+        + `<div class="alert alert-success">✅ Quotation ready in ${took} — ${(data.items||[]).length} item(s) matched.${nf ? ` ⚠️ ${nf} not found.` : ''}</div>`
         + renderFileTypeNotice(data.file_type, 'client_boq');
     }
   } catch (e) {
@@ -3102,7 +3103,7 @@ async function generateFromBoqFile() {
 let _mpStart = 0;
 function _mpElapsed() {
   const s = Math.round((Date.now() - _mpStart) / 1000);
-  return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
+  return s < 1 ? '<1s' : s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
 }
 function updateMatchProgress(done, total, running, phase) {
   const box = document.getElementById('match-progress');
