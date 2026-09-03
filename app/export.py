@@ -1506,7 +1506,16 @@ def build_single_sheet_quote(quotation: dict, items: list) -> str:
 
     # ── product rows (the template ships 2 sample slots at rows 21-22) ──
     FIRST, SAMPLE = 21, 2
-    n = len(items)
+    # A manual PACKING / FREIGHT / FORWARDING charge (the "ADD : PACKING…" box)
+    # is stored on the quote, not among the items — append it as its own line
+    # so it shows on the bill and counts toward the totals.
+    freight = max(0.0, float(quotation.get("freight_charge") or 0))
+    rows_data = list(items)
+    if freight > 0:
+        rows_data.append({"product": "PACKING, FORWARDING & FREIGHT CHARGES",
+                          "qty": 1, "price_per_pc": freight, "gst_pct": 18,
+                          "_charge": True})
+    n = len(rows_data)
     proto = [ws.cell(FIRST, c)._style for c in range(1, 14)]     # A..M from row 21
     # insert_rows/delete_rows do NOT relocate merged ranges, so the TOTAL / GST
     # VALUE / GRAND TOTAL merges (rows 23-25, A:J) would stay put and swallow
@@ -1519,10 +1528,13 @@ def build_single_sheet_quote(quotation: dict, items: list) -> str:
         ws.delete_rows(FIRST + max(n, 0), SAMPLE - n)
 
     tot_amt = tot_gst = 0.0
-    for i, it in enumerate(items):
+    sl = 0
+    for i, it in enumerate(rows_data):
         r = FIRST + i
         for c in range(1, 14):
             ws.cell(r, c)._style = proto[c - 1]
+        is_charge = bool(it.get("_charge")) or bool(
+            re.search(r"packing|freight|forwarding", str(it.get("product", "")), re.I))
         qty = int(it.get("qty") or 0)
         price = float(it.get("price_per_pc") or it.get("price") or 0)
         gfrac = float(it.get("gst_pct") or 18) / 100.0
@@ -1530,7 +1542,11 @@ def build_single_sheet_quote(quotation: dict, items: list) -> str:
         gst = round(amt * gfrac, 2)
         tot_amt += amt
         tot_gst += gst
-        ws.cell(r, 1, i + 1)                                     # SL.NO
+        if is_charge:                                           # charges aren't items
+            ws.cell(r, 1, None)                                 # blank SL.NO
+        else:
+            sl += 1
+            ws.cell(r, 1, sl)                                   # SL.NO
         ws.cell(r, 2, it.get("product", ""))                    # PRODUCT
         ws.cell(r, 3, qty or None)                              # QTY
         ws.cell(r, 4, it.get("description", "") or "")          # DESCRIPTION
@@ -1544,7 +1560,7 @@ def build_single_sheet_quote(quotation: dict, items: list) -> str:
         ws.cell(r, 13, gst)                                    # GST AMOUNT
         # product photo in the IMAGE column (G = col 7); photo rows get room,
         # text-only rows grow with the spec so nothing is clipped.
-        img_file = _image_file_path(it.get("image_path", ""), full=True)
+        img_file = None if is_charge else _image_file_path(it.get("image_path", ""), full=True)
         spec_lines = _estimate_wrapped_lines(
             it.get("specification") or "", ws.column_dimensions["H"].width or 60)
         ws.row_dimensions[r].height = max(90 if img_file else 44,
