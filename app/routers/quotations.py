@@ -3510,16 +3510,23 @@ def download_quotation(qid: int, user: dict = Depends(get_current_user)):
     # (MODEL|BRAND|IMAGE|SPECIFICATIONS|PRICE/PC|AMOUNT). Typed quotations
     # ship in the company's CYM-GWL design. On any write-back failure the
     # company format is the fallback, never an error page.
-    # Every quotation — typed OR uploaded — downloads in the single-sheet
-    # QUOTATION bill format (letterhead, BILL & SHIP TO, salesperson, the
-    # 13-column product table incl HSN + GST, TOTAL/GST/GRAND TOTAL, T&C +
-    # bank footer — all on one sheet). The client's uploaded layout is no
-    # longer handed back. Falls back to the company template on any failure.
+    # The download format follows the upload's shape:
+    #  • single section  -> the single-sheet QUOTATION bill (letterhead, BILL &
+    #    SHIP TO, salesperson, 13-col table incl HSN + GST, totals, T&C + bank).
+    #  • multiple sections (a multi-sheet BOQ) -> the company multi-sheet format
+    #    — a SUMMARY cover + ONE sheet per section, mirroring the source.
+    # A typed quote has no sections, so it takes the single-sheet bill.
+    sections = {(it.get("section") or "").strip() for it in items}
+    sections.discard("")
+    multi_sheet = len(sections) > 1
     try:
-        from app.export import build_single_sheet_quote
-        path = build_single_sheet_quote(data, items)
+        if multi_sheet:
+            path = build_final_bill(data, items)
+        else:
+            from app.export import build_single_sheet_quote
+            path = build_single_sheet_quote(data, items)
     except Exception as e:
-        print(f"single-sheet export failed, using company format: {e}")
+        print(f"quote export failed, using company format: {e}")
         path = build_final_bill(data, items)
 
     return FileResponse(
