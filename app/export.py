@@ -1478,3 +1478,84 @@ def _amount_in_words(n: float) -> str:
     if thou:  parts.append(three(thou) + ' Thousand')
     if hund:  parts.append(three(hund))
     return ' '.join(parts) + ' Rupees Only'
+
+
+SINGLE_TEMPLATE_PATH = Path(__file__).parent / "assets" / "quotation_single_template.xlsx"
+
+
+def build_single_sheet_quote(quotation: dict, items: list) -> str:
+    """Single-sheet quotation in the client's QUOTATION.xls layout: letterhead,
+    BILL & SHIP TO, salesperson, the 13-column product table (incl HSN + GST),
+    TOTAL / GST VALUE / GRAND TOTAL, then the fixed T&C + bank footer — all on
+    ONE sheet, matching the uploaded template. Amounts are written as VALUES
+    (not formulas) so they render in previews and unopened prints."""
+    wb = openpyxl.load_workbook(str(SINGLE_TEMPLATE_PATH))
+    ws = wb.active
+
+    # ── header ──
+    ws["L9"] = f"DATE : {datetime.now().strftime('%d.%m.%Y')}"
+    ws["A17"] = f"REF NO: {quotation.get('ref_no', '')}"
+    bill_to = (quotation.get("bill_to") or quotation.get("client_name") or "").strip()
+    for i, line in enumerate([l.strip() for l in bill_to.splitlines() if l.strip()][:5]):
+        ws.cell(10 + i, 1, line)              # A10, A11, … (below BILL & SHIP TO)
+    sp = quotation.get("sales_person") or {}
+    if sp.get("name"):
+        ws["J11"] = f"SALES CONCERN PERSON :MR {sp['name']}"
+        ws["J12"] = f"CONTACT N0: {sp.get('phone', '')}"
+        ws["J13"] = f"MAIL ID: {sp.get('email', '')}"
+
+    # ── product rows (the template ships 2 sample slots at rows 21-22) ──
+    FIRST, SAMPLE = 21, 2
+    n = len(items)
+    proto = [ws.cell(FIRST, c)._style for c in range(1, 14)]     # A..M from row 21
+    # insert_rows/delete_rows do NOT relocate merged ranges, so the TOTAL / GST
+    # VALUE / GRAND TOTAL merges (rows 23-25, A:J) would stay put and swallow
+    # the shifted product columns. Lift them out now, re-add at the real rows.
+    for mr in [m for m in list(ws.merged_cells.ranges) if m.min_row >= 23]:
+        ws.unmerge_cells(str(mr))
+    if n > SAMPLE:
+        ws.insert_rows(FIRST + SAMPLE, n - SAMPLE)
+    elif n < SAMPLE:
+        ws.delete_rows(FIRST + max(n, 0), SAMPLE - n)
+
+    tot_amt = tot_gst = 0.0
+    for i, it in enumerate(items):
+        r = FIRST + i
+        for c in range(1, 14):
+            ws.cell(r, c)._style = proto[c - 1]
+        qty = int(it.get("qty") or 0)
+        price = float(it.get("price_per_pc") or it.get("price") or 0)
+        gfrac = float(it.get("gst_pct") or 18) / 100.0
+        amt = round(qty * price, 2)
+        gst = round(amt * gfrac, 2)
+        tot_amt += amt
+        tot_gst += gst
+        ws.cell(r, 1, i + 1)                                     # SL.NO
+        ws.cell(r, 2, it.get("product", ""))                    # PRODUCT
+        ws.cell(r, 3, qty or None)                              # QTY
+        ws.cell(r, 4, it.get("description", "") or "")          # DESCRIPTION
+        ws.cell(r, 5, it.get("model_no", ""))                  # MODEL NO
+        ws.cell(r, 6, it.get("brand", ""))                     # BRAND
+        ws.cell(r, 8, (it.get("specification") or "").replace("\\n", "\n"))  # SPEC
+        ws.cell(r, 9, it.get("hsn_code", ""))                  # HSN CODE
+        ws.cell(r, 10, round(price, 2))                        # PRICE/PC
+        ws.cell(r, 11, amt)                                    # AMOUNT
+        ws.cell(r, 12, gfrac)                                  # GST (fraction)
+        ws.cell(r, 13, gst)                                    # GST AMOUNT
+
+    # ── totals (shifted with the insert/delete above) ──
+    trow = FIRST + max(n, 0)          # TOTAL row
+    for rr in (trow, trow + 1, trow + 2):       # re-add the A:J label merges
+        ws.merge_cells(start_row=rr, start_column=1, end_row=rr, end_column=10)
+    ws.cell(trow, 1, "TOTAL")
+    ws.cell(trow, 11, round(tot_amt, 2))
+    ws.cell(trow, 13, round(tot_gst, 2))
+    ws.cell(trow + 1, 1, "GST VALUE")
+    ws.cell(trow + 1, 11, round(tot_gst, 2))
+    ws.cell(trow + 2, 1, "GRAND TOTAL")
+    ws.cell(trow + 2, 11, round(tot_amt + tot_gst, 2))
+
+    fd, out = tempfile.mkstemp(suffix=".xlsx")
+    os.close(fd)
+    wb.save(out)
+    return out

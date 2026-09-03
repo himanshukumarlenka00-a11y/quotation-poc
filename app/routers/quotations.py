@@ -3510,12 +3510,17 @@ def download_quotation(qid: int, user: dict = Depends(get_current_user)):
     # (MODEL|BRAND|IMAGE|SPECIFICATIONS|PRICE/PC|AMOUNT). Typed quotations
     # ship in the company's CYM-GWL design. On any write-back failure the
     # company format is the fallback, never an error page.
-    # Every quotation — typed OR uploaded — downloads in the company's
-    # QUOTATION bill format (letterhead, BILL & SHIP TO, PREPARED BY, priced
-    # item sheets). The client's own uploaded layout is no longer handed back:
-    # the deliverable is always a Melange quotation, populated with the matched
-    # products and the Bill & Ship To / salesperson pulled from the file.
-    path = build_final_bill(data, items)
+    # Every quotation — typed OR uploaded — downloads in the single-sheet
+    # QUOTATION bill format (letterhead, BILL & SHIP TO, salesperson, the
+    # 13-column product table incl HSN + GST, TOTAL/GST/GRAND TOTAL, T&C +
+    # bank footer — all on one sheet). The client's uploaded layout is no
+    # longer handed back. Falls back to the company template on any failure.
+    try:
+        from app.export import build_single_sheet_quote
+        path = build_single_sheet_quote(data, items)
+    except Exception as e:
+        print(f"single-sheet export failed, using company format: {e}")
+        path = build_final_bill(data, items)
 
     return FileResponse(
         path,
