@@ -1542,6 +1542,17 @@ def build_single_sheet_quote(quotation: dict, items: list) -> str:
         ws.cell(r, 11, amt)                                    # AMOUNT
         ws.cell(r, 12, gfrac)                                  # GST (fraction)
         ws.cell(r, 13, gst)                                    # GST AMOUNT
+        # product photo in the IMAGE column (G = col 7); photo rows get room,
+        # text-only rows grow with the spec so nothing is clipped.
+        img_file = _image_file_path(it.get("image_path", ""), full=True)
+        spec_lines = _estimate_wrapped_lines(
+            it.get("specification") or "", ws.column_dimensions["H"].width or 60)
+        ws.row_dimensions[r].height = max(90 if img_file else 44,
+                                          min(spec_lines * 12 + 8, 190))
+        if img_file:
+            row_px = int(ws.row_dimensions[r].height * 96 / 72)
+            _embed_item_image(ws, img_file, row=r, col=7, box_w=90,
+                              box_h=min(row_px - 6, 110), center_height=row_px)
 
     # ── totals (shifted with the insert/delete above) ──
     trow = FIRST + max(n, 0)          # TOTAL row
