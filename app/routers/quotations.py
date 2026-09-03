@@ -1,4 +1,5 @@
 import os, re, json, base64, tempfile, threading, time
+import concurrent.futures
 from pathlib import Path
 from datetime import datetime
 from fastapi import APIRouter, Depends, Request, HTTPException, UploadFile, File, Form
@@ -804,6 +805,12 @@ def _llm_demote_placeholder(it):
 
 _LLM_WEAK = {"name", "name+spec", "rname", "part", "spec", "sem"}
 
+# The meaning-check batches run CONCURRENTLY. The Anthropic paid tier allows
+# ~1000 req/min and 500k input tok/min, so a big BOQ's checks overlap instead
+# of queueing one-at-a-time behind a fixed pause (a Groq-free-tier habit).
+# Env-overridable; a burst this size stays well under the per-minute limits.
+_VERIFY_WORKERS = max(1, int(os.environ.get("LLM_VERIFY_WORKERS", "8")))
+
 
 def _sig_words(text):
     """Significant words of a request or product name: alphabetic, 3+
@@ -846,9 +853,10 @@ def _llm_verify_matches(groq_client, items, batch=20, paced=False):
     exact/model/HSN/learned lines are never questioned. Verdict A..E
     switches the line to that variant, none demotes it to a fill-in
     placeholder. Every failure path leaves the line untouched.
-    paced=True (the central post-match phase): batches run one at a time
-    with pauses and retries instead of bursting into the rate limit, and
-    duplicate lines share one verdict."""
+    Batches run CONCURRENTLY (see _VERIFY_WORKERS) and duplicate lines share
+    one verdict. `paced` is kept for call-site compatibility; the fixed
+    inter-batch pause it used to add (a Groq-free-tier guard) is gone now the
+    primary path is the paid Anthropic tier, whose limits are generous."""
     idxs = []
     for i, it in enumerate(items):
         if it.get("not_in_catalog") or it.get("matched_by") != "ai":
@@ -873,8 +881,9 @@ def _llm_verify_matches(groq_client, items, batch=20, paced=False):
             verdict_cache[k] = None
             uniq.append(i)
 
-    for start in range(0, len(uniq), batch):
-        chunk = uniq[start:start + batch]
+    chunks = [uniq[start:start + batch] for start in range(0, len(uniq), batch)]
+
+    def _run_chunk(chunk):
         lines = []
         for n, i in enumerate(chunk, 1):
             it = items[i]
@@ -891,28 +900,38 @@ def _llm_verify_matches(groq_client, items, batch=20, paced=False):
             "candidate is that type of product.\n"
             'Answer with ONLY compact JSON, no explanation, like '
             '{"1":"A","2":"none"}.\n\n' + "\n".join(lines))
-        verdicts = None
-        for attempt in range(3 if paced else 1):
+        # Retry a few times; back off ONLY on failure (e.g. a rare 429). The
+        # paid tier's limits are generous, so this is a safety net, not routine.
+        for attempt in range(3):
             try:
                 txt = _llm_chat(groq_client,
                                 [{"role": "user", "content": prompt}],
                                 max_tokens=1200, temperature=0)
                 m = re.search(r"\{[^{}]*\}", txt or "", re.S)
                 if m:
-                    verdicts = json.loads(m.group(0))
-                    break
+                    return chunk, json.loads(m.group(0))
                 print("LLM verify: no JSON in reply")
             except Exception as e:
                 print(f"LLM verify attempt {attempt + 1} failed: {e}")
-                if paced:
-                    time.sleep(5 * (attempt + 1))
-        if verdicts is None:
+                if attempt < 2:
+                    time.sleep(1.5 * (attempt + 1))
+        return chunk, None
+
+    # Batches run CONCURRENTLY (see _VERIFY_WORKERS): a big BOQ's checks overlap
+    # instead of queueing one-by-one behind a fixed pause. One chunk runs inline.
+    workers = min(_VERIFY_WORKERS, len(chunks))
+    if workers <= 1:
+        pairs = [_run_chunk(c) for c in chunks]
+    else:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
+            pairs = list(ex.map(_run_chunk, chunks))
+
+    for chunk, verdicts in pairs:
+        if not verdicts:
             continue
         for n, i in enumerate(chunk, 1):
             verdict_cache[_key(items[i])] = \
                 str(verdicts.get(str(n), "") or "").strip().upper()
-        if paced:
-            time.sleep(1.5)
 
     for i in idxs:
         it = items[i]
