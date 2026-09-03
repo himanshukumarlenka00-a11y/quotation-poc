@@ -3084,10 +3084,14 @@ async function generateFromBoqFile() {
     } else {
       const nf = (data.not_found || []).length;
       const took = _mpElapsed();
+      const n = (data.items || []).length;
+      // Show the time on the RESULT page too (the progress bar), where the user
+      // is looking — for reused/instant quotes the live progress never runs.
+      updateMatchProgress(n, n, false, data.reused_from ? 'reused' : null);
       const reused = data.reused_from
         ? `<div class="alert alert-info">♻ Reused your earlier match for this file (${data.reused_from}) in ${took} — no re-matching, prices refreshed from the catalogue.</div>` : '';
       status.innerHTML = reused
-        + `<div class="alert alert-success">✅ Quotation ready in ${took} — ${(data.items||[]).length} item(s) matched.${nf ? ` ⚠️ ${nf} not found.` : ''}</div>`
+        + `<div class="alert alert-success">✅ Quotation ready in ${took} — ${n} item(s) matched.${nf ? ` ⚠️ ${nf} not found.` : ''}</div>`
         + renderFileTypeNotice(data.file_type, 'client_boq');
     }
   } catch (e) {
@@ -3120,8 +3124,10 @@ function updateMatchProgress(done, total, running, phase) {
   if (!running) {
     // Stays green until the user presses Done — no auto-vanish.
     box.classList.add('mp-done');
-    lbl.innerHTML = '✔ <strong>Matching complete</strong>'
-      + (_mpStart ? ` <span class="mp-time">· took ${_mpElapsed()}</span>` : '');
+    const head = phase === 'reused'
+      ? '♻ <strong>Reused earlier match</strong>' : '✔ <strong>Matching complete</strong>';
+    lbl.innerHTML = head
+      + (_mpStart ? ` <span class="mp-time">· in ${_mpElapsed()}</span>` : '');
   } else {
     box.classList.remove('mp-done');
     lbl.innerHTML = phase === 'verifying'
