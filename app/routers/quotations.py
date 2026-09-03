@@ -2598,6 +2598,36 @@ def _extract_bill_to(path):
     return "\n".join(lines).strip()
 
 
+def _extract_sales_person(path):
+    """Pull the salesperson from a Melange quote/PI header — the name after
+    'SALES CONCERN PERSON' and the 'MAIL ID' email, wherever they sit in the
+    header. Returns (name, email); either may be '' when not present."""
+    try:
+        import pandas as pd
+        df = pd.read_excel(path, sheet_name=0, header=None, nrows=30)
+    except Exception:
+        return "", ""
+    name = email = ""
+    for r in range(len(df)):
+        for c in range(min(df.shape[1], 15)):
+            try:
+                v = df.iat[r, c]
+            except Exception:
+                continue
+            s = "" if v is None else str(v).strip()
+            if not s or s.lower() == "nan":
+                continue
+            low = s.lower()
+            if "sales concern person" in low and not name:
+                after = s.split(":", 1)[1].strip() if ":" in s else ""
+                name = re.sub(r"^(mr|mrs|ms|m/s)\.?\s+", "", after, flags=re.I).strip()
+            if not email:
+                m = re.search(r"[\w.+-]+@[\w-]+\.[\w.-]+", s)
+                if m:
+                    email = m.group(0)
+    return name, email
+
+
 @router.post("/api/smart-generate-from-boq")
 @limiter.limit("30/minute")
 def smart_generate_from_boq(
@@ -2639,6 +2669,7 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
     tmp_path = Path(tmp_path)
     source_file = ""
     bill_to_extracted = ""
+    sp_name = sp_email = ""
     try:
         _save_upload_validated(file, tmp_path)
         # skip_images: matched items show MASTER-catalogue photos; reading
@@ -2665,12 +2696,16 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
                 dest.write_bytes(raw)
         except Exception:
             source_file = ""
-        # Client BILL & SHIP TO block from the header (Melange quote/PI
-        # template) — used below to pre-fill the quote's Bill & Ship To.
+        # Client BILL & SHIP TO block + salesperson from the header (Melange
+        # quote/PI template) — used below to pre-fill the quote.
         try:
             bill_to_extracted = _extract_bill_to(str(tmp_path))
         except Exception:
             bill_to_extracted = ""
+        try:
+            sp_name, sp_email = _extract_sales_person(str(tmp_path))
+        except Exception:
+            sp_name = sp_email = ""
     finally:
         try:
             tmp_path.unlink(missing_ok=True)
@@ -2767,6 +2802,25 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
     # user didn't type a client themselves — never overwrite what they entered.
     if bill_to_extracted and not (client_name or "").strip():
         data["bill_to"] = bill_to_extracted
+    # Pre-fill the salesperson from the header. Prefer matching the file's name
+    # or email to the saved team (so the stored phone/email/region flow in and
+    # the "Prepared By" dropdown pre-selects); fall back to the file's raw name.
+    if (sp_name or sp_email) and not data.get("sales_person"):
+        sp = None
+        try:
+            if sp_email:
+                sp = conn.execute("SELECT id,name,phone,email,region FROM sales_persons "
+                                  "WHERE lower(email)=lower(?)", (sp_email,)).fetchone()
+            if sp is None and sp_name:
+                sp = conn.execute("SELECT id,name,phone,email,region FROM sales_persons "
+                                  "WHERE upper(name)=upper(?)", (sp_name,)).fetchone()
+        except Exception:
+            sp = None
+        if sp:
+            data["sales_person"] = {"id": sp["id"], "name": sp["name"], "phone": sp["phone"],
+                                    "email": sp["email"], "region": sp["region"]}
+        elif sp_name:
+            data["sales_person"] = {"name": sp_name, "email": sp_email}
 
     clean_items = [{k: v for k, v in i.items() if not k.startswith("_")} for i in result_items]
     data_db = {**data, "items": clean_items}
