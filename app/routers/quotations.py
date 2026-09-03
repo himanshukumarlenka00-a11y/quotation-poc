@@ -2557,6 +2557,47 @@ def boq_sections(
             "total": sum(counts.values())}
 
 
+def _extract_bill_to(path):
+    """Pull the client BILL & SHIP TO block out of a Melange quote/PI template —
+    the column-A lines between the 'BILL & SHIP TO' label and the 'SUB:' line.
+    The company letterhead ABOVE the label and the sales-person block (a
+    different column) are deliberately left out. Returns '' when the layout
+    has no such header (a plain client BOQ), so those uploads contribute
+    nothing and the field stays blank."""
+    try:
+        import pandas as pd
+        df = pd.read_excel(path, sheet_name=0, header=None, nrows=30)
+    except Exception:
+        return ""
+
+    def a(r):
+        try:
+            v = df.iat[r, 0]
+        except Exception:
+            return ""
+        s = "" if v is None else str(v).strip()
+        return "" if s.lower() == "nan" else s
+
+    start = None
+    for r in range(len(df)):
+        v = a(r).lower()
+        if "bill" in v and "ship" in v:
+            start = r + 1
+            break
+    if start is None:
+        return ""
+    stop = ("sub:", "sub ", "dear", "ref no", "ref:", "date",
+            "sl.no", "sl no", "s.no", "sr.no")
+    lines = []
+    for r in range(start, min(len(df), start + 12)):
+        v = a(r)
+        if v.lower().startswith(stop):
+            break
+        if v:
+            lines.append(v)
+    return "\n".join(lines).strip()
+
+
 @router.post("/api/smart-generate-from-boq")
 @limiter.limit("30/minute")
 def smart_generate_from_boq(
@@ -2597,6 +2638,7 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
     os.close(fd)
     tmp_path = Path(tmp_path)
     source_file = ""
+    bill_to_extracted = ""
     try:
         _save_upload_validated(file, tmp_path)
         # skip_images: matched items show MASTER-catalogue photos; reading
@@ -2623,6 +2665,12 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
                 dest.write_bytes(raw)
         except Exception:
             source_file = ""
+        # Client BILL & SHIP TO block from the header (Melange quote/PI
+        # template) — used below to pre-fill the quote's Bill & Ship To.
+        try:
+            bill_to_extracted = _extract_bill_to(str(tmp_path))
+        except Exception:
+            bill_to_extracted = ""
     finally:
         try:
             tmp_path.unlink(missing_ok=True)
@@ -2715,6 +2763,10 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
             "file_type": file_type, "tiers": tiers_requested,
             "source_file": source_file,
             "items": result_items, "not_found": not_found}
+    # Pre-fill Bill & Ship To from the uploaded file's header, but only when the
+    # user didn't type a client themselves — never overwrite what they entered.
+    if bill_to_extracted and not (client_name or "").strip():
+        data["bill_to"] = bill_to_extracted
 
     clean_items = [{k: v for k, v in i.items() if not k.startswith("_")} for i in result_items]
     data_db = {**data, "items": clean_items}
