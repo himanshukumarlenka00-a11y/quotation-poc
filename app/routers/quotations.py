@@ -2520,6 +2520,43 @@ def _resolve_master_matches(conn, extracted, catalogs, tiers_req, groq_client, p
     return result_items, not_found
 
 
+@router.post("/api/boq-sections")
+@limiter.limit("30/minute")
+def boq_sections(
+    request: Request,
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    """List the sheets in an uploaded BOQ with each one's product-row count, so
+    the UI can offer to match a giant multi-sheet workbook one section at a time
+    instead of all 2,000+ rows at once. Parse only — no matching, so it's fast."""
+    if not file.filename.endswith((".xls", ".xlsx")):
+        raise HTTPException(400, "Only .xls/.xlsx files allowed")
+    suffix = ".xlsx" if file.filename.endswith(".xlsx") else ".xls"
+    fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+    os.close(fd)
+    tmp_path = Path(tmp_path)
+    try:
+        _save_upload_validated(file, tmp_path)
+        rows, _ = parse_boq_excel(str(tmp_path), file.filename, skip_images=True)
+    finally:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+    counts, order = {}, []
+    for r in rows:
+        if not (r.get("product") or "").strip():
+            continue
+        s = (r.get("sheet_name") or "").strip()
+        if s not in counts:
+            counts[s] = 0
+            order.append(s)
+        counts[s] += 1
+    return {"sections": [{"sheet": s, "lines": counts[s]} for s in order],
+            "total": sum(counts.values())}
+
+
 @router.post("/api/smart-generate-from-boq")
 @limiter.limit("30/minute")
 def smart_generate_from_boq(
@@ -2527,15 +2564,18 @@ def smart_generate_from_boq(
     file: UploadFile = File(...),
     client_name: str = Form(""),
     tiers: str = Form("3star"),
+    sheets: str = Form(""),
     user: dict = Depends(get_current_user),
 ):
     """Client requirement BOQ upload — the file-based counterpart to
     /api/smart-generate. A client's own Excel (product + qty per row, no
     pricing needed) is parsed and every row matched against the Master
     Table via the exact same resolver, so typing a requirement and
-    uploading one produce identically-priced results."""
+    uploading one produce identically-priced results. `sheets` (a "|"-joined
+    list of sheet names) limits matching to those sections; empty = all."""
     try:
-        return _strip_cost(_smart_generate_from_boq(file, client_name, tiers, user), user)
+        return _strip_cost(
+            _smart_generate_from_boq(file, client_name, tiers, user, sheets), user)
     except HTTPException:
         raise
     except Exception as e:
@@ -2543,7 +2583,8 @@ def smart_generate_from_boq(
         raise server_error(e, "Request")
 
 
-def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str, user: dict):
+def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
+                             user: dict, sheets_str: str = ""):
     if not file.filename.endswith((".xls", ".xlsx")):
         raise HTTPException(400, "Only .xls/.xlsx files allowed")
 
@@ -2587,6 +2628,19 @@ def _smart_generate_from_boq(file: UploadFile, client_name: str, tiers_str: str,
             tmp_path.unlink(missing_ok=True)
         except OSError:
             pass  # Windows may still hold a lock briefly — non-fatal
+
+    # Section-by-section: a giant multi-sheet workbook (65 sheets, 2,000+ rows)
+    # can be matched one area at a time instead of all at once. sheets_str is a
+    # "|"-joined list of sheet names to keep (| because a sheet name can contain
+    # commas); empty means every sheet, the original behaviour. The saved source
+    # workbook above stays whole, so the export still rebuilds every sheet.
+    if sheets_str:
+        want = {s.strip() for s in sheets_str.split("|") if s.strip()}
+        if want:
+            rows = [r for r in rows if (r.get("sheet_name") or "").strip() in want]
+            if not rows:
+                raise HTTPException(
+                    400, "None of the selected sections had readable product rows.")
 
     # A client's BOQ often lists the SAME generic category label across many
     # rows (e.g. "Bowl Kitchen S/S Conical" for five different sizes) with the

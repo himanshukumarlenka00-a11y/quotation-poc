@@ -2688,6 +2688,7 @@ function setBoqReqFile(file) {
     <button type="button" onclick="clearBoqReqFile()" title="Remove this file">✕ clear</button>`;
   document.getElementById('gen-boq-status').innerHTML = '';
   document.getElementById('boq-coverage').innerHTML = '';
+  loadBoqSections(file);
 }
 
 function clearBoqReqFile() {
@@ -2700,9 +2701,83 @@ function clearBoqReqFile() {
   document.getElementById('gen-boq-btn').disabled = true;
   const ma = document.getElementById('margin-analyse-btn');
   if (ma) ma.disabled = true;
+  boqSections = null;
+  const sb = document.getElementById('boq-sections');
+  if (sb) sb.innerHTML = '';
   ['gen-boq-status', 'boq-coverage'].forEach(id => {
     document.getElementById(id).innerHTML = '';
   });
+}
+
+// ── Section-by-section: a big multi-sheet BOQ can be matched one area at a
+// time. On file select we list its sheets (fast, parse-only) and offer a
+// picker; generate then sends only the ticked sheets, so a 65-sheet workbook
+// need not match all 2,000+ rows to quote one area. ────────────────────────
+let boqSections = null;   // [{sheet, lines}] from /api/boq-sections, or null
+
+function _boqSectionsBox() {
+  let box = document.getElementById('boq-sections');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'boq-sections';
+    box.style.cssText = 'margin:10px 0;';
+    const anchor = document.getElementById('boq-file-chosen');
+    anchor.parentNode.insertBefore(box, anchor.nextSibling);
+  }
+  return box;
+}
+
+async function loadBoqSections(file) {
+  boqSections = null;
+  const box = _boqSectionsBox();
+  box.innerHTML = '';
+  try {
+    const fd = new FormData(); fd.append('file', file);
+    const res = await fetch(`${API}/api/boq-sections`, { method: 'POST', body: fd });
+    const d = await res.json();
+    if (!res.ok || !d.sections || d.sections.length <= 1) return;  // single-sheet: no picker
+    boqSections = d.sections;
+    const rows = d.sections.map(s =>
+      `<label style="display:flex;align-items:center;gap:8px;padding:3px 2px;font-size:13px;cursor:pointer">
+         <input type="checkbox" class="boq-sec-cb" data-sheet="${escHtml(s.sheet)}" checked>
+         <span style="flex:1">${escHtml(s.sheet || '(unnamed sheet)')}</span>
+         <span style="color:var(--muted,#888)">${s.lines}</span>
+       </label>`).join('');
+    box.innerHTML = `
+      <div style="border:1px solid var(--border,#ddd);border-radius:10px;padding:10px 12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <b>${d.sections.length} sections · ${d.total} rows</b>
+          <span style="font-size:13px">
+            <a href="#" onclick="boqSecAll(true);return false" style="margin-right:10px">All</a>
+            <a href="#" onclick="boqSecAll(false);return false">None</a>
+          </span>
+        </div>
+        <div style="font-size:12px;color:var(--muted,#888);margin-bottom:6px">Untick sections you don't need — matching fewer rows is faster.</div>
+        <div style="max-height:190px;overflow:auto">${rows}</div>
+        <div id="boq-sec-summary" style="font-size:12px;margin-top:6px"></div>
+      </div>`;
+    box.querySelectorAll('.boq-sec-cb').forEach(cb => cb.addEventListener('change', boqSecSummary));
+    boqSecSummary();
+  } catch (e) { boqSections = null; box.innerHTML = ''; }
+}
+
+function boqSecAll(v) {
+  document.querySelectorAll('.boq-sec-cb').forEach(cb => cb.checked = v);
+  boqSecSummary();
+}
+
+function boqSelectedSheets() {
+  return Array.from(document.querySelectorAll('.boq-sec-cb:checked')).map(cb => cb.dataset.sheet);
+}
+
+function boqSecSummary() {
+  if (!boqSections) return;
+  const sel = boqSelectedSheets();
+  const lines = boqSections.filter(s => sel.includes(s.sheet)).reduce((a, s) => a + s.lines, 0);
+  const el = document.getElementById('boq-sec-summary');
+  if (el) el.innerHTML = `Matching <b>${sel.length}/${boqSections.length}</b> sections · <b>${lines}</b> rows`;
+  const btn = document.getElementById('gen-boq-btn');
+  if (btn) btn.disabled = sel.length === 0;
 }
 
 // ── Phase A: show how each column will be read, before anything is imported ──
@@ -2982,6 +3057,11 @@ async function generateFromBoqFile() {
   fd.append('file', boqReqSelectedFile);
   fd.append('client_name', client);
   fd.append('tiers', tiersToUse.join(','));
+  // Section filter: only send when it's a real subset (all-selected = default).
+  if (boqSections) {
+    const sel = boqSelectedSheets();
+    if (sel.length && sel.length < boqSections.length) fd.append('sheets', sel.join('|'));
+  }
 
   try {
     const res = await fetch(`${API}/api/smart-generate-from-boq`, { method: 'POST', body: fd });
