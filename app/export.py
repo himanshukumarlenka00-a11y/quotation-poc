@@ -1499,10 +1499,23 @@ def build_single_sheet_quote(quotation: dict, items: list) -> str:
     for i, line in enumerate([l.strip() for l in bill_to.splitlines() if l.strip()][:5]):
         ws.cell(10 + i, 1, line)              # A10, A11, … (below BILL & SHIP TO)
     sp = quotation.get("sales_person") or {}
-    if sp.get("name"):
-        ws["J11"] = f"SALES CONCERN PERSON :MR {sp['name']}"
-        ws["J12"] = f"CONTACT N0: {sp.get('phone', '')}"
-        ws["J13"] = f"MAIL ID: {sp.get('email', '')}"
+    # Salesperson block. The template ships it in column J — two columns left of
+    # the DATE — so move it to align with the DATE's right margin (column L).
+    # Clear the sample text in J and write the real values right-aligned into L
+    # (blank, not the sample, when the quote has no salesperson).
+    from openpyxl.styles import Alignment as _Al
+    sp_lines = {
+        11: f"SALES CONCERN PERSON :MR {sp['name']}" if sp.get("name") else "",
+        12: f"CONTACT NO : {sp['phone']}" if sp.get("phone") else "",
+        13: f"MAIL ID : {sp['email']}" if sp.get("email") else "",
+    }
+    for rr, txt in sp_lines.items():
+        jcell = ws.cell(rr, 10)                       # column J (template sample)
+        lcell = ws.cell(rr, 12)                       # column L (under the DATE)
+        lcell.font = copy(jcell.font)
+        lcell.alignment = _Al(horizontal="right", vertical="center")
+        lcell.value = txt or None
+        jcell.value = None
 
     # ── product rows (the template ships 2 sample slots at rows 21-22) ──
     FIRST, SAMPLE = 21, 2
