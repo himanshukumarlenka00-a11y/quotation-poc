@@ -3510,23 +3510,12 @@ def download_quotation(qid: int, user: dict = Depends(get_current_user)):
     # (MODEL|BRAND|IMAGE|SPECIFICATIONS|PRICE/PC|AMOUNT). Typed quotations
     # ship in the company's CYM-GWL design. On any write-back failure the
     # company format is the fallback, never an error page.
-    path = None
-    src = data.get("source_file") or ""
-    if re.fullmatch(r"[0-9a-f]{40}\.(xlsx|xls)", src):
-        from app.config import DATA_DIR
-        sp = Path(DATA_DIR) / "boq_sources" / src
-        if sp.exists():
-            try:
-                if data.get("has_boq_pricing"):
-                    from app.export import build_revised_from_source
-                    path = build_revised_from_source(data, items, str(sp))
-                else:
-                    from app.export import build_boq_response
-                    path = build_boq_response(data, items, str(sp))
-            except Exception as e:
-                print(f"source-format export failed, using company format: {e}")
-    if not path:
-        path = build_final_bill(data, items)
+    # Every quotation — typed OR uploaded — downloads in the company's
+    # QUOTATION bill format (letterhead, BILL & SHIP TO, PREPARED BY, priced
+    # item sheets). The client's own uploaded layout is no longer handed back:
+    # the deliverable is always a Melange quotation, populated with the matched
+    # products and the Bill & Ship To / salesperson pulled from the file.
+    path = build_final_bill(data, items)
 
     return FileResponse(
         path,
