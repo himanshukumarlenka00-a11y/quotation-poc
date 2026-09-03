@@ -811,6 +811,12 @@ _LLM_WEAK = {"name", "name+spec", "rname", "part", "spec", "sem"}
 # Env-overridable; a burst this size stays well under the per-minute limits.
 _VERIFY_WORKERS = max(1, int(os.environ.get("LLM_VERIFY_WORKERS", "8")))
 
+# Worker PROCESSES that match the background BOQ lines in parallel (matching is
+# CPU-bound Python, so processes, not threads). Was a fixed 4 — fine for small
+# BOQs but it left most of a 20-core box idle on a 2,000-line file. Default 8
+# (still leaves headroom for the web server on a shared box); env-overridable.
+_MATCH_WORKERS = max(1, int(os.environ.get("MATCH_WORKERS", "8")))
+
 
 def _sig_words(text):
     """Significant words of a request or product name: alphabetic, 3+
@@ -2710,9 +2716,10 @@ def _bg_match_rest(qid, rest, tiers, start_idx, api_key, chunk_size):
                     for i in range(0, len(rest), chunk_size)]
         done_lines = 0
         # spawn, not fork: forking a threaded uvicorn process can deadlock.
-        # ponytail: fixed 4 workers — polite on the shared box; bump if a
-        # 2k-line BOQ ever needs to beat ~90s
-        with cf.ProcessPoolExecutor(max_workers=4,
+        # Worker count is _MATCH_WORKERS (default 8, env MATCH_WORKERS) — a
+        # 2k-line BOQ was pinned to 4 cores on a 20-core box; more workers
+        # cut its wall-clock proportionally while leaving headroom for serving.
+        with cf.ProcessPoolExecutor(max_workers=_MATCH_WORKERS,
                                     mp_context=mp.get_context("spawn")) as pool:
             for fut in cf.as_completed([pool.submit(_match_chunk_worker, p)
                                         for p in payloads]):
